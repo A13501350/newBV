@@ -298,33 +298,42 @@ class PlayerViewModel
          * 视频列表由详情页在导航前通过 [VideoInfoRepository] 填充。
          * 若播放器直接打开（无详情页上下文），列表为空，仅加载详情用于相关视频和历史。
          *
-         * 加载完成后，仅当历史 cid 与当前播放 cid 一致时才应用断点续播，
-         * 避免多 P 视频中把 P2 的进度应用到 P1。
+         * 分 P 目标解析（与原版 BV 直进逻辑一致）：
+         * - 进入时已指定分 P（cid != 0）→ 严格保留，避免把其它分 P 的进度套到所选分 P；
+         * - 未指定分 P（cid == 0，如首页/推荐封面直进）→ 采用历史分 P，无历史时回退默认第一个分 P。
+         * 当最终目标正是历史分 P 时才应用断点进度（[PlayerUiState.lastPlayed]）。
          *
          * @param aid 视频 AV 号
+         * @param bvid 视频 BV 号（可选）
          */
         suspend fun loadVideoDetail(
             aid: Long,
             bvid: String = "",
         ) {
             videoInfoRepository.loadVideoDetail(aid, getApiType(), bvid)
-            videoInfoRepository.videoDetail.value?.let { detail ->
-                _uiState.update {
-                    it.copy(
-                        // 详情接口返回的 cid 是视频默认分P（第一个分P）。仅当进入时
-                        // 未携带 cid（直进播放器，cid=0）才用它补齐；点击指定分P进入时
-                        // 必须保留传入的 cid，覆盖会导致播放的不是所选分P
-                        cid = if (it.cid == 0L) detail.cid else it.cid,
-                        authorMid = detail.author.mid,
-                        authorName = detail.author.name,
-                    )
-                }
-            }
-            val sharedState = videoInfoRepository.videoSharedState.value
-            val historyCid = sharedState?.lastPlayedCid ?: 0L
-            val historyTime = sharedState?.lastPlayedTime ?: 0
-            if (historyCid == _uiState.value.cid && historyTime > 0) {
-                _uiState.update { it.copy(lastPlayed = historyTime) }
+            val detail = videoInfoRepository.videoDetail.value
+            // 仅采纳属于当前视频的历史，避免误用其它 aid 的进度
+            val matched = videoInfoRepository.videoSharedState.value?.takeIf { it.aid == aid }
+            val historyCid = matched?.lastPlayedCid ?: 0L
+            val historyTime = matched?.lastPlayedTime ?: 0
+
+            _uiState.update { state ->
+                val targetCid =
+                    when {
+                        // 已指定分 P：保留（点击指定分 P 进入时必须播放所选分 P）
+                        state.cid != 0L -> state.cid
+                        // 未指定且存在历史：恢复到上次看的分 P
+                        historyCid != 0L -> historyCid
+                        // 无历史：使用详情默认（第一个）分 P
+                        else -> detail?.cid ?: state.cid
+                    }
+                state.copy(
+                    cid = targetCid,
+                    // 仅当目标就是历史分 P（且未看完）时才应用断点进度
+                    lastPlayed = if (targetCid == historyCid && historyTime > 0) historyTime else 0,
+                    authorMid = detail?.author?.mid ?: state.authorMid,
+                    authorName = detail?.author?.name ?: state.authorName,
+                )
             }
         }
 

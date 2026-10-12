@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.app.data.VideoInfoRepository
+import dev.frost819.newbv.app.data.VideoSharedState
 import dev.frost819.newbv.app.entity.player.VideoAspectRatio
 import dev.frost819.newbv.app.entity.player.VideoListItem
 import dev.frost819.newbv.app.ui.action.player.MediaProfileSettingAction
@@ -1197,6 +1198,76 @@ class PlayerViewModelTest {
             runCurrent()
 
             assertThat(viewModel.uiState.value.cid).isEqualTo(111L)
+            viewModel.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `loadVideoDetail without cid adopts history cid and applies lastPlayed`() =
+        runTest(testDispatcher) {
+            // 与 BV 直进逻辑一致：未指定分P时采用历史分P并断点续播
+            every { videoInfoRepository.videoDetail } returns MutableStateFlow(fakeVideoDetail(cid = 111L))
+            every { videoInfoRepository.videoSharedState } returns
+                MutableStateFlow(VideoSharedState(aid = 10, lastPlayedCid = 333L, lastPlayedTime = 120))
+            initSession(aid = 10, cid = 0L)
+
+            viewModel.loadVideoDetail(aid = 10)
+            runCurrent()
+
+            val state = viewModel.uiState.value
+            assertThat(state.cid).isEqualTo(333L)
+            assertThat(state.lastPlayed).isEqualTo(120)
+            viewModel.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `loadVideoDetail with clicked cid ignores other part history`() =
+        runTest(testDispatcher) {
+            // 指定了分P（222）时不得被历史分P（333）覆盖，也不应用其进度
+            every { videoInfoRepository.videoDetail } returns MutableStateFlow(fakeVideoDetail(cid = 111L))
+            every { videoInfoRepository.videoSharedState } returns
+                MutableStateFlow(VideoSharedState(aid = 10, lastPlayedCid = 333L, lastPlayedTime = 120))
+            initSession(aid = 10, cid = 222L)
+
+            viewModel.loadVideoDetail(aid = 10)
+            runCurrent()
+
+            val state = viewModel.uiState.value
+            assertThat(state.cid).isEqualTo(222L)
+            assertThat(state.lastPlayed).isEqualTo(0)
+            viewModel.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `loadVideoDetail applies lastPlayed when clicked cid equals history cid`() =
+        runTest(testDispatcher) {
+            every { videoInfoRepository.videoDetail } returns MutableStateFlow(fakeVideoDetail(cid = 111L))
+            every { videoInfoRepository.videoSharedState } returns
+                MutableStateFlow(VideoSharedState(aid = 10, lastPlayedCid = 222L, lastPlayedTime = 90))
+            initSession(aid = 10, cid = 222L)
+
+            viewModel.loadVideoDetail(aid = 10)
+            runCurrent()
+
+            val state = viewModel.uiState.value
+            assertThat(state.cid).isEqualTo(222L)
+            assertThat(state.lastPlayed).isEqualTo(90)
+            viewModel.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `loadVideoDetail ignores history belonging to another aid`() =
+        runTest(testDispatcher) {
+            every { videoInfoRepository.videoDetail } returns MutableStateFlow(fakeVideoDetail(cid = 111L))
+            every { videoInfoRepository.videoSharedState } returns
+                MutableStateFlow(VideoSharedState(aid = 999, lastPlayedCid = 333L, lastPlayedTime = 120))
+            initSession(aid = 10, cid = 0L)
+
+            viewModel.loadVideoDetail(aid = 10)
+            runCurrent()
+
+            val state = viewModel.uiState.value
+            assertThat(state.cid).isEqualTo(111L)
+            assertThat(state.lastPlayed).isEqualTo(0)
             viewModel.viewModelScope.cancel()
         }
 }
