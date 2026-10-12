@@ -70,6 +70,12 @@ jobs:
           name: newBV_${{ env.versionName }}
           path: app/build/outputs/apk/release/newBV_${{ env.versionCode }}_${{ env.versionName }}_release.apk
 
+      - name: Generate release body
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 .github/scripts/generate_release_body.py release_body.md
+
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
@@ -77,6 +83,6 @@ jobs:
             app/build/outputs/apk/release/newBV_${{ env.versionCode }}_${{ env.versionName }}_release.apk
           tag_name: ${{ github.ref_name }}
           name: newBV ${{ env.versionName }}
-          generate_release_notes: true
+          body_path: release_body.md
           draft: false
           prerelease: false
