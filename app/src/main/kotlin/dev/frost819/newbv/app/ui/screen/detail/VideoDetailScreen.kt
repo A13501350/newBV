@@ -1112,39 +1112,6 @@ private fun VideoUgcSeasonRow(
                     )
                 }
             }
-            if (episodes.size > 1 && lastPlayedCid != 0L) {
-                val lastEpisode = episodes.find { it.cid == lastPlayedCid }
-                if (lastEpisode != null) {
-                    Surface(
-                        onClick = { onClick(lastEpisode) },
-                        modifier = Modifier.touchClickable(onClick = { onClick(lastEpisode) }),
-                        shape = ClickableSurfaceDefaults.shape(shape = MaterialTheme.shapes.small),
-                        // 不做聚焦放大：否则会盖住左侧的网格列表按钮
-                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-                        colors =
-                            focusInvertedColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.History,
-                                contentDescription = "历史",
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Text(
-                                text = "上次播放到：${lastEpisode.title}",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                    }
-                }
-            }
         }
         val focusRequester = focusSaver.focusRequesterFor("seasons")
         LazyRow(
