@@ -45,6 +45,14 @@ data class GithubRelease(
     val isPreRelease: Boolean get() = prerelease
 
     /**
+     * 用于展示的版本号：去掉 Release 标题里的 `newBV ` 前缀，
+     * 与 [dev.frost819.newbv.BuildConfig.VERSION_NAME] 的格式保持一致。
+     *
+     * 例：`newBV 1.1.0.r145.0b1c2d3e` → `1.1.0.r145.0b1c2d3e`。
+     */
+    val versionLabel: String get() = name.removePrefix("newBV").trim()
+
+    /**
      * Release 附件（APK 文件等）。
      *
      * @property browserDownloadUrl 直链下载地址。

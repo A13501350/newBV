@@ -347,6 +347,38 @@ class GithubReleaseTest {
     }
 
     @Test
+    fun `versionLabel strips newBV prefix to match BuildConfig version format`() {
+        val release = releaseWithName("newBV 1.1.0.r145.0b1c2d3e")
+        assertThat(release.versionLabel).isEqualTo("1.1.0.r145.0b1c2d3e")
+    }
+
+    @Test
+    fun `versionLabel keeps name unchanged when no prefix`() {
+        val release = releaseWithName("1.1.0.r145.0b1c2d3e")
+        assertThat(release.versionLabel).isEqualTo("1.1.0.r145.0b1c2d3e")
+    }
+
+    private fun releaseWithName(name: String) =
+        GithubRelease(
+            assets = emptyList(),
+            assetsUrl = "",
+            body = "",
+            createdAt = "",
+            draft = false,
+            htmlUrl = "",
+            id = 1,
+            name = name,
+            prerelease = false,
+            publishedAt = "",
+            tagName = "",
+            tarballUrl = "",
+            targetCommitish = "",
+            uploadUrl = "",
+            url = "",
+            zipballUrl = "",
+        )
+
+    @Test
     fun `Asset fields mapped correctly from JSON`() {
         val releaseJson =
             """

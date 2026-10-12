@@ -42,7 +42,7 @@ fun AboutSetting(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         launch(Dispatchers.IO) {
             runCatching {
-                latestVersionName = GithubApi.getLatestBuild().name
+                latestVersionName = GithubApi.getLatestBuild().versionLabel
                 logger.info { "Find latest version $latestVersionName" }
             }.onFailure {
                 logger.error(it) { "Failed to get latest version" }
