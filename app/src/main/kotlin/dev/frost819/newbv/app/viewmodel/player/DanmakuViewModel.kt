@@ -14,6 +14,7 @@ import com.kuaishou.akdanmaku.render.SimpleRenderer
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
+import dev.frost819.newbv.app.util.LeakWatch
 import dev.frost819.newbv.biliapi.entity.ApiType
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMask
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
@@ -154,8 +155,14 @@ class DanmakuViewModel
             maskFetchJob = null
             segmentWatchJob?.cancel()
             segmentWatchJob = null
+            val player = danmakuPlayer
             danmakuPlayer?.release()
             danmakuPlayer = null
+            // 内存泄漏验证（仅 debug 生效）：release 后 DanmakuPlayer 应被 GC，
+            // 否则 LeakCanary 输出以 ActionThread 栈为根的泄漏链
+            if (player != null) {
+                LeakWatch.expectGc(player, "DanmakuPlayer released")
+            }
             _danmakuMask.update { null }
         }
 
