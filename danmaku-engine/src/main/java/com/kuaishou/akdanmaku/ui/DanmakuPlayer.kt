@@ -242,8 +242,11 @@ class DanmakuPlayer(
         actionHandler.removeCallbacksAndMessages(null)
 //    Choreographer.getInstance().removeFrameCallback(frameCallback)
         started = false
+        // 放行信号量，解除 ActionThread 在 drawSemaphore.acquire() 上的阻塞。
+        // 线程解除阻塞后会检查 isReleased 并退出帧循环，随后 quitSafely() 终止 Looper。
+        drawSemaphore.release()
         actionThread.quitSafely()
-        actionThread.join(50L)
+        actionThread.join(100L)
         // 内存泄漏诊断：release 后 actionThread 应退出；若仍存活且信号量有排队线程，
         // 说明线程阻塞在 drawSemaphore.acquire()，整个引擎对象图被线程栈持有。
         val danmakuThreadsAlive = Thread.getAllStackTraces().keys.count {
