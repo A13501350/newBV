@@ -12,6 +12,7 @@ import dev.frost819.newbv.player.CdnSelector
 import dev.frost819.newbv.player.OkHttpCdnSelector
 import dev.frost819.newbv.player.OkHttpUtil
 import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
+import okhttp3.OkHttpClient
 import javax.inject.Singleton
 
 /**
@@ -24,6 +25,20 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object PlayerModule {
     /**
+     * 提供播放器媒体请求与 CDN 测速共用的 OkHttpClient 单例（含自定义 SSL 配置）。
+     *
+     * 必须保持全进程唯一：OkHttpClient 的 ConnectionPool 是「每个 client 一个」
+     * （默认 5 条空闲连接 / 5 分钟保活），且 HTTP/2 连接在池中保活期间会各占一个线程。
+     * 若按播放器实例创建，每个播放会话都会新增一个连接池，进程线程数随播放轮次缓慢上升，
+     * 同时每次进播放器都要重建 SSLContext/KeyStore。
+     */
+    @Provides
+    @Singleton
+    fun providePlayerHttpClient(
+        @ApplicationContext context: Context,
+    ): OkHttpClient = OkHttpUtil.generateCustomSslOkHttpClient(context)
+
+    /**
      * 提供 [ExoPlayerFactory] 单例。
      *
      * 用于创建 Media3 ExoPlayer 实例。通过工厂模式抽象播放器创建，
@@ -31,7 +46,7 @@ object PlayerModule {
      */
     @Provides
     @Singleton
-    fun provideExoPlayerFactory(): ExoPlayerFactory = ExoPlayerFactory()
+    fun provideExoPlayerFactory(playerHttpClient: OkHttpClient): ExoPlayerFactory = ExoPlayerFactory(playerHttpClient)
 
     /**
      * 提供设备视频解码能力查询器。
@@ -48,12 +63,11 @@ object PlayerModule {
     /**
      * 提供 CDN 自动选择器。
      *
-     * 基于带自定义 SSL 配置的 OkHttpClient 对候选播放地址测速，
+     * 复用 [providePlayerHttpClient] 的共享 client（内部会派生一个短超时的测速专用 client，
+     * 但连接池与原 client 一致，避免额外连接池）对候选播放地址测速，
      * 结果按 host 缓存，供 [dev.frost819.newbv.app.viewmodel.player.PlayerViewModel] 选流使用。
      */
     @Provides
     @Singleton
-    fun provideCdnSelector(
-        @ApplicationContext context: Context,
-    ): CdnSelector = OkHttpCdnSelector(OkHttpUtil.generateCustomSslOkHttpClient(context))
+    fun provideCdnSelector(playerHttpClient: OkHttpClient): CdnSelector = OkHttpCdnSelector(playerHttpClient)
 }

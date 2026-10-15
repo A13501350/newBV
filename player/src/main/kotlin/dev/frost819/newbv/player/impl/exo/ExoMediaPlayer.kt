@@ -25,9 +25,9 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.upstream.ParsingLoadable
 import dev.frost819.newbv.player.AbstractVideoPlayer
-import dev.frost819.newbv.player.OkHttpUtil
 import dev.frost819.newbv.player.VideoPlayerOptions
 import dev.frost819.newbv.player.formatMinSec
+import okhttp3.OkHttpClient
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.Locale
@@ -43,11 +43,16 @@ import java.util.Locale
  *
  * @param context Android Context
  * @param options 播放器配置
+ * @param httpClient 复用的共享 OkHttpClient（由 `PlayerModule` 单例提供）。
+ *   不要在播放器实例内自行创建：OkHttpClient 的 ConnectionPool 是「每个 client 一个」，
+ *   按播放器实例创建会让每个播放会话都新增一个连接池，进程线程数随播放轮次上升。
  */
 @OptIn(UnstableApi::class)
 class ExoMediaPlayer(
     private val context: Context,
     private val options: VideoPlayerOptions,
+    /** 复用的共享 OkHttpClient；`internal` 便于插桩测试断言同实例。 */
+    internal val httpClient: OkHttpClient,
 ) : AbstractVideoPlayer(),
     Player.Listener {
     companion object {
@@ -74,7 +79,7 @@ class ExoMediaPlayer(
     private var behindLiveWindowLastRecoverAtMs = 0L
 
     private val httpDataSourceFactory =
-        OkHttpDataSource.Factory(OkHttpUtil.generateCustomSslOkHttpClient(context)).apply {
+        OkHttpDataSource.Factory(httpClient).apply {
             options.userAgent?.let { setUserAgent(it) }
             options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
         }

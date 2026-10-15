@@ -16,10 +16,17 @@ import javax.net.ssl.X509TrustManager
  * - 加载系统 CA 证书库
  * - 追加自定义 CA 证书（如 GlobalSign ECC Root CA R5）
  * - 允许 bilivideo.com 和 bilivideo.cn 域名证书互通
+ *
+ * 注意：构建成本较高（读取系统 CA 库 + assets 证书 + 初始化 SSLContext），
+ * 且 OkHttpClient 自带独立的 ConnectionPool。**必须由 `PlayerModule` 以单例持有，
+ * 进程内只创建一份**，不要在播放器实例内按需创建。
  */
 object OkHttpUtil {
     /**
      * 创建带自定义 SSL 配置的 OkHttpClient。
+     *
+     * 连接池参数保持 OkHttp 默认值（5 条空闲连接 / 5 分钟保活）；因为该 client
+     * 在进程内共享，这就是播放器侧连接与线程数的全局上限。
      *
      * @param context Android Context，用于读取 assets 中的 CA 证书文件
      * @return 配置好 SSL 和域名验证的 OkHttpClient
