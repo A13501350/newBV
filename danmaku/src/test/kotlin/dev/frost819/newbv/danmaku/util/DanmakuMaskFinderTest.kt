@@ -117,6 +117,33 @@ class DanmakuMaskFinderTest {
 
             assertThat(frame).isNull()
         }
+
+    @Test
+    fun `findFrame does not return null in the gap before a segment boundary`() =
+        runTest {
+            val finder = DanmakuMaskFinder()
+            val mask = loadWebMask()
+
+            // 段尾最后一帧的结束时间通常早于下一段起始（相差一帧），若存在空洞蒙版会闪烁。
+            // 段内任意时刻（含段尾前一毫秒）都应命中蒙版帧。
+            val firstSegment = mask.getSegmentAt(0L)!!
+            val frame = finder.findFrame(mask, firstSegment.range.last)
+
+            assertThat(frame).isNotNull()
+        }
+
+    @Test
+    fun `last segment is not extended past its data`() =
+        runTest {
+            val mask = loadWebMask()
+
+            // 末段不与下一段相邻，延伸会导致蒙版数据结束后一直残留，故不应延伸
+            val lastSegment = mask.getSegmentAt(Long.MAX_VALUE - 1)!!
+            val lastFrame = lastSegment.frames.last()
+            val lastFrameEnd = lastFrame.range.last
+
+            assertThat(lastFrameEnd).isLessThan(Long.MAX_VALUE - 1)
+        }
 }
 
 class CalculateMaskDelayTest {
