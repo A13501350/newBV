@@ -26,6 +26,7 @@ import okhttp3.OkHttpClient
 import okio.Path.Companion.toPath
 import java.io.File
 import javax.inject.Inject
+import javax.inject.Provider
 
 /**
  * new BV 应用入口。
@@ -57,6 +58,15 @@ class BVApplication : Application() {
 
     @Inject
     lateinit var channelRepository: ChannelRepository
+
+    /**
+     * 播放器与 CDN 测速共用的 OkHttpClient。
+     *
+     * 用 [Provider] 延迟解析：client 构建包含系统 CA 库读取与 SSLContext 初始化，
+     * 放在启动时的 IO 线程预热，避免首次进播放器时在主线程做这件事。
+     */
+    @Inject
+    lateinit var playerHttpClientProvider: Provider<OkHttpClient>
 
     override fun onCreate() {
         super.onCreate()
@@ -149,6 +159,12 @@ class BVApplication : Application() {
         // 启动时检查缓存阈值，超限自动 LRU 清理（检查时机 = App 启动 + 缓存写入后）
         CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             CacheManager(this@BVApplication).checkCache()
+        }
+
+        // 预热播放器 OkHttpClient（构建 SSLContext/KeyStore 较慢，放到 IO 线程）。
+        // 预热后单例已就绪，首次进播放器时不再阻塞主线程。
+        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            playerHttpClientProvider.get()
         }
     }
 }
