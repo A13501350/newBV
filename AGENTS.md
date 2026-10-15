@@ -625,7 +625,7 @@ class SmallVideoCardTest {
 
 #### 5.5.3 CI 门禁
 
-- PR 合并前必须通过 `./gradlew test` + `ktlintCheck`
+- PR 合并前必须通过 `./gradlew test` + `ktlintCheck` + `detekt`
 - 覆盖率低于目标时 PR 标记警告（不强制阻断，但需说明原因）
 - 插桩测试在 CI 上用模拟器运行（可选，本地开发必须跑）
 
@@ -769,13 +769,14 @@ item(span = { GridItemSpan(maxLineSpan) }) {
 
 ### 7.1 分支策略
 
+日常开发**直接在 `main` 上提交**（`main` 即开发主干，无独立 `dev` 分支）；发布从 `main` 打 tag。
+
 | 分支 | 用途 |
 |---|---|
-| `main` | 稳定发布分支 |
-| `dev` | 开发主干 |
-| `feature/{描述}` | 功能分支（如 `feature/live-player`） |
-| `fix/{描述}` | 修复分支 |
-| `test/{描述}` | 测试分支 |
+| `main` | 开发主干 + 发布分支（日常提交目标） |
+| `feature/{描述}` | 功能分支（可选，大改动隔离时使用，如 `feature/live-player`） |
+| `fix/{描述}` | 修复分支（可选） |
+| `test/{描述}` | 测试分支（可选） |
 
 ### 7.2 提交信息
 
@@ -802,7 +803,7 @@ test(bili-api): 补全 VideoPlayRepository 单测
 
 - 一个 PR 一个功能点，不混合多个无关改动
 - PR 描述说明：做了什么、为什么、如何测试
-- 必须通过 `./gradlew test` + `ktlintCheck`
+- 必须通过 `./gradlew test` + `ktlintCheck` + `detekt`
 - 必须包含对应测试（新增功能无测试拒绝合并）
 
 ---
