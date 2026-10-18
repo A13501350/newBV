@@ -300,10 +300,15 @@ class LiveRepository {
                         format.codec.find {
                             it.hdrType != 0 &&
                                 (
-                                    requestedQn <= 0 || requestedQn in it.acceptQn ||
-                                        it.currentQn == requestedQn || it.hdrQn == requestedQn
+                                    requestedQn <= 0 ||
+                                        requestedQn in it.acceptQn ||
+                                        it.currentQn == requestedQn ||
+                                        it.hdrQn == requestedQn
                                 ) &&
-                                (requestedEotf <= 0 || (it.videoColorInfo?.eotf ?: requestedEotf) == requestedEotf)
+                                (
+                                    requestedEotf <= 0 ||
+                                        (it.videoColorInfo?.eotf ?: requestedEotf) == requestedEotf
+                                )
                         } ?: continue
                     return codec
                 }
