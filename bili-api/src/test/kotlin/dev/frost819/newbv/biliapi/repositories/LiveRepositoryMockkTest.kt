@@ -492,7 +492,7 @@ class LiveRepositoryUnitTest {
     )
 
     /**
-     * 构造含 HDR 档的 v2 流数据：SDR 梯队（flv/avc）+ HDR 档（fmp4/hevc，hdr_qn=30000）。
+     * 构造含 HDR 档的 v2 流数据：单个 http_stream 下 SDR（flv/avc）+ HDR（fmp4/hevc，hdr_qn=30000）。
      */
     private fun fakeHdrRoomPlayInfoV2Data() =
         RoomPlayInfoV2Data(
@@ -513,11 +513,30 @@ class LiveRepositoryUnitTest {
                                 ),
                             stream =
                                 listOf(
-                                    fakeHttpStream(),
                                     PlayStream(
                                         protocolName = "http_stream",
                                         format =
                                             listOf(
+                                                PlayFormat(
+                                                    formatName = "flv",
+                                                    codec =
+                                                        listOf(
+                                                            PlayCodec(
+                                                                codecName = "avc",
+                                                                currentQn = 10000,
+                                                                acceptQn = listOf(10000, 400),
+                                                                baseUrl = "/live.flv",
+                                                                urlInfo =
+                                                                    listOf(
+                                                                        PlayUrlInfoItem(
+                                                                            host = "https://cdn.example",
+                                                                            extra = "?query=1",
+                                                                        ),
+                                                                    ),
+                                                                mediaInfo = MediaInfo(),
+                                                            ),
+                                                        ),
+                                                ),
                                                 PlayFormat(
                                                     formatName = "fmp4",
                                                     codec =
