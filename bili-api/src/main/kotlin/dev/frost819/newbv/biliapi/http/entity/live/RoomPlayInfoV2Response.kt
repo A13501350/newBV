@@ -26,6 +26,12 @@ data class RoomPlayInfoV2Data(
 data class PlayUrlInfo(
     @SerialName("playurl")
     val playUrl: PlayUrl,
+    /**
+     * 服务端判定客户端实际可得的画质（权威三元组，与选中编码节点的
+     * current_qn/hdr_type/eotf 一致），用于校准当前档位标识。
+     */
+    @SerialName("expected_quality")
+    val expectedQuality: ExpectedQuality? = null,
 )
 
 @Serializable
@@ -39,11 +45,6 @@ data class PlayUrl(
      */
     @SerialName("dolby_qn")
     val dolbyQn: Int? = null,
-    /**
-     * 服务端判定客户端实际可得的画质。
-     */
-    @SerialName("expected_quality")
-    val expectedQuality: ExpectedQuality? = null,
 )
 
 @Serializable

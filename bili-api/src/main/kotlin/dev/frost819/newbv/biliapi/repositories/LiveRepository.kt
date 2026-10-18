@@ -230,10 +230,19 @@ class LiveRepository {
                 .mapIndexed { index, url -> LivePlayLine(order = index + 1, url = url) }
 
         val codecEotf = codec.videoColorInfo?.eotf ?: 0
+        // 当前档位标识：优先用服务端权威三元组 expected_quality 校准，其次按编码节点
+        // 三元组匹配；兜底取列表首项，保证 currentKey 一定存在于 qualities（不合成悬空 key）
+        val expected = data.playUrlInfo.expectedQuality
         val currentKey =
-            qualities
-                .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
-                ?.key ?: (codec.currentQn * 100 + codec.hdrType * 10 + codecEotf)
+            expected
+                ?.let { e ->
+                    qualities.firstOrNull { it.qn == e.qn && it.hdrType == e.hdrType && it.eotf == e.eotf }?.key
+                }
+                ?: qualities
+                    .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
+                    ?.key
+                ?: qualities.firstOrNull()?.key
+                ?: 0
         return LivePlayInfo(
             currentQn = codec.currentQn,
             currentKey = currentKey,
