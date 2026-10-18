@@ -182,21 +182,29 @@ class LiveRepository {
         requestedKey: Int = 0,
     ): LivePlayInfo {
         val playUrl = data.playUrlInfo.playUrl
-        val allCodecs =
-            playUrl.stream
-                .flatMap { it.format }
-                .flatMap { it.codec }
+        // HDR 流只从可播放容器展开：flv 的 HEVC 是私有扩展（codec_id=12），Media3 不支持，
+        // 若纳入会产出"选中后静默播 SDR"的档位行。容器集合与 pickBestCodec 的 HDR 偏好同源
+        val hdrContainers =
+            hdrContainerPreference
+                .flatMap { (protocol, formats) -> formats.map { protocol to it } }
+                .toSet()
 
         // 候选档位：编码节点 accept_qn × (hdrType, eotf) 展开；hdr_qn 指针补充旧契约 HDR 档
         val candidates =
             buildSet {
-                for (codec in allCodecs) {
-                    val eotf = codec.videoColorInfo?.eotf ?: 0
-                    for (qn in codec.acceptQn) {
-                        add(Triple(qn, codec.hdrType, eotf))
-                    }
-                    codec.hdrQn?.let { hdrQn ->
-                        add(Triple(hdrQn, codec.hdrType.takeIf { it != 0 } ?: 1, eotf))
+                for (stream in playUrl.stream) {
+                    for (format in stream.format) {
+                        val inHdrContainer = (stream.protocolName to format.formatName) in hdrContainers
+                        for (codec in format.codec) {
+                            if (codec.isHdrCarrier && !inHdrContainer) continue
+                            val eotf = codec.videoColorInfo?.eotf ?: 0
+                            for (qn in codec.acceptQn) {
+                                add(Triple(qn, codec.hdrType, eotf))
+                            }
+                            codec.hdrQn?.let { hdrQn ->
+                                add(Triple(hdrQn, codec.hdrType.takeIf { it != 0 } ?: 1, eotf))
+                            }
+                        }
                     }
                 }
             }
