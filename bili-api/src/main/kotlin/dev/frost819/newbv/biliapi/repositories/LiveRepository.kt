@@ -198,6 +198,15 @@ class LiveRepository {
                         for (codec in format.codec) {
                             if (codec.isHdrCarrier && !inHdrContainer) continue
                             val eotf = codec.videoColorInfo?.eotf ?: 0
+                            // LiveQuality.key 按 qn*100+hdrType*10+eotf 编码，hdrType/eotf 须为个位数，
+                            // 越界会串档（qnOf=key/100 直接拼请求参数），在源头丢弃非法节点
+                            if (codec.hdrType !in 0..9 || eotf !in 0..9) {
+                                logger.warn {
+                                    "live: skip codec(${codec.codecName}) out-of-range hdr marker " +
+                                        "hdrType=${codec.hdrType}, eotf=$eotf"
+                                }
+                                continue
+                            }
                             for (qn in codec.acceptQn) {
                                 add(Triple(qn, codec.hdrType, eotf))
                             }
@@ -456,7 +465,8 @@ data class LiveQuality(
 ) {
     /**
      * 档位唯一标识：qn * 100 + hdrType * 10 + eotf。
-     * qn ≤ 30000、hdrType/eotf 为个位数，不会溢出，且可无损还原。
+     * qn ≤ 30000、hdrType/eotf 为个位数（生成处已做范围守护，越界节点不会进入候选），
+     * 不会溢出，且可无损还原。
      */
     val key: Int
         get() = qn * 100 + hdrType * 10 + eotf
