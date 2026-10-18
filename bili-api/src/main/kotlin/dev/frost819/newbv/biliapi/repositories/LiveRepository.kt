@@ -7,6 +7,7 @@ import dev.frost819.newbv.biliapi.http.entity.live.LiveAreaParent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveListResponse
 import dev.frost819.newbv.biliapi.http.entity.live.LiveRecommendResponse
 import dev.frost819.newbv.biliapi.http.entity.live.PlayCodec
+import dev.frost819.newbv.biliapi.http.entity.live.QnDesc
 import dev.frost819.newbv.biliapi.http.entity.live.RoomInfoData
 import dev.frost819.newbv.biliapi.http.entity.live.RoomInitData
 import dev.frost819.newbv.biliapi.http.entity.live.RoomPlayInfoV2Data
@@ -83,26 +84,29 @@ class LiveRepository {
      * 获取直播流信息（多线路 + 可用画质）。
      *
      * 一次请求同时解析出：
-     * - [LivePlayInfo.qualities]：直播间实际可用的画质列表（含 HDR 标记与解码提示），按 qn 降序
+     * - [LivePlayInfo.qualities]：直播间实际可用画质档位（以 (qn, hdrType, eotf) 区分 SDR/HDR），按 qn 降序
      * - [LivePlayInfo.lines]：同一编码下的多条 CDN 线路（host + base_url + extra），供用户手动切换
      *
      * v2 接口失败时降级到简单单画质接口 [BiliLiveHttpApi.getLiveStreamUrl]，仅返回单线路。
      *
      * @param roomId 真实房间号（长号）
-     * @param qn 画质（0 = 自动）
+     * @param qualityKey 画质档位标识（[LiveQuality.key]，0 = 自动）
      */
     suspend fun getLivePlayInfo(
         roomId: Int,
-        qn: Int = 0,
+        qualityKey: Int = 0,
     ): LivePlayInfo =
         runCatching {
-            val playInfo = BiliLiveHttpApi.getRoomPlayInfoV2(roomId, qn).getResponseData()
-            resolvePlayInfo(playInfo, qn)
+            val playInfo = BiliLiveHttpApi.getRoomPlayInfoV2(roomId, LiveQuality.qnOf(qualityKey)).getResponseData()
+            resolvePlayInfo(playInfo, qualityKey)
         }.onFailure {
             logger.warn { "getLivePlayInfo failed: ${it.message}, trying fallback" }
         }.getOrElse {
             runCatching {
-                val simpleUrl = BiliLiveHttpApi.getLiveStreamUrl(roomId, qn).getResponseData()
+                val simpleUrl =
+                    BiliLiveHttpApi
+                        .getLiveStreamUrl(roomId, LiveQuality.qnOf(qualityKey))
+                        .getResponseData()
                 val url = simpleUrl.durl.firstOrNull()?.url
                 LivePlayInfo(
                     currentQn = simpleUrl.currentQuality,
@@ -118,26 +122,26 @@ class LiveRepository {
      * 获取直播流地址（取第一条线路）。
      *
      * @param roomId 真实房间号（长号）
-     * @param qn 画质（0 = 自动）
+     * @param qualityKey 画质档位标识（[LiveQuality.key]，0 = 自动）
      * @return 流地址 URL，或 null 表示无可用流
      */
     suspend fun getLiveStreamUrl(
         roomId: Int,
-        qn: Int = 0,
-    ): String? = getLiveStreamInfo(roomId, qn).url
+        qualityKey: Int = 0,
+    ): String? = getLiveStreamInfo(roomId, qualityKey).url
 
     /**
      * 获取直播流地址和当前画质（取第一条线路）。
      *
      * @param roomId 真实房间号（长号）
-     * @param qn 画质（0 = 自动）
+     * @param qualityKey 画质档位标识（[LiveQuality.key]，0 = 自动）
      * @return [LiveStreamInfo]，包含流 URL 和当前画质 qn
      */
     suspend fun getLiveStreamInfo(
         roomId: Int,
-        qn: Int = 0,
+        qualityKey: Int = 0,
     ): LiveStreamInfo {
-        val playInfo = getLivePlayInfo(roomId, qn)
+        val playInfo = getLivePlayInfo(roomId, qualityKey)
         return LiveStreamInfo(
             url = playInfo.lines.firstOrNull()?.url,
             currentQn = playInfo.currentQn,
@@ -152,55 +156,70 @@ class LiveRepository {
      * 且启动延迟更低、稳定性更好。HLS 作为兜底。
      * 两种协议内均优先 AVC 编码，并枚举所选编码下的全部 [PlayCodec.urlInfo] 生成线路。
      *
-     * HDR 处理：
-     * - 画质候选集为 accept_qn ∪ hdr_qn（HDR 档独立于 SDR 梯队，可能只出现在 hdr_qn 指针中）。
-     * - HDR 档位携带 hdrType/hdrDesc/杜比标记与解码提示（编码名、RFC 6381 串、分辨率），
-     *   供上层做本机解码能力过滤。
-     * - 当 [requestedQn] 是 HDR 档时，优先选择携带该 HDR 档的编码（通常为 HEVC/AV1 + FMP4），
+     * HDR 处理（以 S 赛 4K 直播间真实响应为准）：
+     * - HDR 流是同 format 下的额外编码节点（hdr_type 非 0，通常 HEVC + bt2020），
+     *   其 accept_qn 与 SDR 重叠，档位须以 (qn, hdrType, eotf) 三元组区分。
+     * - 候选集由各编码节点的 accept_qn 展开；g_qn_desc 仅提供描述文案与徽标，
+     *   允许同 qn 重复条目（SDR/HLG/HDR10 并存），按三元组逐级匹配。
+     * - 旧契约的 hdr_qn 指针（HDR 档独立于 accept_qn）作为补充候选保留兼容。
+     * - 请求 HDR 档（[requestedKey] 携带 hdrType/eotf）时优先选携带 HDR 的编码节点，
      *   服务端降级为 SDR 时回退默认选流逻辑。
      *
-     * @param requestedQn 本次请求的画质（0 = 自动），用于 HDR 档位选流判定
+     * @param requestedKey 本次请求的档位标识（[LiveQuality.key]，0 = 自动）
      */
     internal fun resolvePlayInfo(
         data: RoomPlayInfoV2Data,
-        requestedQn: Int = 0,
+        requestedKey: Int = 0,
     ): LivePlayInfo {
         val playUrl = data.playUrlInfo.playUrl
-        val qnDescMap = playUrl.qnDesc.associateBy { it.qn }
         val allCodecs =
             playUrl.stream
                 .flatMap { it.format }
                 .flatMap { it.codec }
-        val qnCandidates =
-            (allCodecs.flatMap { it.acceptQn } + allCodecs.mapNotNull { it.hdrQn })
-                .distinct()
-        val qualities =
-            qnCandidates.sortedByDescending { it }.mapNotNull { qn ->
-                val qnDesc = qnDescMap[qn] ?: return@mapNotNull null
-                val isDolby = playUrl.dolbyQn == qn
-                val isHdr = qnDesc.hdrType != 0 || isDolby
-                // HDR 档的解码提示取自携带该档的编码（hdr_qn 指针或 hdr_type 标记）
-                val carrier =
-                    if (isHdr) {
-                        allCodecs.firstOrNull { it.hdrQn == qn || (it.hdrType != 0 && qn in it.acceptQn) }
-                    } else {
-                        null
+
+        // 候选档位：编码节点 accept_qn × (hdrType, eotf) 展开；hdr_qn 指针补充旧契约 HDR 档
+        val candidates =
+            buildSet {
+                for (codec in allCodecs) {
+                    val eotf = codec.videoColorInfo?.eotf ?: 0
+                    for (qn in codec.acceptQn) {
+                        add(Triple(qn, codec.hdrType, eotf))
                     }
-                LiveQuality(
-                    qn = qn,
-                    desc = qnDesc.desc,
-                    hdrType = qnDesc.hdrType,
-                    hdrDesc = qnDesc.hdrDesc,
-                    isDolby = isDolby,
-                    codecName = carrier?.codecName,
-                    codecs = carrier?.videoCodecs?.base,
-                    width = carrier?.mediaInfo?.width ?: 0,
-                    height = carrier?.mediaInfo?.height ?: 0,
-                )
+                    codec.hdrQn?.let { hdrQn ->
+                        add(Triple(hdrQn, codec.hdrType.takeIf { it != 0 } ?: 1, eotf))
+                    }
+                }
             }
+        val qualities =
+            candidates
+                .sortedWith(
+                    compareByDescending<Triple<Int, Int, Int>> { it.first }
+                        .thenBy { it.second }
+                        .thenBy { it.third },
+                ).mapNotNull { (qn, hdrType, eotf) ->
+                    val qnDesc = findQnDesc(playUrl.qnDesc, qn, hdrType, eotf) ?: return@mapNotNull null
+                    val carrier =
+                        if (hdrType != 0 || eotf != 0) {
+                            allCodecs.firstOrNull { it.hdrType != 0 && (qn in it.acceptQn || it.hdrQn == qn) }
+                        } else {
+                            null
+                        }
+                    LiveQuality(
+                        qn = qn,
+                        desc = qnDesc.desc,
+                        hdrType = hdrType,
+                        eotf = eotf,
+                        hdrDesc = qnDesc.hdrDesc,
+                        isDolby = playUrl.dolbyQn == qn || (carrier?.dolbyType ?: 0) != 0,
+                        codecName = carrier?.codecName,
+                        codecs = carrier?.videoCodecs?.base,
+                        width = carrier?.mediaInfo?.width ?: 0,
+                        height = carrier?.mediaInfo?.height ?: 0,
+                    )
+                }
 
         val codec =
-            pickBestCodec(data, requestedQn)
+            pickBestCodec(data, requestedKey)
                 ?: return LivePlayInfo(currentQn = 0, qualities = qualities, lines = emptyList())
 
         // 同一编码下的每个 url_info 是一条独立 CDN 线路，按顺序去重后编号（从 1 开始）
@@ -210,8 +229,34 @@ class LiveRepository {
                 .distinct()
                 .mapIndexed { index, url -> LivePlayLine(order = index + 1, url = url) }
 
-        return LivePlayInfo(currentQn = codec.currentQn, qualities = qualities, lines = lines)
+        val codecEotf = codec.videoColorInfo?.eotf ?: 0
+        val currentKey =
+            qualities
+                .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
+                ?.key ?: (codec.currentQn * 100 + codec.hdrType * 10 + codecEotf)
+        return LivePlayInfo(
+            currentQn = codec.currentQn,
+            currentKey = currentKey,
+            qualities = qualities,
+            lines = lines,
+        )
     }
+
+    /**
+     * 按 (qn, hdrType, eotf) 精确匹配描述条目，逐级回退到 (qn, hdrType)、qn 的 SDR 条目。
+     *
+     * g_qn_desc 允许同 qn 重复条目（SDR/HLG/HDR10 并存），不能按 qn 去重。
+     */
+    private fun findQnDesc(
+        qnDesc: List<QnDesc>,
+        qn: Int,
+        hdrType: Int,
+        eotf: Int,
+    ): QnDesc? =
+        qnDesc.firstOrNull { it.qn == qn && it.hdrType == hdrType && it.eotf == eotf }
+            ?: qnDesc.firstOrNull { it.qn == qn && it.hdrType == hdrType }
+            ?: qnDesc.firstOrNull { it.qn == qn && it.hdrType == 0 && it.eotf == 0 }
+            ?: qnDesc.firstOrNull { it.qn == qn }
 
     /**
      * 选择最佳编码。
@@ -220,13 +265,13 @@ class LiveRepository {
      * http_hls/fmp4 → http_hls/ts → http_hls/flv，每个格式均优先 AVC。
      * 均无匹配时回退到第一个可用编码。
      *
-     * [requestedQn] 为 HDR 档（g_qn_desc 标记 hdr_type 或被 dolby_qn 指向）时，
-     * 先按同一偏好顺序查找携带 HDR 的编码（hdr_type 非 0 或 hdr_qn 命中），
+     * [requestedKey] 为 HDR 档（携带 hdrType/eotf 或被 dolby_qn 指向）时，
+     * 先按同一偏好顺序查找携带 HDR 的编码节点（hdr_type 非 0 且 qn 命中），
      * 找不到（服务端降级）再执行默认逻辑。
      */
     private fun pickBestCodec(
         data: RoomPlayInfoV2Data,
-        requestedQn: Int = 0,
+        requestedKey: Int = 0,
     ): PlayCodec? {
         val candidates =
             listOf(
@@ -236,17 +281,30 @@ class LiveRepository {
         val playUrl = data.playUrlInfo.playUrl
         val streams = playUrl.stream
 
-        val hdrQnDesc = playUrl.qnDesc.firstOrNull { it.qn == requestedQn }
-        val hdrMarked = hdrQnDesc?.hdrType?.let { it != 0 } == true
-        val hdrRequested = requestedQn > 0 && (hdrMarked || playUrl.dolbyQn == requestedQn)
+        val requestedQn = LiveQuality.qnOf(requestedKey)
+        val requestedEotf = LiveQuality.eotfOf(requestedKey)
+        val hdrRequested =
+            requestedKey > 0 &&
+                (
+                    LiveQuality.hdrTypeOf(requestedKey) != 0 ||
+                        requestedEotf != 0 ||
+                        playUrl.dolbyQn == requestedQn
+                )
         if (hdrRequested) {
             for ((protocol, formats) in candidates) {
                 val stream = streams.find { it.protocolName == protocol } ?: continue
                 for (formatName in formats) {
                     val format = stream.format.find { it.formatName == formatName } ?: continue
+                    // eotf 仅在编码节点声明了色彩信息时强校验，未声明视为通配
                     val codec =
-                        format.codec.find { it.hdrQn == requestedQn || it.hdrType != 0 }
-                            ?: continue
+                        format.codec.find {
+                            it.hdrType != 0 &&
+                                (
+                                    requestedQn <= 0 || requestedQn in it.acceptQn ||
+                                        it.currentQn == requestedQn || it.hdrQn == requestedQn
+                                ) &&
+                                (requestedEotf <= 0 || (it.videoColorInfo?.eotf ?: requestedEotf) == requestedEotf)
+                        } ?: continue
                     return codec
                 }
             }
@@ -256,7 +314,11 @@ class LiveRepository {
             val stream = streams.find { it.protocolName == protocol } ?: continue
             for (formatName in formats) {
                 val format = stream.format.find { it.formatName == formatName } ?: continue
-                val codec = format.codec.find { it.codecName == "avc" } ?: format.codec.firstOrNull()
+                val codec =
+                    format.codec.find { it.codecName == "avc" && it.hdrType == 0 }
+                        ?: format.codec.find { it.codecName == "avc" }
+                        ?: format.codec.firstOrNull { it.hdrType == 0 }
+                        ?: format.codec.firstOrNull()
                 if (codec != null) return codec
             }
         }
@@ -287,13 +349,18 @@ data class LivePlayLine(
 /**
  * 直播画质档位。
  *
- * @param qn 画质 qn
- * @param desc 档位描述（如 "原画"、"4K"）
+ * 档位以 (qn, hdrType, eotf) 三元组区分：HDR 开播后服务端在同一 qn 下同时下发
+ * SDR 与 HDR 变体（g_qn_desc 出现同 qn 重复条目、HDR 编码节点 accept_qn 与 SDR 重叠），
+ * 仅 qn 无法唯一标识档位。
+ *
+ * @param qn 画质 qn（服务端请求参数）
+ * @param desc 档位描述（如 "原画"、"4K/HDR"）
  * @param hdrType HDR 类型标记，0 = SDR
+ * @param eotf 电光转换函数标记，0 = SDR，1 = PQ(HDR10)，2 = HLG
  * @param hdrDesc HDR 徽标文案（如 "HDR"），SDR 为空串
- * @param isDolby 是否为杜比视界档（被 playurl.dolby_qn 指向）
+ * @param isDolby 是否为杜比视界档（被 playurl.dolby_qn 指向或载体编码标记 dolby_type）
  * @param codecName 携带该 HDR 档的编码名（"avc"/"hevc"/"av1"），仅 HDR 档有值
- * @param codecs 携带该 HDR 档的 RFC 6381 编码串（如 `hvc1.1.6.L120`），仅 HDR 档有值
+ * @param codecs 携带该 HDR 档的 RFC 6381 编码串（如 `hvc1.2.4.L123`），仅 HDR 档有值
  * @param width 携带该 HDR 档的流宽度，仅 HDR 档有值
  * @param height 携带该 HDR 档的流高度，仅 HDR 档有值
  */
@@ -301,6 +368,7 @@ data class LiveQuality(
     val qn: Int,
     val desc: String,
     val hdrType: Int = 0,
+    val eotf: Int = 0,
     val hdrDesc: String = "",
     val isDolby: Boolean = false,
     val codecName: String? = null,
@@ -308,28 +376,49 @@ data class LiveQuality(
     val width: Int = 0,
     val height: Int = 0,
 ) {
-    /** 是否为 HDR 档（含杜比视界）。 */
-    val isHdr: Boolean get() = hdrType != 0 || isDolby
+    /**
+     * 档位唯一标识：qn * 100 + hdrType * 10 + eotf。
+     * qn ≤ 30000、hdrType/eotf 为个位数，不会溢出，且可无损还原。
+     */
+    val key: Int
+        get() = qn * 100 + hdrType * 10 + eotf
 
-    /** UI 展示文案：HDR 档追加徽标后缀，SDR 档原样返回。 */
+    /** 是否为 HDR 档（含杜比视界）。 */
+    val isHdr: Boolean
+        get() = hdrType != 0 || eotf != 0 || isDolby
+
+    /** UI 展示文案：服务端描述未含 HDR/杜比字样时追加徽标后缀，避免重复。 */
     val displayDesc: String
         get() =
             when {
                 isDolby -> if (desc.contains("杜比")) desc else "$desc·杜比视界"
-                isHdr -> "$desc·${hdrDesc.ifBlank { "HDR" }}"
+                isHdr -> if (desc.contains("HDR", ignoreCase = true)) desc else "$desc·${hdrDesc.ifBlank { "HDR" }}"
                 else -> desc
             }
+
+    companion object {
+        /** 从档位标识还原服务端 qn 参数。 */
+        fun qnOf(key: Int): Int = key / 100
+
+        /** 从档位标识还原 HDR 类型标记。 */
+        fun hdrTypeOf(key: Int): Int = key / 10 % 10
+
+        /** 从档位标识还原 EOTF 标记。 */
+        fun eotfOf(key: Int): Int = key % 10
+    }
 }
 
 /**
  * 直播流播放信息。
  *
- * @param currentQn 当前实际画质 qn
- * @param qualities 直播间可用画质列表，按 qn 降序
+ * @param currentQn 当前实际画质 qn（服务端返回）
+ * @param currentKey 当前档位标识（[LiveQuality.key]），用于 UI 选中态与续播请求
+ * @param qualities 直播间可用画质档位列表，按 qn 降序（同 qn 时 SDR 在前）
  * @param lines 同一编码下的多条 CDN 线路，供用户手动切换
  */
 data class LivePlayInfo(
     val currentQn: Int,
+    val currentKey: Int = currentQn * 100,
     val qualities: List<LiveQuality>,
     val lines: List<LivePlayLine>,
 )

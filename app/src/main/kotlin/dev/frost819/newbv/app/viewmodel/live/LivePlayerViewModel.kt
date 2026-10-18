@@ -69,6 +69,7 @@ data class LivePlayerUiState(
     val isBuffering: Boolean = false,
     val errorMessage: String? = null,
     val availableQualities: List<LiveQuality> = emptyList(),
+    /** 当前画质档位标识（[LiveQuality.key]，qn * 100 + hdrType * 10 + eotf）。 */
     val currentQuality: Int = 0,
     val availableLines: List<LivePlayLine> = emptyList(),
     val currentLine: Int = 0,
@@ -233,8 +234,8 @@ class LivePlayerViewModel
                         newState
                     }
 
-                    val requestedQn = _uiState.value.currentQuality.takeIf { it > 0 } ?: 0
-                    val playInfo = liveRepository.getLivePlayInfo(realRoomId, requestedQn)
+                    val requestedKey = _uiState.value.currentQuality.takeIf { it > 0 } ?: 0
+                    val playInfo = liveRepository.getLivePlayInfo(realRoomId, requestedKey)
                     val line = resolveLine(playInfo, _uiState.value.currentLine)
                     if (line == null) {
                         _uiState.update {
@@ -249,7 +250,7 @@ class LivePlayerViewModel
                     _uiState.update {
                         it.copy(
                             availableQualities = filterDecodableQualities(playInfo.qualities),
-                            currentQuality = playInfo.currentQn.takeIf { qn -> qn > 0 } ?: requestedQn,
+                            currentQuality = playInfo.currentKey.takeIf { key -> key > 0 } ?: requestedKey,
                             availableLines = playInfo.lines,
                             currentLine = line.order,
                         )
@@ -324,7 +325,7 @@ class LivePlayerViewModel
                                 appendLine("stream: ${player.streamProtocol}")
                                 val qnDesc =
                                     state.availableQualities
-                                        .firstOrNull { it.qn == state.currentQuality }
+                                        .firstOrNull { it.key == state.currentQuality }
                                         ?.displayDesc
                                 appendLine("quality: ${qnDesc ?: "?"}(${state.currentQuality})")
                                 appendLine("line: ${state.currentLine}/${state.availableLines.size}")
@@ -403,11 +404,13 @@ class LivePlayerViewModel
         /**
          * 切换画质。
          *
-         * 切换后线路重置为第一条（qn 变化会导致可用线路集合变化）。
+         * 切换后线路重置为第一条（档位变化会导致可用线路集合变化）。
+         *
+         * @param key 目标画质档位标识（[LiveQuality.key]）
          */
-        fun changeQuality(qn: Int) {
-            _uiState.update { it.copy(currentQuality = qn, currentLine = 0) }
-            reloadAndPlay(qn)
+        fun changeQuality(key: Int) {
+            _uiState.update { it.copy(currentQuality = key, currentLine = 0) }
+            reloadAndPlay(key)
         }
 
         /**
@@ -426,15 +429,15 @@ class LivePlayerViewModel
         /**
          * 重新拉取直播流信息并播放当前选中的线路。
          *
-         * @param qn 目标画质（0 = 自动）
+         * @param key 目标画质档位标识（[LiveQuality.key]，0 = 自动）
          */
-        private fun reloadAndPlay(qn: Int) {
+        private fun reloadAndPlay(key: Int) {
             val realRoomId = _uiState.value.realRoomId
             if (realRoomId == 0) return
 
             viewModelScope.launch {
                 runCatching {
-                    val playInfo = liveRepository.getLivePlayInfo(realRoomId, qn)
+                    val playInfo = liveRepository.getLivePlayInfo(realRoomId, key)
                     val line =
                         resolveLine(playInfo, _uiState.value.currentLine)
                             ?: error("获取直播流地址失败")
@@ -443,7 +446,7 @@ class LivePlayerViewModel
                             availableQualities =
                                 filterDecodableQualities(playInfo.qualities)
                                     .ifEmpty { it.availableQualities },
-                            currentQuality = playInfo.currentQn.takeIf { current -> current > 0 } ?: qn,
+                            currentQuality = playInfo.currentKey.takeIf { current -> current > 0 } ?: key,
                             availableLines = playInfo.lines,
                             currentLine = line.order,
                         )
@@ -476,7 +479,7 @@ class LivePlayerViewModel
                 if (!quality.isHdr) return@filter true
                 val decodable = videoCapabilityProvider.isDecodable(quality.toDecodeProfile())
                 if (!decodable) {
-                    logger.info { "HDR quality ${quality.qn}(${quality.displayDesc}) filtered: not decodable" }
+                    logger.info { "HDR quality ${quality.key}(${quality.displayDesc}) filtered: not decodable" }
                 }
                 decodable
             }

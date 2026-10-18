@@ -22,6 +22,7 @@ import dev.frost819.newbv.biliapi.http.entity.live.RoomInitData
 import dev.frost819.newbv.biliapi.http.entity.live.RoomPlayInfoV2Data
 import dev.frost819.newbv.biliapi.http.entity.live.SimpleDurl
 import dev.frost819.newbv.biliapi.http.entity.live.SimplePlayUrlData
+import dev.frost819.newbv.biliapi.http.entity.live.VideoColorInfo
 import io.mockk.coEvery
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
@@ -367,8 +368,9 @@ class LiveRepositoryUnitTest {
 
         val result = repository.resolvePlayInfo(data)
 
-        // HDR 档 30000 不在任何 accept_qn 中，仅由 hevc 编码的 hdr_qn 指针引入
-        assertThat(result.qualities.map { it.qn }).containsExactly(30000, 10000, 400).inOrder()
+        // HDR 档 30000 不在任何 accept_qn 中，仅由 hevc 编码的 hdr_qn 指针引入；
+        // HDR 编码节点的 accept_qn 与 SDR 重叠，同 qn 展开为 SDR/HDR 两个档位
+        assertThat(result.qualities.map { it.qn }.distinct()).containsExactly(30000, 10000, 400).inOrder()
     }
 
     @Test
@@ -397,7 +399,7 @@ class LiveRepositoryUnitTest {
     fun `resolvePlayInfo picks HDR codec when HDR quality requested`() {
         val data = fakeHdrRoomPlayInfoV2Data()
 
-        val result = repository.resolvePlayInfo(data, requestedQn = 30000)
+        val result = repository.resolvePlayInfo(data, requestedKey = qualityKey(30000, hdrType = 1, eotf = 1))
 
         assertThat(result.currentQn).isEqualTo(30000)
         assertThat(result.lines[0].url).isEqualTo("https://cdn.example/hdr-live.flv?hdr=1")
@@ -407,7 +409,7 @@ class LiveRepositoryUnitTest {
     fun `resolvePlayInfo keeps avc preference when HDR quality not requested`() {
         val data = fakeHdrRoomPlayInfoV2Data()
 
-        val result = repository.resolvePlayInfo(data, requestedQn = 10000)
+        val result = repository.resolvePlayInfo(data, requestedKey = qualityKey(10000))
 
         assertThat(result.currentQn).isEqualTo(10000)
         assertThat(result.lines[0].url).isEqualTo("https://cdn.example/live.flv?query=1")
@@ -426,11 +428,61 @@ class LiveRepositoryUnitTest {
                     ),
             )
 
-        val result = repository.resolvePlayInfo(data, requestedQn = 30000)
+        val result = repository.resolvePlayInfo(data, requestedKey = qualityKey(30000, hdrType = 1, eotf = 1))
 
         // 回退到默认 avc 选流，不报错
         assertThat(result.currentQn).isEqualTo(10000)
         assertThat(result.lines).isNotEmpty()
+    }
+
+    @Test
+    fun `resolvePlayInfo expands duplicate qn into SDR and HDR variants`() {
+        val data = fakeDuplicateQnRoomPlayInfoV2Data()
+
+        val result = repository.resolvePlayInfo(data)
+
+        // 真实契约：HDR 编码节点 accept_qn 与 SDR 重叠，同 qn 展开为 SDR/HDR 双档位（SDR 在前）
+        assertThat(result.qualities.map { it.key })
+            .containsExactly(
+                qualityKey(20000),
+                qualityKey(20000, hdrType = 1, eotf = 1),
+                qualityKey(10000),
+                qualityKey(10000, hdrType = 1, eotf = 1),
+                qualityKey(400),
+            ).inOrder()
+        val hdr = result.qualities.first { it.key == qualityKey(10000, hdrType = 1, eotf = 1) }
+        assertThat(hdr.desc).isEqualTo("原画/HDR")
+        assertThat(hdr.isHdr).isTrue()
+        assertThat(hdr.codecName).isEqualTo("hevc")
+        assertThat(hdr.codecs).isEqualTo("hvc1.2.4.L123")
+        // 服务端描述已含 HDR 字样，不再追加徽标后缀
+        assertThat(hdr.displayDesc).isEqualTo("原画/HDR")
+        val sdr = result.qualities.first { it.key == qualityKey(10000) }
+        assertThat(sdr.desc).isEqualTo("原画")
+        assertThat(sdr.isHdr).isFalse()
+        assertThat(sdr.codecName).isNull()
+    }
+
+    @Test
+    fun `resolvePlayInfo picks HDR codec node for duplicate-qn HDR request`() {
+        val data = fakeDuplicateQnRoomPlayInfoV2Data()
+
+        val result = repository.resolvePlayInfo(data, requestedKey = qualityKey(10000, hdrType = 1, eotf = 1))
+
+        assertThat(result.currentQn).isEqualTo(10000)
+        assertThat(result.currentKey).isEqualTo(qualityKey(10000, hdrType = 1, eotf = 1))
+        assertThat(result.lines[0].url).isEqualTo("https://cdn.example/prohdr.flv?hdr_type=1")
+    }
+
+    @Test
+    fun `resolvePlayInfo keeps avc codec for duplicate-qn SDR request`() {
+        val data = fakeDuplicateQnRoomPlayInfoV2Data()
+
+        val result = repository.resolvePlayInfo(data, requestedKey = qualityKey(10000))
+
+        // 同 qn 的 HDR 变体存在时，SDR 请求仍选 avc 编码节点
+        assertThat(result.currentKey).isEqualTo(qualityKey(400))
+        assertThat(result.lines[0].url).isEqualTo("https://cdn.example/live.flv?query=1")
     }
 
     private fun <T> fakeResponse(data: T) =
@@ -557,6 +609,92 @@ class LiveRepositoryUnitTest {
                                                                 hdrQn = 30000,
                                                                 hdrType = 1,
                                                                 videoCodecs = CodecSpec(base = "hvc1.1.6.L120"),
+                                                            ),
+                                                        ),
+                                                ),
+                                            ),
+                                    ),
+                                ),
+                        ),
+                ),
+        )
+
+    /** 档位标识编码，与 [LiveQuality.key] 一致。 */
+    private fun qualityKey(
+        qn: Int,
+        hdrType: Int = 0,
+        eotf: Int = 0,
+    ) = qn * 100 + hdrType * 10 + eotf
+
+    /**
+     * 构造 S 赛 4K 直播间真实契约的 v2 流数据：
+     * g_qn_desc 同 qn 重复（SDR/HDR 并存），HDR 流为同 format 下的额外 hevc 编码节点
+     * （hdr_type=1、bt2020、eotf=1、prohdr 后缀 URL），accept_qn 与 SDR 重叠。
+     */
+    private fun fakeDuplicateQnRoomPlayInfoV2Data() =
+        RoomPlayInfoV2Data(
+            roomId = 13242941,
+            shortId = 0,
+            uid = 1,
+            liveStatus = 1,
+            playUrlInfo =
+                PlayUrlInfo(
+                    playUrl =
+                        PlayUrl(
+                            cid = 13242941,
+                            qnDesc =
+                                listOf(
+                                    QnDesc(qn = 20000, desc = "4K"),
+                                    QnDesc(qn = 20000, desc = "4K/HDR", hdrType = 1, eotf = 1),
+                                    QnDesc(qn = 10000, desc = "原画"),
+                                    QnDesc(qn = 10000, desc = "原画/HDR", hdrType = 1, eotf = 1),
+                                    QnDesc(qn = 400, desc = "蓝光"),
+                                ),
+                            stream =
+                                listOf(
+                                    PlayStream(
+                                        protocolName = "http_stream",
+                                        format =
+                                            listOf(
+                                                PlayFormat(
+                                                    formatName = "flv",
+                                                    codec =
+                                                        listOf(
+                                                            PlayCodec(
+                                                                codecName = "avc",
+                                                                currentQn = 400,
+                                                                acceptQn = listOf(20000, 10000, 400),
+                                                                baseUrl = "/live.flv",
+                                                                urlInfo =
+                                                                    listOf(
+                                                                        PlayUrlInfoItem(
+                                                                            host = "https://cdn.example",
+                                                                            extra = "?query=1",
+                                                                        ),
+                                                                    ),
+                                                                mediaInfo = MediaInfo(),
+                                                            ),
+                                                            PlayCodec(
+                                                                codecName = "hevc",
+                                                                currentQn = 10000,
+                                                                acceptQn = listOf(20000, 10000),
+                                                                baseUrl = "/prohdr.flv",
+                                                                urlInfo =
+                                                                    listOf(
+                                                                        PlayUrlInfoItem(
+                                                                            host = "https://cdn.example",
+                                                                            extra = "?hdr_type=1",
+                                                                        ),
+                                                                    ),
+                                                                mediaInfo = MediaInfo(width = 1920, height = 1080),
+                                                                hdrType = 1,
+                                                                videoCodecs = CodecSpec(base = "hvc1.2.4.L123"),
+                                                                videoColorInfo =
+                                                                    VideoColorInfo(
+                                                                        colorspace = "bt2020",
+                                                                        eotf = 1,
+                                                                        metadataTypes = listOf("smpte_st2086", "none"),
+                                                                    ),
                                                             ),
                                                         ),
                                                 ),

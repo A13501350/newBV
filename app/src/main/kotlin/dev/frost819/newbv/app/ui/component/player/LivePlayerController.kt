@@ -60,14 +60,14 @@ import dev.frost819.newbv.data.datastore.Prefs
  * @param danmakuEnabled 弹幕是否开启
  * @param danmakuState 弹幕配置状态
  * @param availableQualities 可用画质列表（HDR 档经本机解码能力过滤）
- * @param currentQuality 当前画质 qn
+ * @param currentQuality 当前画质档位标识（[LiveQuality.key]）
  * @param availableLines 可用线路列表
  * @param currentLine 当前线路序号（从 1 开始）
  * @param onBack 返回回调
  * @param onPlayPause 播放/暂停回调
  * @param onRefresh 刷新回调
  * @param onToggleDanmaku 弹幕开关回调
- * @param onQualityChange 画质变化回调
+ * @param onQualityChange 画质变化回调（回传 [LiveQuality.key]）
  * @param onLineChange 线路变化回调
  * @param onDanmakuSettingChange 弹幕设置变化回调
  * @param debugInfo 调试信息文本（仅 [Prefs.showPlayerDebugInfo] 开启时有值）
