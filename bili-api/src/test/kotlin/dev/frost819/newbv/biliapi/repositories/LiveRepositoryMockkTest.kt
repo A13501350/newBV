@@ -464,14 +464,26 @@ class LiveRepositoryUnitTest {
     }
 
     @Test
-    fun `resolvePlayInfo picks HDR codec node for duplicate-qn HDR request`() {
+    fun `resolvePlayInfo picks HLS codec node for duplicate-qn HDR request`() {
         val data = fakeDuplicateQnRoomPlayInfoV2Data()
 
         val result = repository.resolvePlayInfo(data, requestedKey = qualityKey(10000, hdrType = 1, eotf = 1))
 
+        // HDR 不走 flv（Media3 不支持 B 站 HEVC-in-FLV 私有扩展），优先 http_hls/fmp4
         assertThat(result.currentQn).isEqualTo(10000)
         assertThat(result.currentKey).isEqualTo(qualityKey(10000, hdrType = 1, eotf = 1))
-        assertThat(result.lines[0].url).isEqualTo("https://cdn.example/prohdr.flv?hdr_type=1")
+        assertThat(result.lines[0].url).isEqualTo("https://cdn.example/prohdr.m3u8?hdr_type=1")
+    }
+
+    @Test
+    fun `resolvePlayInfo falls back to SDR when HDR only exists in flv`() {
+        // B 站 HEVC-in-FLV（codec_id=12）Media3 FlvExtractor 不支持，HDR 仅存于 flv 时不能选
+        val data = fakeDuplicateQnRoomPlayInfoV2Data(includeHlsHdr = false)
+
+        val result = repository.resolvePlayInfo(data, requestedKey = qualityKey(10000, hdrType = 1, eotf = 1))
+
+        assertThat(result.currentKey).isEqualTo(qualityKey(400))
+        assertThat(result.lines[0].url).isEqualTo("https://cdn.example/live.flv?query=1")
     }
 
     @Test
@@ -630,9 +642,37 @@ class LiveRepositoryUnitTest {
      * 构造 S 赛 4K 直播间真实契约的 v2 流数据：
      * g_qn_desc 同 qn 重复（SDR/HDR 并存），HDR 流为同 format 下的额外 hevc 编码节点
      * （hdr_type=1、bt2020、eotf=1、prohdr 后缀 URL），accept_qn 与 SDR 重叠。
+     *
+     * @param includeHlsHdr 是否包含 http_hls/fmp4 的 HDR 编码节点（真实响应同时
+     *   在 flv/ts/fmp4 下携带 HDR 节点；false 用于验证"HDR 仅存在于不可解析的
+     *   flv 时回退 SDR"）
      */
-    private fun fakeDuplicateQnRoomPlayInfoV2Data() =
-        RoomPlayInfoV2Data(
+    private fun fakeDuplicateQnRoomPlayInfoV2Data(includeHlsHdr: Boolean = true): RoomPlayInfoV2Data {
+        val hdrCodec =
+            PlayCodec(
+                codecName = "hevc",
+                currentQn = 10000,
+                acceptQn = listOf(20000, 10000),
+                baseUrl = "/prohdr.flv",
+                urlInfo =
+                    listOf(
+                        PlayUrlInfoItem(
+                            host = "https://cdn.example",
+                            extra = "?hdr_type=1",
+                        ),
+                    ),
+                mediaInfo = MediaInfo(width = 1920, height = 1080),
+                hdrType = 1,
+                videoCodecs = CodecSpec(base = "hvc1.2.4.L123"),
+                videoColorInfo =
+                    VideoColorInfo(
+                        colorspace = "bt2020",
+                        eotf = 1,
+                        metadataTypes = listOf("smpte_st2086", "none"),
+                    ),
+            )
+        val hlsHdrCodec = hdrCodec.copy(baseUrl = "/prohdr.m3u8")
+        return RoomPlayInfoV2Data(
             roomId = 13242941,
             shortId = 0,
             uid = 1,
@@ -651,59 +691,55 @@ class LiveRepositoryUnitTest {
                                     QnDesc(qn = 400, desc = "蓝光"),
                                 ),
                             stream =
-                                listOf(
-                                    PlayStream(
-                                        protocolName = "http_stream",
-                                        format =
-                                            listOf(
-                                                PlayFormat(
-                                                    formatName = "flv",
-                                                    codec =
-                                                        listOf(
-                                                            PlayCodec(
-                                                                codecName = "avc",
-                                                                currentQn = 400,
-                                                                acceptQn = listOf(20000, 10000, 400),
-                                                                baseUrl = "/live.flv",
-                                                                urlInfo =
-                                                                    listOf(
-                                                                        PlayUrlInfoItem(
-                                                                            host = "https://cdn.example",
-                                                                            extra = "?query=1",
+                                buildList {
+                                    add(
+                                        PlayStream(
+                                            protocolName = "http_stream",
+                                            format =
+                                                listOf(
+                                                    PlayFormat(
+                                                        formatName = "flv",
+                                                        codec =
+                                                            listOf(
+                                                                PlayCodec(
+                                                                    codecName = "avc",
+                                                                    currentQn = 400,
+                                                                    acceptQn = listOf(20000, 10000, 400),
+                                                                    baseUrl = "/live.flv",
+                                                                    urlInfo =
+                                                                        listOf(
+                                                                            PlayUrlInfoItem(
+                                                                                host = "https://cdn.example",
+                                                                                extra = "?query=1",
+                                                                            ),
                                                                         ),
-                                                                    ),
-                                                                mediaInfo = MediaInfo(),
+                                                                    mediaInfo = MediaInfo(),
+                                                                ),
+                                                                hdrCodec,
                                                             ),
-                                                            PlayCodec(
-                                                                codecName = "hevc",
-                                                                currentQn = 10000,
-                                                                acceptQn = listOf(20000, 10000),
-                                                                baseUrl = "/prohdr.flv",
-                                                                urlInfo =
-                                                                    listOf(
-                                                                        PlayUrlInfoItem(
-                                                                            host = "https://cdn.example",
-                                                                            extra = "?hdr_type=1",
-                                                                        ),
-                                                                    ),
-                                                                mediaInfo = MediaInfo(width = 1920, height = 1080),
-                                                                hdrType = 1,
-                                                                videoCodecs = CodecSpec(base = "hvc1.2.4.L123"),
-                                                                videoColorInfo =
-                                                                    VideoColorInfo(
-                                                                        colorspace = "bt2020",
-                                                                        eotf = 1,
-                                                                        metadataTypes = listOf("smpte_st2086", "none"),
-                                                                    ),
-                                                            ),
-                                                        ),
+                                                    ),
                                                 ),
+                                        ),
+                                    )
+                                    if (includeHlsHdr) {
+                                        add(
+                                            PlayStream(
+                                                protocolName = "http_hls",
+                                                format =
+                                                    listOf(
+                                                        PlayFormat(
+                                                            formatName = "fmp4",
+                                                            codec = listOf(hlsHdrCodec),
+                                                        ),
+                                                    ),
                                             ),
-                                    ),
-                                ),
+                                        )
+                                    }
+                                },
                         ),
                 ),
         )
+    }
 
     private fun fakeStream(
         protocol: String,
