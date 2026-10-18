@@ -10,15 +10,19 @@ import com.kuaishou.akdanmaku.data.DanmakuItemData
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.frost819.newbv.app.ui.component.livecard.formatOnlineCount
+import dev.frost819.newbv.app.util.VideoCapabilityProvider
+import dev.frost819.newbv.app.util.VideoDecodeProfile
 import dev.frost819.newbv.biliapi.http.entity.live.DanmakuEvent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveEvent
 import dev.frost819.newbv.biliapi.http.entity.live.OnlineRankCountEvent
 import dev.frost819.newbv.biliapi.repositories.LivePlayInfo
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
+import dev.frost819.newbv.biliapi.repositories.LiveQuality
 import dev.frost819.newbv.biliapi.repositories.LiveRepository
 import dev.frost819.newbv.biliapi.websocket.LiveDataWebSocket
 import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.data.datastore.Prefs
+import dev.frost819.newbv.data.datastore.VideoCodec
 import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.VideoPlayerListener
 import dev.frost819.newbv.player.VideoPlayerOptions
@@ -64,7 +68,7 @@ data class LivePlayerUiState(
     val playerState: LivePlayerState = LivePlayerState.Idle,
     val isBuffering: Boolean = false,
     val errorMessage: String? = null,
-    val availableQualities: List<Pair<Int, String>> = emptyList(),
+    val availableQualities: List<LiveQuality> = emptyList(),
     val currentQuality: Int = 0,
     val availableLines: List<LivePlayLine> = emptyList(),
     val currentLine: Int = 0,
@@ -84,6 +88,7 @@ class LivePlayerViewModel
     constructor(
         private val liveRepository: LiveRepository,
         private val exoPlayerFactory: ExoPlayerFactory,
+        private val videoCapabilityProvider: VideoCapabilityProvider,
     ) : ViewModel() {
         private val logger = Loggers.get("LivePlayerViewModel")
 
@@ -243,7 +248,7 @@ class LivePlayerViewModel
 
                     _uiState.update {
                         it.copy(
-                            availableQualities = playInfo.qualities,
+                            availableQualities = filterDecodableQualities(playInfo.qualities),
                             currentQuality = playInfo.currentQn.takeIf { qn -> qn > 0 } ?: requestedQn,
                             availableLines = playInfo.lines,
                             currentLine = line.order,
@@ -319,8 +324,8 @@ class LivePlayerViewModel
                                 appendLine("stream: ${player.streamProtocol}")
                                 val qnDesc =
                                     state.availableQualities
-                                        .firstOrNull { it.first == state.currentQuality }
-                                        ?.second
+                                        .firstOrNull { it.qn == state.currentQuality }
+                                        ?.displayDesc
                                 appendLine("quality: ${qnDesc ?: "?"}(${state.currentQuality})")
                                 appendLine("line: ${state.currentLine}/${state.availableLines.size}")
                                 appendLine("roomId: ${state.realRoomId}")
@@ -435,7 +440,9 @@ class LivePlayerViewModel
                             ?: error("获取直播流地址失败")
                     _uiState.update {
                         it.copy(
-                            availableQualities = playInfo.qualities.ifEmpty { it.availableQualities },
+                            availableQualities =
+                                filterDecodableQualities(playInfo.qualities)
+                                    .ifEmpty { it.availableQualities },
                             currentQuality = playInfo.currentQn.takeIf { current -> current > 0 } ?: qn,
                             availableLines = playInfo.lines,
                             currentLine = line.order,
@@ -456,6 +463,45 @@ class LivePlayerViewModel
                     }
                 }
             }
+        }
+
+        /**
+         * 过滤掉本机无法解码的 HDR 画质档位。
+         *
+         * SDR 档始终保留（维持既有行为）；HDR 档按携带它的编码（通常为 HEVC/AV1/杜比视界）
+         * 查询本机解码能力，不可解则从画质菜单中隐藏，避免用户选中后播放失败。
+         */
+        private fun filterDecodableQualities(qualities: List<LiveQuality>): List<LiveQuality> =
+            qualities.filter { quality ->
+                if (!quality.isHdr) return@filter true
+                val decodable = videoCapabilityProvider.isDecodable(quality.toDecodeProfile())
+                if (!decodable) {
+                    logger.info { "HDR quality ${quality.qn}(${quality.displayDesc}) filtered: not decodable" }
+                }
+                decodable
+            }
+
+        /**
+         * 从 HDR 档位携带的解码提示构造 [VideoDecodeProfile]。
+         *
+         * 编码判定：RFC 6381 串以 dvh1/dvhe 开头为杜比视界，否则按编码名
+         * （hevc/av1）识别，缺省按 AVC（查询结果保守，不影响菜单展示之外的逻辑）。
+         */
+        private fun LiveQuality.toDecodeProfile(): VideoDecodeProfile {
+            val codec =
+                when {
+                    codecs?.startsWith("dvh1") == true || codecs?.startsWith("dvhe") == true -> VideoCodec.DVH1
+                    codecName?.contains("hevc") == true -> VideoCodec.HEVC
+                    codecName?.contains("av1") == true -> VideoCodec.AV1
+                    else -> VideoCodec.AVC
+                }
+            return VideoDecodeProfile(
+                codec = codec,
+                width = width,
+                height = height,
+                frameRate = null,
+                codecs = codecs,
+            )
         }
 
         /**

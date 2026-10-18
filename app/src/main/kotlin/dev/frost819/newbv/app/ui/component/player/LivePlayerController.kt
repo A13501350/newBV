@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
 import dev.frost819.newbv.app.ui.component.player.menu.LiveMenuController
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
+import dev.frost819.newbv.biliapi.repositories.LiveQuality
 import dev.frost819.newbv.core.theme.BVTheme
 import dev.frost819.newbv.core.theme.ThemeMode
 import dev.frost819.newbv.danmaku.config.DanmakuState
@@ -58,7 +59,7 @@ import dev.frost819.newbv.data.datastore.Prefs
  * @param clock 时钟（hour, minute）
  * @param danmakuEnabled 弹幕是否开启
  * @param danmakuState 弹幕配置状态
- * @param availableQualities 可用画质列表（qn, desc）
+ * @param availableQualities 可用画质列表（HDR 档经本机解码能力过滤）
  * @param currentQuality 当前画质 qn
  * @param availableLines 可用线路列表
  * @param currentLine 当前线路序号（从 1 开始）
@@ -86,7 +87,7 @@ fun LivePlayerController(
     clock: Pair<Int, Int>,
     danmakuEnabled: Boolean,
     danmakuState: DanmakuState,
-    availableQualities: List<Pair<Int, String>>,
+    availableQualities: List<LiveQuality>,
     currentQuality: Int,
     availableLines: List<LivePlayLine>,
     currentLine: Int,

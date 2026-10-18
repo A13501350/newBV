@@ -3,13 +3,16 @@ package dev.frost819.newbv.app.viewmodel.live
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.viewModelScope
 import com.google.common.truth.Truth.assertThat
+import dev.frost819.newbv.app.util.VideoCapabilityProvider
 import dev.frost819.newbv.biliapi.repositories.LivePlayInfo
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
+import dev.frost819.newbv.biliapi.repositories.LiveQuality
 import dev.frost819.newbv.biliapi.repositories.LiveRepository
 import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +39,7 @@ class LivePlayerViewModelTest {
 
     private lateinit var liveRepository: LiveRepository
     private lateinit var exoPlayerFactory: ExoPlayerFactory
+    private lateinit var videoCapabilityProvider: VideoCapabilityProvider
     private lateinit var viewModel: LivePlayerViewModel
     private lateinit var mockPlayer: AbstractVideoPlayer
 
@@ -44,8 +48,9 @@ class LivePlayerViewModelTest {
         Dispatchers.setMain(testDispatcher)
         liveRepository = mockk(relaxed = true)
         exoPlayerFactory = mockk(relaxed = true)
+        videoCapabilityProvider = mockk(relaxed = true)
         mockPlayer = mockk(relaxed = true)
-        viewModel = LivePlayerViewModel(liveRepository, exoPlayerFactory)
+        viewModel = LivePlayerViewModel(liveRepository, exoPlayerFactory, videoCapabilityProvider)
         setVideoPlayer(mockPlayer)
     }
 
@@ -63,7 +68,7 @@ class LivePlayerViewModelTest {
             coEvery { liveRepository.getLivePlayInfo(123, 10000) } returns
                 LivePlayInfo(
                     currentQn = 10000,
-                    qualities = listOf(10000 to "原画"),
+                    qualities = listOf(LiveQuality(10000, "原画")),
                     lines = listOf(LivePlayLine(1, "url-1"), LivePlayLine(2, "url-2")),
                 )
 
@@ -106,7 +111,7 @@ class LivePlayerViewModelTest {
             coEvery { liveRepository.getLivePlayInfo(123, 400) } returns
                 LivePlayInfo(
                     currentQn = 400,
-                    qualities = listOf(400 to "蓝光"),
+                    qualities = listOf(LiveQuality(400, "蓝光")),
                     lines = listOf(LivePlayLine(1, "url-1"), LivePlayLine(2, "url-2")),
                 )
 
@@ -144,6 +149,75 @@ class LivePlayerViewModelTest {
 
             // Then
             coVerify(exactly = 0) { liveRepository.getLivePlayInfo(any(), any()) }
+        }
+
+    @Test
+    fun `reload filters out HDR quality that is not decodable`() =
+        runTest(testDispatcher) {
+            // Given
+            updateUiState { it.copy(realRoomId = 123, currentQuality = 10000) }
+            every { videoCapabilityProvider.isDecodable(any()) } returns false
+            coEvery { liveRepository.getLivePlayInfo(123, 10000) } returns
+                LivePlayInfo(
+                    currentQn = 10000,
+                    qualities =
+                        listOf(
+                            LiveQuality(
+                                qn = 30000,
+                                desc = "4K",
+                                hdrType = 1,
+                                hdrDesc = "HDR",
+                                codecName = "hevc",
+                                codecs = "hvc1.1.6.L120",
+                                width = 3840,
+                                height = 2160,
+                            ),
+                            LiveQuality(qn = 10000, desc = "原画"),
+                        ),
+                    lines = listOf(LivePlayLine(1, "url-1")),
+                )
+
+            // When
+            viewModel.changeLine(1)
+            advanceUntilIdle()
+
+            // Then：不可解的 HDR 档从菜单中隐藏，SDR 档保留
+            assertThat(viewModel.uiState.value.availableQualities.map { it.qn }).containsExactly(10000)
+        }
+
+    @Test
+    fun `reload keeps HDR quality when decodable`() =
+        runTest(testDispatcher) {
+            // Given
+            updateUiState { it.copy(realRoomId = 123, currentQuality = 10000) }
+            every { videoCapabilityProvider.isDecodable(any()) } returns true
+            coEvery { liveRepository.getLivePlayInfo(123, 10000) } returns
+                LivePlayInfo(
+                    currentQn = 10000,
+                    qualities =
+                        listOf(
+                            LiveQuality(
+                                qn = 30000,
+                                desc = "4K",
+                                hdrType = 1,
+                                hdrDesc = "HDR",
+                                codecName = "hevc",
+                                codecs = "hvc1.1.6.L120",
+                                width = 3840,
+                                height = 2160,
+                            ),
+                            LiveQuality(qn = 10000, desc = "原画"),
+                        ),
+                    lines = listOf(LivePlayLine(1, "url-1")),
+                )
+
+            // When
+            viewModel.changeLine(1)
+            advanceUntilIdle()
+
+            // Then
+            assertThat(viewModel.uiState.value.availableQualities.map { it.qn })
+                .containsExactly(30000, 10000)
         }
 
     // ── Helpers ──────────────────────────────────────────────
