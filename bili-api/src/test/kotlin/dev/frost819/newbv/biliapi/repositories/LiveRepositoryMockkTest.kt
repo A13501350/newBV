@@ -417,19 +417,14 @@ class LiveRepositoryUnitTest {
     fun `resolvePlayInfo falls back to default codec when HDR stream absent`() {
         // qnDesc 标记 30000 为 HDR 档，但没有任何编码携带它（服务端降级）
         val data =
-            fakeRoomPlayInfoV2Data().let { base ->
-                base.copy(
-                    playUrlInfo =
-                        PlayUrlInfo(
-                            playUrl =
-                                base.playUrlInfo.playUrl.copy(
-                                    qnDesc =
-                                        base.playUrlInfo.playUrl.qnDesc +
-                                            QnDesc(qn = 30000, desc = "4K", hdrDesc = "HDR", hdrType = 1, eotf = 1),
-                                ),
-                        ),
-                )
-            }
+            fakeRoomPlayInfoV2Data(
+                qnDesc =
+                    listOf(
+                        QnDesc(qn = 10000, desc = "原画"),
+                        QnDesc(qn = 400, desc = "蓝光"),
+                        QnDesc(qn = 30000, desc = "4K", hdrDesc = "HDR", hdrType = 1, eotf = 1),
+                    ),
+            )
 
         val result = repository.resolvePlayInfo(data, requestedQn = 30000)
 
@@ -456,26 +451,28 @@ class LiveRepositoryUnitTest {
             liveStatus = 1,
         )
 
-    private fun fakeRoomPlayInfoV2Data(streams: List<PlayStream> = listOf(fakeHttpStream())) =
-        RoomPlayInfoV2Data(
-            roomId = 1718159119,
-            shortId = 0,
-            uid = 1,
-            liveStatus = 1,
-            playUrlInfo =
-                PlayUrlInfo(
-                    playUrl =
-                        PlayUrl(
-                            cid = 1718159119,
-                            qnDesc =
-                                listOf(
-                                    QnDesc(qn = 10000, desc = "原画"),
-                                    QnDesc(qn = 400, desc = "蓝光"),
-                                ),
-                            stream = streams,
-                        ),
-                ),
-        )
+    private fun fakeRoomPlayInfoV2Data(
+        streams: List<PlayStream> = listOf(fakeHttpStream()),
+        qnDesc: List<QnDesc> =
+            listOf(
+                QnDesc(qn = 10000, desc = "原画"),
+                QnDesc(qn = 400, desc = "蓝光"),
+            ),
+    ) = RoomPlayInfoV2Data(
+        roomId = 1718159119,
+        shortId = 0,
+        uid = 1,
+        liveStatus = 1,
+        playUrlInfo =
+            PlayUrlInfo(
+                playUrl =
+                    PlayUrl(
+                        cid = 1718159119,
+                        qnDesc = qnDesc,
+                        stream = streams,
+                    ),
+            ),
+    )
 
     private fun fakeHttpStream(
         formatName: String = "flv",

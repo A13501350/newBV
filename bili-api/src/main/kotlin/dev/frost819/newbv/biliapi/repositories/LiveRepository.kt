@@ -236,10 +236,9 @@ class LiveRepository {
         val playUrl = data.playUrlInfo.playUrl
         val streams = playUrl.stream
 
-        val hdrRequested =
-            requestedQn > 0 &&
-                (playUrl.qnDesc.firstOrNull { it.qn == requestedQn }?.hdrType?.let { it != 0 } == true ||
-                    playUrl.dolbyQn == requestedQn)
+        val hdrQnDesc = playUrl.qnDesc.firstOrNull { it.qn == requestedQn }
+        val hdrMarked = hdrQnDesc?.hdrType?.let { it != 0 } == true
+        val hdrRequested = requestedQn > 0 && (hdrMarked || playUrl.dolbyQn == requestedQn)
         if (hdrRequested) {
             for ((protocol, formats) in candidates) {
                 val stream = streams.find { it.protocolName == protocol } ?: continue
