@@ -62,8 +62,8 @@ enum class LivePlayerMenuNavItem(
  *
  * @param show 是否显示
  * @param availableQualities 可用画质列表（HDR 档经本机解码能力过滤）
- * @param currentQuality 当前画质 qn
- * @param onQualityChange 画质变化回调
+ * @param currentQuality 当前画质档位标识（[LiveQuality.key]）
+ * @param onQualityChange 画质变化回调（回传 [LiveQuality.key]）
  * @param availableLines 可用线路列表
  * @param currentLine 当前线路序号（从 1 开始）
  * @param onLineChange 线路变化回调
@@ -216,9 +216,9 @@ private fun LiveMenuList(
             LivePlayerMenuNavItem.Picture ->
                 PlayerTwoLevelMenu(
                     items = availableQualities,
-                    selected = availableQualities.firstOrNull { it.qn == currentQuality },
+                    selected = availableQualities.firstOrNull { it.key == currentQuality },
                     itemLabel = { it.displayDesc },
-                    onItemSelected = { onQualityChange(it.qn) },
+                    onItemSelected = { onQualityChange(it.key) },
                     navFocusRequester = navFocusRequester,
                     onFocusStateChange = onFocusStateChange,
                 )

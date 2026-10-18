@@ -130,6 +130,10 @@ data class CodecSpec(
 @Serializable
 data class VideoColorInfo(
     val colorspace: String = "",
+    /**
+     * 电光转换函数标记，0 = SDR，1 = PQ(HDR10)，2 = HLG。
+     */
+    val eotf: Int = 0,
     @SerialName("metadata_types")
     val metadataTypes: List<String> = emptyList(),
 )

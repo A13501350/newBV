@@ -106,9 +106,9 @@ class LivePlayerViewModelTest {
     @Test
     fun `changeQuality resets line to first and reloads`() =
         runTest(testDispatcher) {
-            // Given
-            updateUiState { it.copy(realRoomId = 123, currentQuality = 10000, currentLine = 3) }
-            coEvery { liveRepository.getLivePlayInfo(123, 400) } returns
+            // Given（画质以档位标识传递：qn * 100，蓝光 400 → 40000）
+            updateUiState { it.copy(realRoomId = 123, currentQuality = 1000000, currentLine = 3) }
+            coEvery { liveRepository.getLivePlayInfo(123, 40000) } returns
                 LivePlayInfo(
                     currentQn = 400,
                     qualities = listOf(LiveQuality(400, "蓝光")),
@@ -116,11 +116,11 @@ class LivePlayerViewModelTest {
                 )
 
             // When
-            viewModel.changeQuality(400)
+            viewModel.changeQuality(40000)
             advanceUntilIdle()
 
             // Then
-            assertThat(viewModel.uiState.value.currentQuality).isEqualTo(400)
+            assertThat(viewModel.uiState.value.currentQuality).isEqualTo(40000)
             assertThat(viewModel.uiState.value.currentLine).isEqualTo(1)
         }
 
