@@ -7,6 +7,7 @@ import dev.frost819.newbv.biliapi.http.entity.live.LiveAreaParent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveListResponse
 import dev.frost819.newbv.biliapi.http.entity.live.LiveRecommendResponse
 import dev.frost819.newbv.biliapi.http.entity.live.PlayCodec
+import dev.frost819.newbv.biliapi.http.entity.live.PlayUrl
 import dev.frost819.newbv.biliapi.http.entity.live.QnDesc
 import dev.frost819.newbv.biliapi.http.entity.live.RoomInfoData
 import dev.frost819.newbv.biliapi.http.entity.live.RoomInitData
@@ -267,7 +268,9 @@ class LiveRepository {
         val currentKey =
             expected
                 ?.let { e ->
-                    qualities.firstOrNull { it.qn == e.qn && it.hdrType == e.hdrType && it.eotf == e.eotf }?.key
+                    qualities
+                        .firstOrNull { it.qn == e.qn && it.hdrType == e.hdrType && it.eotf == e.eotf }
+                        ?.key
                 }
                 ?: qualities
                     .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
