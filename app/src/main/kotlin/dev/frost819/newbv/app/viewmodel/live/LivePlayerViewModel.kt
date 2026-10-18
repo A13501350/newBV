@@ -248,9 +248,10 @@ class LivePlayerViewModel
                     }
 
                     _uiState.update {
+                        val qualities = filterDecodableQualities(playInfo.qualities)
                         it.copy(
-                            availableQualities = filterDecodableQualities(playInfo.qualities),
-                            currentQuality = playInfo.currentKey.takeIf { key -> key > 0 } ?: requestedKey,
+                            availableQualities = qualities,
+                            currentQuality = resolveCurrentKey(qualities, playInfo.currentKey, requestedKey),
                             availableLines = playInfo.lines,
                             currentLine = line.order,
                         )
@@ -442,11 +443,12 @@ class LivePlayerViewModel
                         resolveLine(playInfo, _uiState.value.currentLine)
                             ?: error("获取直播流地址失败")
                     _uiState.update {
+                        val qualities =
+                            filterDecodableQualities(playInfo.qualities)
+                                .ifEmpty { it.availableQualities }
                         it.copy(
-                            availableQualities =
-                                filterDecodableQualities(playInfo.qualities)
-                                    .ifEmpty { it.availableQualities },
-                            currentQuality = playInfo.currentKey.takeIf { current -> current > 0 } ?: key,
+                            availableQualities = qualities,
+                            currentQuality = resolveCurrentKey(qualities, playInfo.currentKey, key),
                             availableLines = playInfo.lines,
                             currentLine = line.order,
                         )
@@ -483,6 +485,21 @@ class LivePlayerViewModel
                 }
                 decodable
             }
+
+        /**
+         * 将当前档位标识重映射到过滤后的画质列表内。
+         *
+         * 若 [currentKey] 对应的档位被能力过滤移除（或服务端降级后不存在），
+         * 回退到列表首项（最高可用档），保证菜单选中态与续播请求的 key 有效。
+         */
+        private fun resolveCurrentKey(
+            qualities: List<LiveQuality>,
+            currentKey: Int,
+            fallbackKey: Int,
+        ): Int =
+            currentKey.takeIf { k -> k > 0 && qualities.any { it.key == k } }
+                ?: qualities.firstOrNull()?.key
+                ?: fallbackKey
 
         /**
          * 从 HDR 档位携带的解码提示构造 [VideoDecodeProfile]。
