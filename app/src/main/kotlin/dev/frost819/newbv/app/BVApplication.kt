@@ -8,12 +8,14 @@ import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import com.chuckerteam.chucker.api.ChuckerInterceptor
 import dagger.hilt.android.HiltAndroidApp
 import dev.frost819.newbv.app.network.HttpServer
 import dev.frost819.newbv.app.util.CacheManager
 import dev.frost819.newbv.biliapi.http.BiliHttpApi
 import dev.frost819.newbv.biliapi.repositories.AuthRepository
 import dev.frost819.newbv.biliapi.repositories.ChannelRepository
+import dev.frost819.newbv.biliapi.util.NetworkDebugHooks
 import dev.frost819.newbv.core.log.CrashHandler
 import dev.frost819.newbv.core.log.CrashUploader
 import dev.frost819.newbv.core.log.Loggers
@@ -70,6 +72,11 @@ class BVApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // 调试网络拦截器（debug 包为 Chucker，release 为 no-op 空实现）。
+        // 须在任意 API client 创建前装配；媒体流与图片加载的 OkHttp 不接入，
+        // 避免大二进制 body 撑爆 Chucker 存储。
+        NetworkDebugHooks.interceptors = listOf(ChuckerInterceptor.Builder(this).build())
 
         Prefs.init(dataStore)
 
