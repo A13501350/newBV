@@ -3,6 +3,7 @@ package dev.frost819.newbv.biliapi.repositories
 import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.biliapi.http.BiliLiveHttpApi
 import dev.frost819.newbv.biliapi.http.entity.BiliResponse
+import dev.frost819.newbv.biliapi.http.entity.live.CodecSpec
 import dev.frost819.newbv.biliapi.http.entity.live.FollowLiveResponse
 import dev.frost819.newbv.biliapi.http.entity.live.LiveAreaParent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveListResponse
@@ -172,7 +173,7 @@ class LiveRepositoryUnitTest {
             val result = repository.getAvailableQualities(1718159119)
 
             assertThat(result).isNotEmpty()
-            assertThat(result[0].first).isAtLeast(result[1].first)
+            assertThat(result[0].qn).isAtLeast(result[1].qn)
         }
 
     @Test
@@ -263,7 +264,7 @@ class LiveRepositoryUnitTest {
             val result = repository.getLivePlayInfo(1718159119, 10000)
 
             assertThat(result.qualities).hasSize(2)
-            assertThat(result.qualities[0].first).isEqualTo(10000)
+            assertThat(result.qualities[0].qn).isEqualTo(10000)
             assertThat(result.lines).hasSize(2)
             assertThat(result.lines[0].url).isEqualTo("https://cdn-a.example/live.flv?a=1")
             assertThat(result.lines[1].url).isEqualTo("https://cdn-b.example/live.flv?b=2")
@@ -360,6 +361,78 @@ class LiveRepositoryUnitTest {
         assertThat(result.currentQn).isEqualTo(0)
     }
 
+    @Test
+    fun `resolvePlayInfo includes quality that only appears in hdrQn`() {
+        val data = fakeHdrRoomPlayInfoV2Data()
+
+        val result = repository.resolvePlayInfo(data)
+
+        // HDR 档 30000 不在任何 accept_qn 中，仅由 hevc 编码的 hdr_qn 指针引入
+        assertThat(result.qualities.map { it.qn }).containsExactly(30000, 10000, 400).inOrder()
+    }
+
+    @Test
+    fun `resolvePlayInfo marks HDR quality with decode hints`() {
+        val data = fakeHdrRoomPlayInfoV2Data()
+
+        val result = repository.resolvePlayInfo(data)
+
+        val hdr = result.qualities.first { it.qn == 30000 }
+        assertThat(hdr.isHdr).isTrue()
+        assertThat(hdr.hdrType).isEqualTo(1)
+        assertThat(hdr.codecName).isEqualTo("hevc")
+        assertThat(hdr.codecs).isEqualTo("hvc1.1.6.L120")
+        assertThat(hdr.width).isEqualTo(3840)
+        assertThat(hdr.height).isEqualTo(2160)
+        assertThat(hdr.displayDesc).contains("HDR")
+        // SDR 档不携带 HDR 标记与解码提示
+        val sdr = result.qualities.first { it.qn == 10000 }
+        assertThat(sdr.isHdr).isFalse()
+        assertThat(sdr.codecName).isNull()
+        assertThat(sdr.codecs).isNull()
+        assertThat(sdr.displayDesc).isEqualTo("原画")
+    }
+
+    @Test
+    fun `resolvePlayInfo picks HDR codec when HDR quality requested`() {
+        val data = fakeHdrRoomPlayInfoV2Data()
+
+        val result = repository.resolvePlayInfo(data, requestedQn = 30000)
+
+        assertThat(result.currentQn).isEqualTo(30000)
+        assertThat(result.lines[0].url).isEqualTo("https://cdn.example/hdr-live.flv?hdr=1")
+    }
+
+    @Test
+    fun `resolvePlayInfo keeps avc preference when HDR quality not requested`() {
+        val data = fakeHdrRoomPlayInfoV2Data()
+
+        val result = repository.resolvePlayInfo(data, requestedQn = 10000)
+
+        assertThat(result.currentQn).isEqualTo(10000)
+        assertThat(result.lines[0].url).isEqualTo("https://cdn.example/live.flv?query=1")
+    }
+
+    @Test
+    fun `resolvePlayInfo falls back to default codec when HDR stream absent`() {
+        // qnDesc 标记 30000 为 HDR 档，但没有任何编码携带它（服务端降级）
+        val data =
+            fakeRoomPlayInfoV2Data(
+                qnDesc =
+                    listOf(
+                        QnDesc(qn = 10000, desc = "原画"),
+                        QnDesc(qn = 400, desc = "蓝光"),
+                        QnDesc(qn = 30000, desc = "4K", hdrDesc = "HDR", hdrType = 1, eotf = 1),
+                    ),
+            )
+
+        val result = repository.resolvePlayInfo(data, requestedQn = 30000)
+
+        // 回退到默认 avc 选流，不报错
+        assertThat(result.currentQn).isEqualTo(10000)
+        assertThat(result.lines).isNotEmpty()
+    }
+
     private fun <T> fakeResponse(data: T) =
         BiliResponse(
             code = 0,
@@ -378,26 +451,28 @@ class LiveRepositoryUnitTest {
             liveStatus = 1,
         )
 
-    private fun fakeRoomPlayInfoV2Data(streams: List<PlayStream> = listOf(fakeHttpStream())) =
-        RoomPlayInfoV2Data(
-            roomId = 1718159119,
-            shortId = 0,
-            uid = 1,
-            liveStatus = 1,
-            playUrlInfo =
-                PlayUrlInfo(
-                    playUrl =
-                        PlayUrl(
-                            cid = 1718159119,
-                            qnDesc =
-                                listOf(
-                                    QnDesc(qn = 10000, desc = "原画"),
-                                    QnDesc(qn = 400, desc = "蓝光"),
-                                ),
-                            stream = streams,
-                        ),
-                ),
-        )
+    private fun fakeRoomPlayInfoV2Data(
+        streams: List<PlayStream> = listOf(fakeHttpStream()),
+        qnDesc: List<QnDesc> =
+            listOf(
+                QnDesc(qn = 10000, desc = "原画"),
+                QnDesc(qn = 400, desc = "蓝光"),
+            ),
+    ) = RoomPlayInfoV2Data(
+        roomId = 1718159119,
+        shortId = 0,
+        uid = 1,
+        liveStatus = 1,
+        playUrlInfo =
+            PlayUrlInfo(
+                playUrl =
+                    PlayUrl(
+                        cid = 1718159119,
+                        qnDesc = qnDesc,
+                        stream = streams,
+                    ),
+            ),
+    )
 
     private fun fakeHttpStream(
         formatName: String = "flv",
@@ -415,6 +490,82 @@ class LiveRepositoryUnitTest {
         urlInfos = urlInfos,
         baseUrl = baseUrl,
     )
+
+    /**
+     * 构造含 HDR 档的 v2 流数据：单个 http_stream 下 SDR（flv/avc）+ HDR（fmp4/hevc，hdr_qn=30000）。
+     */
+    private fun fakeHdrRoomPlayInfoV2Data() =
+        RoomPlayInfoV2Data(
+            roomId = 1718159119,
+            shortId = 0,
+            uid = 1,
+            liveStatus = 1,
+            playUrlInfo =
+                PlayUrlInfo(
+                    playUrl =
+                        PlayUrl(
+                            cid = 1718159119,
+                            qnDesc =
+                                listOf(
+                                    QnDesc(qn = 10000, desc = "原画"),
+                                    QnDesc(qn = 400, desc = "蓝光"),
+                                    QnDesc(qn = 30000, desc = "4K", hdrDesc = "HDR", hdrType = 1, eotf = 1),
+                                ),
+                            stream =
+                                listOf(
+                                    PlayStream(
+                                        protocolName = "http_stream",
+                                        format =
+                                            listOf(
+                                                PlayFormat(
+                                                    formatName = "flv",
+                                                    codec =
+                                                        listOf(
+                                                            PlayCodec(
+                                                                codecName = "avc",
+                                                                currentQn = 10000,
+                                                                acceptQn = listOf(10000, 400),
+                                                                baseUrl = "/live.flv",
+                                                                urlInfo =
+                                                                    listOf(
+                                                                        PlayUrlInfoItem(
+                                                                            host = "https://cdn.example",
+                                                                            extra = "?query=1",
+                                                                        ),
+                                                                    ),
+                                                                mediaInfo = MediaInfo(),
+                                                            ),
+                                                        ),
+                                                ),
+                                                PlayFormat(
+                                                    formatName = "fmp4",
+                                                    codec =
+                                                        listOf(
+                                                            PlayCodec(
+                                                                codecName = "hevc",
+                                                                currentQn = 30000,
+                                                                acceptQn = listOf(10000, 400),
+                                                                baseUrl = "/hdr-live.flv",
+                                                                urlInfo =
+                                                                    listOf(
+                                                                        PlayUrlInfoItem(
+                                                                            host = "https://cdn.example",
+                                                                            extra = "?hdr=1",
+                                                                        ),
+                                                                    ),
+                                                                mediaInfo = MediaInfo(width = 3840, height = 2160),
+                                                                hdrQn = 30000,
+                                                                hdrType = 1,
+                                                                videoCodecs = CodecSpec(base = "hvc1.1.6.L120"),
+                                                            ),
+                                                        ),
+                                                ),
+                                            ),
+                                    ),
+                                ),
+                        ),
+                ),
+        )
 
     private fun fakeStream(
         protocol: String,

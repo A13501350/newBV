@@ -34,12 +34,36 @@ data class PlayUrl(
     @SerialName("g_qn_desc")
     val qnDesc: List<QnDesc> = emptyList(),
     val stream: List<PlayStream> = emptyList(),
+    /**
+     * 杜比视界档位 qn（指向 [QnDesc.qn]），无杜比档位为 null。
+     */
+    @SerialName("dolby_qn")
+    val dolbyQn: Int? = null,
+    /**
+     * 服务端判定客户端实际可得的画质。
+     */
+    @SerialName("expected_quality")
+    val expectedQuality: ExpectedQuality? = null,
 )
 
 @Serializable
 data class QnDesc(
     val qn: Int,
     val desc: String = "",
+    /**
+     * HDR 档位徽标文案（如 "HDR"），SDR 档为空串。
+     */
+    @SerialName("hdr_desc")
+    val hdrDesc: String = "",
+    /**
+     * HDR 类型标记，0 = SDR。
+     */
+    @SerialName("hdr_type")
+    val hdrType: Int = 0,
+    /**
+     * 电光转换函数标记（如 PQ/HLG），0 = SDR。
+     */
+    val eotf: Int = 0,
 )
 
 @Serializable
@@ -70,6 +94,52 @@ data class PlayCodec(
     val urlInfo: List<PlayUrlInfoItem> = emptyList(),
     @SerialName("media_info")
     val mediaInfo: MediaInfo = MediaInfo(),
+    /**
+     * 该编码对应的 HDR 档位 qn（HDR 档独立于 [acceptQn] 的 SDR 梯队），无 HDR 为 null。
+     */
+    @SerialName("hdr_qn")
+    val hdrQn: Int? = null,
+    /**
+     * 杜比视界流标记，0 = 非杜比。
+     */
+    @SerialName("dolby_type")
+    val dolbyType: Int = 0,
+    /**
+     * 当前流的 HDR 类型标记，0 = SDR。
+     */
+    @SerialName("hdr_type")
+    val hdrType: Int = 0,
+    /**
+     * RFC 6381 编码串（如 `hvc1.1.6.L120`），用于本机解码能力判定。
+     */
+    @SerialName("video_codecs")
+    val videoCodecs: CodecSpec? = null,
+    /**
+     * 色彩信息：SDR 为 bt709/none，HDR 为 bt2020 + 动态元数据类型。
+     */
+    @SerialName("video_color_info")
+    val videoColorInfo: VideoColorInfo? = null,
+)
+
+@Serializable
+data class CodecSpec(
+    val base: String = "",
+    val ext: List<String> = emptyList(),
+)
+
+@Serializable
+data class VideoColorInfo(
+    val colorspace: String = "",
+    @SerialName("metadata_types")
+    val metadataTypes: List<String> = emptyList(),
+)
+
+@Serializable
+data class ExpectedQuality(
+    val qn: Int = 0,
+    @SerialName("hdr_type")
+    val hdrType: Int = 0,
+    val eotf: Int = 0,
 )
 
 @Serializable
