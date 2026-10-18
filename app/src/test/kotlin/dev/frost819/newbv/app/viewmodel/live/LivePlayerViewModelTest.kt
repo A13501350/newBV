@@ -182,8 +182,8 @@ class LivePlayerViewModelTest {
             advanceUntilIdle()
 
             // Then：不可解的 HDR 档从菜单中隐藏，SDR 档保留
-            val qns = viewModel.uiState.value.availableQualities.map { it.qn }
-            assertThat(qns).containsExactly(10000)
+            val qualities = viewModel.uiState.value.availableQualities
+            assertThat(qualities.map { it.qn }).containsExactly(10000)
         }
 
     @Test
@@ -217,8 +217,8 @@ class LivePlayerViewModelTest {
             advanceUntilIdle()
 
             // Then
-            val qns = viewModel.uiState.value.availableQualities.map { it.qn }
-            assertThat(qns).containsExactly(30000, 10000)
+            val qualities = viewModel.uiState.value.availableQualities
+            assertThat(qualities.map { it.qn }).containsExactly(30000, 10000)
         }
 
     // ── Helpers ──────────────────────────────────────────────
