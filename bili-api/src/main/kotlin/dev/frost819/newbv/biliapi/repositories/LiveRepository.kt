@@ -323,7 +323,7 @@ class LiveRepository {
                     // eotf 仅在编码节点声明了色彩信息时强校验，未声明视为通配
                     val codec =
                         format.codec.find {
-                            it.hdrType != 0 &&
+                            it.isHdrCarrier &&
                                 (
                                     requestedQn <= 0 ||
                                         requestedQn in it.acceptQn ||
@@ -378,7 +378,7 @@ class LiveRepository {
             for (formatName in formats) {
                 val format = stream.format.find { it.formatName == formatName } ?: continue
                 format.codec
-                    .firstOrNull { it.hdrType != 0 && (qn in it.acceptQn || it.hdrQn == qn) }
+                    .firstOrNull { it.isHdrCarrier && (qn in it.acceptQn || it.hdrQn == qn) }
                     ?.let { return it }
             }
         }
@@ -386,7 +386,7 @@ class LiveRepository {
         return playUrl.stream
             .flatMap { it.format }
             .flatMap { it.codec }
-            .firstOrNull { it.hdrType != 0 && (qn in it.acceptQn || it.hdrQn == qn) }
+            .firstOrNull { it.isHdrCarrier && (qn in it.acceptQn || it.hdrQn == qn) }
     }
 
     /** 按 qn 档位推导 HDR 档的分辨率（用于能力判定，非实际 rendition 尺寸）。 */
@@ -400,6 +400,10 @@ class LiveRepository {
             else -> 640 to 360
         }
 }
+
+/** 该编码节点是否携带 HDR 流（HDR10 用 hdrType，HLG 用 eotf，二者任一即视为 HDR 载体）。 */
+private val PlayCodec.isHdrCarrier: Boolean
+    get() = hdrType != 0 || (videoColorInfo?.eotf ?: 0) != 0
 
 /**
  * 直播线路。
