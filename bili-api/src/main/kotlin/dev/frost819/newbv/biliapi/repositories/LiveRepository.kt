@@ -266,8 +266,10 @@ class LiveRepository {
      * 均无匹配时回退到第一个可用编码。
      *
      * [requestedKey] 为 HDR 档（携带 hdrType/eotf 或被 dolby_qn 指向）时，
-     * 先按同一偏好顺序查找携带 HDR 的编码节点（hdr_type 非 0 且 qn 命中），
-     * 找不到（服务端降级）再执行默认逻辑。
+     * 查找携带 HDR 的编码节点（hdr_type 非 0 且 qn 命中），找不到（服务端降级）
+     * 再执行默认逻辑。注意 HDR 的容器偏好与 SDR 不同：B 站 HEVC-in-FLV 是私有
+     * 扩展（codec_id=12），Media3 FlvExtractor 不支持（UnsupportedFormatException），
+     * 因此 HDR 只走 HLS（fmp4 → ts）与 http_stream/fmp4，不选 flv。
      */
     private fun pickBestCodec(
         data: RoomPlayInfoV2Data,
@@ -277,6 +279,12 @@ class LiveRepository {
             listOf(
                 "http_stream" to listOf("flv", "fmp4", "ts"),
                 "http_hls" to listOf("fmp4", "ts", "flv"),
+            )
+        // HDR 容器偏好：flv 被排除（见上），http_stream/fmp4 兜底（实测未出现该组合的 HDR 节点）
+        val hdrCandidates =
+            listOf(
+                "http_hls" to listOf("fmp4", "ts"),
+                "http_stream" to listOf("fmp4"),
             )
         val playUrl = data.playUrlInfo.playUrl
         val streams = playUrl.stream
@@ -291,7 +299,7 @@ class LiveRepository {
                         playUrl.dolbyQn == requestedQn
                 )
         if (hdrRequested) {
-            for ((protocol, formats) in candidates) {
+            for ((protocol, formats) in hdrCandidates) {
                 val stream = streams.find { it.protocolName == protocol } ?: continue
                 for (formatName in formats) {
                     val format = stream.format.find { it.formatName == formatName } ?: continue
