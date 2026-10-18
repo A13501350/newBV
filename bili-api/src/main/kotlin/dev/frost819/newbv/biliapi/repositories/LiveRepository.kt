@@ -245,6 +245,7 @@ class LiveRepository {
                         codecs = carrier?.videoCodecs?.base,
                         width = resW,
                         height = resH,
+                        badge = qnDesc.mediaBaseDesc?.briefDesc?.badge.orEmpty(),
                     )
                 }
 
@@ -462,6 +463,8 @@ data class LiveQuality(
     val codecs: String? = null,
     val width: Int = 0,
     val height: Int = 0,
+    /** 服务端下发的徽标文案（media_base_desc.brief_desc.badge，如 "HDR"），空串表示未下发。 */
+    val badge: String = "",
 ) {
     /**
      * 档位唯一标识：qn * 100 + hdrType * 10 + eotf。
@@ -475,12 +478,17 @@ data class LiveQuality(
     val isHdr: Boolean
         get() = hdrType != 0 || eotf != 0 || isDolby
 
-    /** UI 展示文案：服务端描述未含 HDR/杜比字样时追加徽标后缀，避免重复。 */
+    /** UI 展示文案：服务端描述未含 HDR/杜比字样时追加徽标后缀（优先用 media_base_desc.badge），避免重复。 */
     val displayDesc: String
         get() =
             when {
                 isDolby -> if (desc.contains("杜比")) desc else "$desc·杜比视界"
-                isHdr -> if (desc.contains("HDR", ignoreCase = true)) desc else "$desc·${hdrDesc.ifBlank { "HDR" }}"
+                isHdr ->
+                    if (desc.contains("HDR", ignoreCase = true)) {
+                        desc
+                    } else {
+                        "$desc·${badge.ifBlank { hdrDesc.ifBlank { "HDR" } }}"
+                    }
                 else -> desc
             }
 

@@ -65,6 +65,34 @@ data class QnDesc(
      * 电光转换函数标记（如 PQ/HLG），0 = SDR。
      */
     val eotf: Int = 0,
+    /**
+     * 档位描述扩展（简短描述 + 徽标 / 详细描述 + 标签组），HDR 档由服务端下发。
+     */
+    @SerialName("media_base_desc")
+    val mediaBaseDesc: MediaBaseDesc? = null,
+)
+
+/** 档位描述扩展：[briefDesc] 为简短描述 + 徽标，[detailDesc] 为详细描述 + 标签组。 */
+@Serializable
+data class MediaBaseDesc(
+    @SerialName("brief_desc")
+    val briefDesc: BriefDesc? = null,
+    @SerialName("detail_desc")
+    val detailDesc: DetailDesc? = null,
+)
+
+/** 档位简短描述与徽标（如 desc="4K"、badge="HDR"）。 */
+@Serializable
+data class BriefDesc(
+    val desc: String = "",
+    val badge: String = "",
+)
+
+/** 档位详细描述与标签组（如 desc="4K 极清"、tag=["HDR","高帧率"]）。 */
+@Serializable
+data class DetailDesc(
+    val desc: String = "",
+    val tag: List<String> = emptyList(),
 )
 
 @Serializable
