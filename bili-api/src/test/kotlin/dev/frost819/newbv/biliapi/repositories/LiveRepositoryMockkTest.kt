@@ -476,12 +476,14 @@ class LiveRepositoryUnitTest {
     }
 
     @Test
-    fun `resolvePlayInfo falls back to SDR when HDR only exists in flv`() {
-        // B 站 HEVC-in-FLV（codec_id=12）Media3 FlvExtractor 不支持，HDR 仅存于 flv 时不能选
+    fun `resolvePlayInfo omits HDR rows and falls back to SDR when HDR only exists in flv`() {
+        // B 站 HEVC-in-FLV（codec_id=12）Media3 FlvExtractor 不支持：
+        // HDR 仅存于 flv 时既不产出 HDR 档位行（避免"选中后静默播 SDR"），选流也回退 SDR
         val data = fakeDuplicateQnRoomPlayInfoV2Data(includeHlsHdr = false)
 
         val result = repository.resolvePlayInfo(data, requestedKey = qualityKey(10000, hdrType = 1, eotf = 1))
 
+        assertThat(result.qualities.none { it.isHdr }).isTrue()
         assertThat(result.currentKey).isEqualTo(qualityKey(400))
         assertThat(result.lines[0].url).isEqualTo("https://cdn.example/live.flv?query=1")
     }

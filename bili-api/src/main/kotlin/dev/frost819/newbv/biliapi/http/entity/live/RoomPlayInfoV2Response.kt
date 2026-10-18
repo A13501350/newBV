@@ -26,6 +26,12 @@ data class RoomPlayInfoV2Data(
 data class PlayUrlInfo(
     @SerialName("playurl")
     val playUrl: PlayUrl,
+    /**
+     * 服务端判定客户端实际可得的画质（权威三元组，与选中编码节点的
+     * current_qn/hdr_type/eotf 一致），用于校准当前档位标识。
+     */
+    @SerialName("expected_quality")
+    val expectedQuality: ExpectedQuality? = null,
 )
 
 @Serializable
@@ -39,11 +45,6 @@ data class PlayUrl(
      */
     @SerialName("dolby_qn")
     val dolbyQn: Int? = null,
-    /**
-     * 服务端判定客户端实际可得的画质。
-     */
-    @SerialName("expected_quality")
-    val expectedQuality: ExpectedQuality? = null,
 )
 
 @Serializable
@@ -64,6 +65,34 @@ data class QnDesc(
      * 电光转换函数标记（如 PQ/HLG），0 = SDR。
      */
     val eotf: Int = 0,
+    /**
+     * 档位描述扩展（简短描述 + 徽标 / 详细描述 + 标签组），HDR 档由服务端下发。
+     */
+    @SerialName("media_base_desc")
+    val mediaBaseDesc: MediaBaseDesc? = null,
+)
+
+/** 档位描述扩展：[briefDesc] 为简短描述 + 徽标，[detailDesc] 为详细描述 + 标签组。 */
+@Serializable
+data class MediaBaseDesc(
+    @SerialName("brief_desc")
+    val briefDesc: BriefDesc? = null,
+    @SerialName("detail_desc")
+    val detailDesc: DetailDesc? = null,
+)
+
+/** 档位简短描述与徽标（如 desc="4K"、badge="HDR"）。 */
+@Serializable
+data class BriefDesc(
+    val desc: String = "",
+    val badge: String = "",
+)
+
+/** 档位详细描述与标签组（如 desc="4K 极清"、tag=["HDR","高帧率"]）。 */
+@Serializable
+data class DetailDesc(
+    val desc: String = "",
+    val tag: List<String> = emptyList(),
 )
 
 @Serializable
@@ -121,12 +150,14 @@ data class PlayCodec(
     val videoColorInfo: VideoColorInfo? = null,
 )
 
+/** RFC 6381 编码串描述（如 `hvc1.2.4.L123`），[base] 为主串，[ext] 为扩展档位串。 */
 @Serializable
 data class CodecSpec(
     val base: String = "",
     val ext: List<String> = emptyList(),
 )
 
+/** 视频色彩信息：SDR 为 bt709/none，HDR 为 bt2020 + 动态元数据类型。 */
 @Serializable
 data class VideoColorInfo(
     val colorspace: String = "",
@@ -138,6 +169,7 @@ data class VideoColorInfo(
     val metadataTypes: List<String> = emptyList(),
 )
 
+/** 服务端判定客户端实际可得的画质三元组（位于 playurl_info 层）。 */
 @Serializable
 data class ExpectedQuality(
     val qn: Int = 0,

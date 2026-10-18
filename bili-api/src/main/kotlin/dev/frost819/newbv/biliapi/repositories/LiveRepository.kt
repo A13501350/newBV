@@ -23,6 +23,16 @@ class LiveRepository {
     private val logger = BiliLogger
 
     /**
+     * HDR 容器偏好（选流与载体选取同源）：flv 被排除——B 站 HEVC-in-FLV 为私有
+     * 扩展（codec_id=12），Media3 FlvExtractor 不支持（UnsupportedFormatException）。
+     */
+    private val hdrContainerPreference =
+        listOf(
+            "http_hls" to listOf("fmp4", "ts"),
+            "http_stream" to listOf("fmp4"),
+        )
+
+    /**
      * 获取直播首页模块化列表。
      */
     suspend fun getLiveList(): LiveListResponse = BiliLiveHttpApi.getLiveList().getResponseData()
@@ -172,21 +182,38 @@ class LiveRepository {
         requestedKey: Int = 0,
     ): LivePlayInfo {
         val playUrl = data.playUrlInfo.playUrl
-        val allCodecs =
-            playUrl.stream
-                .flatMap { it.format }
-                .flatMap { it.codec }
+        // HDR 流只从可播放容器展开：flv 的 HEVC 是私有扩展（codec_id=12），Media3 不支持，
+        // 若纳入会产出"选中后静默播 SDR"的档位行。容器集合与 pickBestCodec 的 HDR 偏好同源
+        val hdrContainers =
+            hdrContainerPreference
+                .flatMap { (protocol, formats) -> formats.map { protocol to it } }
+                .toSet()
 
         // 候选档位：编码节点 accept_qn × (hdrType, eotf) 展开；hdr_qn 指针补充旧契约 HDR 档
         val candidates =
             buildSet {
-                for (codec in allCodecs) {
-                    val eotf = codec.videoColorInfo?.eotf ?: 0
-                    for (qn in codec.acceptQn) {
-                        add(Triple(qn, codec.hdrType, eotf))
-                    }
-                    codec.hdrQn?.let { hdrQn ->
-                        add(Triple(hdrQn, codec.hdrType.takeIf { it != 0 } ?: 1, eotf))
+                for (stream in playUrl.stream) {
+                    for (format in stream.format) {
+                        val inHdrContainer = (stream.protocolName to format.formatName) in hdrContainers
+                        for (codec in format.codec) {
+                            if (codec.isHdrCarrier && !inHdrContainer) continue
+                            val eotf = codec.videoColorInfo?.eotf ?: 0
+                            // LiveQuality.key 按 qn*100+hdrType*10+eotf 编码，hdrType/eotf 须为个位数，
+                            // 越界会串档（qnOf=key/100 直接拼请求参数），在源头丢弃非法节点
+                            if (codec.hdrType !in 0..9 || eotf !in 0..9) {
+                                logger.warn {
+                                    "live: skip codec(${codec.codecName}) out-of-range hdr marker " +
+                                        "hdrType=${codec.hdrType}, eotf=$eotf"
+                                }
+                                continue
+                            }
+                            for (qn in codec.acceptQn) {
+                                add(Triple(qn, codec.hdrType, eotf))
+                            }
+                            codec.hdrQn?.let { hdrQn ->
+                                add(Triple(hdrQn, codec.hdrType.takeIf { it != 0 } ?: 1, eotf))
+                            }
+                        }
                     }
                 }
             }
@@ -200,10 +227,13 @@ class LiveRepository {
                     val qnDesc = findQnDesc(playUrl.qnDesc, qn, hdrType, eotf) ?: return@mapNotNull null
                     val carrier =
                         if (hdrType != 0 || eotf != 0) {
-                            allCodecs.firstOrNull { it.hdrType != 0 && (qn in it.acceptQn || it.hdrQn == qn) }
+                            findHdrCarrier(playUrl, qn)
                         } else {
                             null
                         }
+                    // HDR 档分辨率按 qn 档位推导：编码节点 media_info 描述的是当前 rendition，
+                    // 不是该档实际能拉到的尺寸（4K 档若沿用 1080p 提示会漏过能力过滤）
+                    val (resW, resH) = if (carrier != null) hdrResolution(qn) else (0 to 0)
                     LiveQuality(
                         qn = qn,
                         desc = qnDesc.desc,
@@ -213,8 +243,9 @@ class LiveRepository {
                         isDolby = playUrl.dolbyQn == qn || (carrier?.dolbyType ?: 0) != 0,
                         codecName = carrier?.codecName,
                         codecs = carrier?.videoCodecs?.base,
-                        width = carrier?.mediaInfo?.width ?: 0,
-                        height = carrier?.mediaInfo?.height ?: 0,
+                        width = resW,
+                        height = resH,
+                        badge = qnDesc.mediaBaseDesc?.briefDesc?.badge.orEmpty(),
                     )
                 }
 
@@ -230,10 +261,19 @@ class LiveRepository {
                 .mapIndexed { index, url -> LivePlayLine(order = index + 1, url = url) }
 
         val codecEotf = codec.videoColorInfo?.eotf ?: 0
+        // 当前档位标识：优先用服务端权威三元组 expected_quality 校准，其次按编码节点
+        // 三元组匹配；兜底取列表首项，保证 currentKey 一定存在于 qualities（不合成悬空 key）
+        val expected = data.playUrlInfo.expectedQuality
         val currentKey =
-            qualities
-                .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
-                ?.key ?: (codec.currentQn * 100 + codec.hdrType * 10 + codecEotf)
+            expected
+                ?.let { e ->
+                    qualities.firstOrNull { it.qn == e.qn && it.hdrType == e.hdrType && it.eotf == e.eotf }?.key
+                }
+                ?: qualities
+                    .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
+                    ?.key
+                ?: qualities.firstOrNull()?.key
+                ?: 0
         return LivePlayInfo(
             currentQn = codec.currentQn,
             currentKey = currentKey,
@@ -280,12 +320,7 @@ class LiveRepository {
                 "http_stream" to listOf("flv", "fmp4", "ts"),
                 "http_hls" to listOf("fmp4", "ts", "flv"),
             )
-        // HDR 容器偏好：flv 被排除（见上），http_stream/fmp4 兜底（实测未出现该组合的 HDR 节点）
-        val hdrCandidates =
-            listOf(
-                "http_hls" to listOf("fmp4", "ts"),
-                "http_stream" to listOf("fmp4"),
-            )
+        val hdrCandidates = hdrContainerPreference
         val playUrl = data.playUrlInfo.playUrl
         val streams = playUrl.stream
 
@@ -306,7 +341,7 @@ class LiveRepository {
                     // eotf 仅在编码节点声明了色彩信息时强校验，未声明视为通配
                     val codec =
                         format.codec.find {
-                            it.hdrType != 0 &&
+                            it.isHdrCarrier &&
                                 (
                                     requestedQn <= 0 ||
                                         requestedQn in it.acceptQn ||
@@ -346,7 +381,47 @@ class LiveRepository {
      * 从 [getLivePlayInfo] 提取，失败时返回空列表。
      */
     suspend fun getAvailableQualities(roomId: Int): List<LiveQuality> = getLivePlayInfo(roomId, 0).qualities
+
+    /**
+     * 查找指定 qn 的 HDR 载体编码节点，按 [hdrContainerPreference] 容器偏好搜索。
+     *
+     * 优先取播放时实际会用的容器（HLS fmp4/ts），找不到时回退任意容器中的 HDR 节点。
+     */
+    private fun findHdrCarrier(
+        playUrl: PlayUrl,
+        qn: Int,
+    ): PlayCodec? {
+        for ((protocol, formats) in hdrContainerPreference) {
+            val stream = playUrl.stream.find { it.protocolName == protocol } ?: continue
+            for (formatName in formats) {
+                val format = stream.format.find { it.formatName == formatName } ?: continue
+                format.codec
+                    .firstOrNull { it.isHdrCarrier && (qn in it.acceptQn || it.hdrQn == qn) }
+                    ?.let { return it }
+            }
+        }
+        // 回退：任意容器中的 HDR 节点（仅用于展示提示，不保证可播放）
+        return playUrl.stream
+            .flatMap { it.format }
+            .flatMap { it.codec }
+            .firstOrNull { it.isHdrCarrier && (qn in it.acceptQn || it.hdrQn == qn) }
+    }
+
+    /** 按 qn 档位推导 HDR 档的分辨率（用于能力判定，非实际 rendition 尺寸）。 */
+    private fun hdrResolution(qn: Int): Pair<Int, Int> =
+        when {
+            qn >= 20000 -> 3840 to 2160
+            qn >= 15000 -> 2560 to 1440
+            qn >= 400 -> 1920 to 1080
+            qn >= 250 -> 1280 to 720
+            qn >= 150 -> 854 to 480
+            else -> 640 to 360
+        }
 }
+
+/** 该编码节点是否携带 HDR 流（HDR10 用 hdrType，HLG 用 eotf，二者任一即视为 HDR 载体）。 */
+private val PlayCodec.isHdrCarrier: Boolean
+    get() = hdrType != 0 || (videoColorInfo?.eotf ?: 0) != 0
 
 /**
  * 直播线路。
@@ -388,10 +463,13 @@ data class LiveQuality(
     val codecs: String? = null,
     val width: Int = 0,
     val height: Int = 0,
+    /** 服务端下发的徽标文案（media_base_desc.brief_desc.badge，如 "HDR"），空串表示未下发。 */
+    val badge: String = "",
 ) {
     /**
      * 档位唯一标识：qn * 100 + hdrType * 10 + eotf。
-     * qn ≤ 30000、hdrType/eotf 为个位数，不会溢出，且可无损还原。
+     * qn ≤ 30000、hdrType/eotf 为个位数（生成处已做范围守护，越界节点不会进入候选），
+     * 不会溢出，且可无损还原。
      */
     val key: Int
         get() = qn * 100 + hdrType * 10 + eotf
@@ -400,12 +478,17 @@ data class LiveQuality(
     val isHdr: Boolean
         get() = hdrType != 0 || eotf != 0 || isDolby
 
-    /** UI 展示文案：服务端描述未含 HDR/杜比字样时追加徽标后缀，避免重复。 */
+    /** UI 展示文案：服务端描述未含 HDR/杜比字样时追加徽标后缀（优先用 media_base_desc.badge），避免重复。 */
     val displayDesc: String
         get() =
             when {
                 isDolby -> if (desc.contains("杜比")) desc else "$desc·杜比视界"
-                isHdr -> if (desc.contains("HDR", ignoreCase = true)) desc else "$desc·${hdrDesc.ifBlank { "HDR" }}"
+                isHdr ->
+                    if (desc.contains("HDR", ignoreCase = true)) {
+                        desc
+                    } else {
+                        "$desc·${badge.ifBlank { hdrDesc.ifBlank { "HDR" } }}"
+                    }
                 else -> desc
             }
 
