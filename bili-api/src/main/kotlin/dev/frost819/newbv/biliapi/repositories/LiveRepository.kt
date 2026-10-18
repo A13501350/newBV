@@ -23,6 +23,16 @@ class LiveRepository {
     private val logger = BiliLogger
 
     /**
+     * HDR 容器偏好（选流与载体选取同源）：flv 被排除——B 站 HEVC-in-FLV 为私有
+     * 扩展（codec_id=12），Media3 FlvExtractor 不支持（UnsupportedFormatException）。
+     */
+    private val hdrContainerPreference =
+        listOf(
+            "http_hls" to listOf("fmp4", "ts"),
+            "http_stream" to listOf("fmp4"),
+        )
+
+    /**
      * 获取直播首页模块化列表。
      */
     suspend fun getLiveList(): LiveListResponse = BiliLiveHttpApi.getLiveList().getResponseData()
@@ -200,10 +210,13 @@ class LiveRepository {
                     val qnDesc = findQnDesc(playUrl.qnDesc, qn, hdrType, eotf) ?: return@mapNotNull null
                     val carrier =
                         if (hdrType != 0 || eotf != 0) {
-                            allCodecs.firstOrNull { it.hdrType != 0 && (qn in it.acceptQn || it.hdrQn == qn) }
+                            findHdrCarrier(playUrl, qn)
                         } else {
                             null
                         }
+                    // HDR 档分辨率按 qn 档位推导：编码节点 media_info 描述的是当前 rendition，
+                    // 不是该档实际能拉到的尺寸（4K 档若沿用 1080p 提示会漏过能力过滤）
+                    val (resW, resH) = if (carrier != null) hdrResolution(qn) else (0 to 0)
                     LiveQuality(
                         qn = qn,
                         desc = qnDesc.desc,
@@ -213,8 +226,8 @@ class LiveRepository {
                         isDolby = playUrl.dolbyQn == qn || (carrier?.dolbyType ?: 0) != 0,
                         codecName = carrier?.codecName,
                         codecs = carrier?.videoCodecs?.base,
-                        width = carrier?.mediaInfo?.width ?: 0,
-                        height = carrier?.mediaInfo?.height ?: 0,
+                        width = resW,
+                        height = resH,
                     )
                 }
 
@@ -289,12 +302,7 @@ class LiveRepository {
                 "http_stream" to listOf("flv", "fmp4", "ts"),
                 "http_hls" to listOf("fmp4", "ts", "flv"),
             )
-        // HDR 容器偏好：flv 被排除（见上），http_stream/fmp4 兜底（实测未出现该组合的 HDR 节点）
-        val hdrCandidates =
-            listOf(
-                "http_hls" to listOf("fmp4", "ts"),
-                "http_stream" to listOf("fmp4"),
-            )
+        val hdrCandidates = hdrContainerPreference
         val playUrl = data.playUrlInfo.playUrl
         val streams = playUrl.stream
 
@@ -355,6 +363,42 @@ class LiveRepository {
      * 从 [getLivePlayInfo] 提取，失败时返回空列表。
      */
     suspend fun getAvailableQualities(roomId: Int): List<LiveQuality> = getLivePlayInfo(roomId, 0).qualities
+
+    /**
+     * 查找指定 qn 的 HDR 载体编码节点，按 [hdrContainerPreference] 容器偏好搜索。
+     *
+     * 优先取播放时实际会用的容器（HLS fmp4/ts），找不到时回退任意容器中的 HDR 节点。
+     */
+    private fun findHdrCarrier(
+        playUrl: PlayUrl,
+        qn: Int,
+    ): PlayCodec? {
+        for ((protocol, formats) in hdrContainerPreference) {
+            val stream = playUrl.stream.find { it.protocolName == protocol } ?: continue
+            for (formatName in formats) {
+                val format = stream.format.find { it.formatName == formatName } ?: continue
+                format.codec
+                    .firstOrNull { it.hdrType != 0 && (qn in it.acceptQn || it.hdrQn == qn) }
+                    ?.let { return it }
+            }
+        }
+        // 回退：任意容器中的 HDR 节点（仅用于展示提示，不保证可播放）
+        return playUrl.stream
+            .flatMap { it.format }
+            .flatMap { it.codec }
+            .firstOrNull { it.hdrType != 0 && (qn in it.acceptQn || it.hdrQn == qn) }
+    }
+
+    /** 按 qn 档位推导 HDR 档的分辨率（用于能力判定，非实际 rendition 尺寸）。 */
+    private fun hdrResolution(qn: Int): Pair<Int, Int> =
+        when {
+            qn >= 20000 -> 3840 to 2160
+            qn >= 15000 -> 2560 to 1440
+            qn >= 400 -> 1920 to 1080
+            qn >= 250 -> 1280 to 720
+            qn >= 150 -> 854 to 480
+            else -> 640 to 360
+        }
 }
 
 /**
