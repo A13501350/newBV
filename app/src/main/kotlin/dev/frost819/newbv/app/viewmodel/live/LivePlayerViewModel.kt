@@ -479,6 +479,11 @@ class LivePlayerViewModel
         private fun filterDecodableQualities(qualities: List<LiveQuality>): List<LiveQuality> =
             qualities.filter { quality ->
                 if (!quality.isHdr) return@filter true
+                // 无解码提示时无法做保守判定（判 AVC 反而最不保守），直接放行
+                if (quality.codecName == null && quality.codecs == null) {
+                    logger.info { "HDR quality ${quality.key}(${quality.displayDesc}) passed: no decode hints" }
+                    return@filter true
+                }
                 val decodable = videoCapabilityProvider.isDecodable(quality.toDecodeProfile())
                 if (!decodable) {
                     logger.info { "HDR quality ${quality.key}(${quality.displayDesc}) filtered: not decodable" }
@@ -504,8 +509,9 @@ class LivePlayerViewModel
         /**
          * 从 HDR 档位携带的解码提示构造 [VideoDecodeProfile]。
          *
-         * 编码判定：RFC 6381 串以 dvh1/dvhe 开头为杜比视界，否则按编码名
-         * （hevc/av1）识别，缺省按 AVC（查询结果保守，不影响菜单展示之外的逻辑）。
+         * 编码判定：RFC 6381 串以 dvh1/dvhe 开头为杜比视界，否则按编码名（hevc/av1）识别。
+         * 调用方已保证 codecName/codecs 至少其一非空（无提示的 HDR 档已提前放行），
+         * 此处 else 仅兜住 codecName 无法识别的罕见情形。
          */
         private fun LiveQuality.toDecodeProfile(): VideoDecodeProfile {
             val codec =
