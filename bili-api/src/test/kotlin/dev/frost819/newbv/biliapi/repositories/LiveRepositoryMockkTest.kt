@@ -513,6 +513,38 @@ class LiveRepositoryUnitTest {
         assertThat(hlg.codecs).isEqualTo("hvc1.2.4.L120")
     }
 
+    @Test
+    fun `resolvePlayInfo labels dolby only on HDR rows of dolby qn`() {
+        val data =
+            fakeRoomPlayInfoV2DataWith(
+                qnDesc =
+                    listOf(
+                        QnDesc(qn = 10000, desc = "原画"),
+                        QnDesc(qn = 10000, desc = "原画/杜比", hdrDesc = "HDR", hdrType = 1, eotf = 1),
+                    ),
+                streams =
+                    listOf(
+                        fakeHlsFmp4Stream(
+                            listOf(
+                                fakeSdrCodec(),
+                                fakeHdrCodec("/prohdr.m3u8", hdrType = 1, eotf = 1, codecs = "hvc1.2.4.L123"),
+                            ),
+                        ),
+                    ),
+                dolbyQn = 10000,
+            )
+
+        val result = repository.resolvePlayInfo(data)
+
+        // dolby_qn 是 qn 级指针，同 qn 的 SDR 行不得被标成杜比档（否则菜单多出一条幽灵档位行）
+        val sdr = result.qualities.first { it.key == qualityKey(10000) }
+        assertThat(sdr.isDolby).isFalse()
+        assertThat(sdr.isHdr).isFalse()
+
+        val hdr = result.qualities.first { it.key == qualityKey(10000, hdrType = 1, eotf = 1) }
+        assertThat(hdr.isDolby).isTrue()
+    }
+
     private fun <T> fakeResponse(data: T) =
         BiliResponse(
             code = 0,

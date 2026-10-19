@@ -249,6 +249,11 @@ class LiveRepository {
                         findQnDesc(playUrl.qnDesc, candidate.qn, candidate.hdrType, candidate.eotf)
                             ?: return@mapNotNull null
                     val carrier = candidate.codec
+                    val isHdrRow = candidate.hdrType != 0 || candidate.eotf != 0
+                    // 杜比视界属 HDR 格式：dolby_qn 是 qn 级指针，只认 HDR 行——若照旧对所有行
+                    // 生效，同 qn 的 SDR 行会被一并标成杜比档，菜单里多出一条文案雷同的幽灵行
+                    val isDolbyRow =
+                        (carrier?.dolbyType ?: 0) != 0 || (isHdrRow && playUrl.dolbyQn == candidate.qn)
                     // HDR 档分辨率按 qn 档位推导：编码节点 media_info 描述的是当前 rendition，
                     // 不是该档实际能拉到的尺寸（4K 档若沿用 1080p 提示会漏过能力过滤）
                     val (resW, resH) = if (carrier != null) hdrResolution(candidate.qn) else (0 to 0)
@@ -258,7 +263,7 @@ class LiveRepository {
                         hdrType = candidate.hdrType,
                         eotf = candidate.eotf,
                         hdrDesc = qnDesc.hdrDesc,
-                        isDolby = playUrl.dolbyQn == candidate.qn || (carrier?.dolbyType ?: 0) != 0,
+                        isDolby = isDolbyRow,
                         codecName = carrier?.codecName,
                         codecs = carrier?.videoCodecs?.base,
                         width = resW,
