@@ -499,6 +499,72 @@ class LiveRepositoryUnitTest {
         assertThat(result.lines[0].url).isEqualTo("https://cdn.example/live.flv?query=1")
     }
 
+    @Test
+    fun `resolvePlayInfo keeps per-variant decode hints for same-qn HDR10 and HLG rows`() {
+        val result = repository.resolvePlayInfo(fakeMultiHdrVariantRoomPlayInfoV2Data())
+
+        // 同 qn 的 HDR10 与 HLG 是两个独立编码节点，各自携带自己的 RFC 6381 串
+        val hdr10 = result.qualities.first { it.key == qualityKey(10000, hdrType = 1, eotf = 1) }
+        assertThat(hdr10.codecName).isEqualTo("hevc")
+        assertThat(hdr10.codecs).isEqualTo("hvc1.2.4.L123")
+
+        val hlg = result.qualities.first { it.key == qualityKey(10000, eotf = 2) }
+        assertThat(hlg.codecName).isEqualTo("hevc")
+        assertThat(hlg.codecs).isEqualTo("hvc1.2.4.L120")
+    }
+
+    @Test
+    fun `resolvePlayInfo labels dolby only on HDR rows of dolby qn`() {
+        val data =
+            fakeRoomPlayInfoV2DataWith(
+                qnDesc =
+                    listOf(
+                        QnDesc(qn = 10000, desc = "原画"),
+                        QnDesc(qn = 10000, desc = "原画/杜比", hdrDesc = "HDR", hdrType = 1, eotf = 1),
+                    ),
+                streams =
+                    listOf(
+                        fakeHlsFmp4Stream(
+                            listOf(
+                                fakeSdrCodec(),
+                                fakeHdrCodec("/prohdr.m3u8", hdrType = 1, eotf = 1, codecs = "hvc1.2.4.L123"),
+                            ),
+                        ),
+                    ),
+                dolbyQn = 10000,
+            )
+
+        val result = repository.resolvePlayInfo(data)
+
+        // dolby_qn 是 qn 级指针，同 qn 的 SDR 行不得被标成杜比档（否则菜单多出一条幽灵档位行）
+        val sdr = result.qualities.first { it.key == qualityKey(10000) }
+        assertThat(sdr.isDolby).isFalse()
+        assertThat(sdr.isHdr).isFalse()
+
+        val hdr = result.qualities.first { it.key == qualityKey(10000, hdrType = 1, eotf = 1) }
+        assertThat(hdr.isDolby).isTrue()
+    }
+
+    @Test
+    fun `resolvePlayInfo drops phantom HDR row when hdr_qn set on non-HDR codec`() {
+        val data =
+            fakeRoomPlayInfoV2DataWith(
+                qnDesc =
+                    listOf(
+                        QnDesc(qn = 10000, desc = "原画"),
+                        QnDesc(qn = 30000, desc = "4K", hdrDesc = "HDR", hdrType = 1, eotf = 1),
+                    ),
+                streams = listOf(fakeHlsFmp4Stream(listOf(fakeSdrCodec().copy(hdrQn = 30000)))),
+            )
+
+        val result = repository.resolvePlayInfo(data)
+
+        // 旧契约 hdr_qn 只对 HDR 载体节点有效：SDR 节点带 hdr_qn 产出的档位没有载体提示，
+        // 选中后必然回退 SDR，只能算幽灵档位行
+        assertThat(result.qualities.none { it.isHdr }).isTrue()
+        assertThat(result.qualities.map { it.qn }).containsExactly(10000)
+    }
+
     private fun <T> fakeResponse(data: T) =
         BiliResponse(
             code = 0,
@@ -771,4 +837,82 @@ class LiveRepositoryUnitTest {
                 ),
             ),
     )
+
+    /** 构造可自定义 qn_desc / stream / dolby_qn 的 v2 流数据。 */
+    private fun fakeRoomPlayInfoV2DataWith(
+        qnDesc: List<QnDesc>,
+        streams: List<PlayStream>,
+        dolbyQn: Int? = null,
+    ) = RoomPlayInfoV2Data(
+        roomId = 13242941,
+        shortId = 0,
+        uid = 1,
+        liveStatus = 1,
+        playUrlInfo =
+            PlayUrlInfo(
+                playUrl =
+                    PlayUrl(
+                        cid = 13242941,
+                        qnDesc = qnDesc,
+                        stream = streams,
+                        dolbyQn = dolbyQn,
+                    ),
+            ),
+    )
+
+    /** 构造单 http_hls/fmp4 format 的 stream。 */
+    private fun fakeHlsFmp4Stream(codecs: List<PlayCodec>) =
+        PlayStream(
+            protocolName = "http_hls",
+            format = listOf(PlayFormat(formatName = "fmp4", codec = codecs)),
+        )
+
+    /** 构造 http_hls/fmp4 下的 SDR 编码节点（avc）。 */
+    private fun fakeSdrCodec(acceptQn: List<Int> = listOf(10000)) =
+        PlayCodec(
+            codecName = "avc",
+            currentQn = 10000,
+            acceptQn = acceptQn,
+            baseUrl = "/live.m3u8",
+            urlInfo = listOf(PlayUrlInfoItem(host = "https://cdn.example", extra = "?qn=1")),
+        )
+
+    /** 构造 http_hls/fmp4 下的 HDR 载体编码节点（hevc + bt2020）。 */
+    private fun fakeHdrCodec(
+        baseUrl: String,
+        hdrType: Int,
+        eotf: Int,
+        codecs: String,
+        acceptQn: List<Int> = listOf(10000),
+    ) = PlayCodec(
+        codecName = "hevc",
+        currentQn = 10000,
+        acceptQn = acceptQn,
+        baseUrl = baseUrl,
+        urlInfo = listOf(PlayUrlInfoItem(host = "https://cdn.example", extra = "?hdr=1")),
+        hdrType = hdrType,
+        videoCodecs = CodecSpec(base = codecs),
+        videoColorInfo = VideoColorInfo(colorspace = "bt2020", eotf = eotf),
+    )
+
+    /** 构造同 qn 并存 HDR10 与 HLG 两个编码节点的 v2 流数据（两节点 codecs 串不同）。 */
+    private fun fakeMultiHdrVariantRoomPlayInfoV2Data() =
+        fakeRoomPlayInfoV2DataWith(
+            qnDesc =
+                listOf(
+                    QnDesc(qn = 10000, desc = "原画"),
+                    QnDesc(qn = 10000, desc = "原画/HDR10", hdrDesc = "HDR", hdrType = 1, eotf = 1),
+                    QnDesc(qn = 10000, desc = "原画/HLG", hdrDesc = "HDR", eotf = 2),
+                ),
+            streams =
+                listOf(
+                    fakeHlsFmp4Stream(
+                        listOf(
+                            fakeSdrCodec(),
+                            fakeHdrCodec("/prohdr10.m3u8", hdrType = 1, eotf = 1, codecs = "hvc1.2.4.L123"),
+                            fakeHdrCodec("/prohlg.m3u8", hdrType = 0, eotf = 2, codecs = "hvc1.2.4.L120"),
+                        ),
+                    ),
+                ),
+        )
 }
