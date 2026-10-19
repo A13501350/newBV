@@ -223,6 +223,10 @@ object BiliLiveHttpApi {
                 parameter("format", "0,1,2")
                 parameter("codec", "0,1,2")
                 parameter("qn", qn)
+                // 能力声明：客户端支持的 EOTF（0=SDR, 1=PQ/HDR10, 2=HLG）。
+                // 缺少该参数时服务端不下发 HDR 清单（g_qn_desc 同 qn 重复条目与
+                // hdr_type 非 0 的编码节点均不出现），与网页版播放器行为一致
+                parameter("eotf", "0,1,2")
                 parameter("platform", "web")
                 parameter("ptype", 8)
             }.body()

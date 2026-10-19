@@ -10,15 +10,19 @@ import com.kuaishou.akdanmaku.data.DanmakuItemData
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.frost819.newbv.app.ui.component.livecard.formatOnlineCount
+import dev.frost819.newbv.app.util.VideoCapabilityProvider
+import dev.frost819.newbv.app.util.VideoDecodeProfile
 import dev.frost819.newbv.biliapi.http.entity.live.DanmakuEvent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveEvent
 import dev.frost819.newbv.biliapi.http.entity.live.OnlineRankCountEvent
 import dev.frost819.newbv.biliapi.repositories.LivePlayInfo
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
+import dev.frost819.newbv.biliapi.repositories.LiveQuality
 import dev.frost819.newbv.biliapi.repositories.LiveRepository
 import dev.frost819.newbv.biliapi.websocket.LiveDataWebSocket
 import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.data.datastore.Prefs
+import dev.frost819.newbv.data.datastore.VideoCodec
 import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.VideoPlayerListener
 import dev.frost819.newbv.player.VideoPlayerOptions
@@ -64,7 +68,8 @@ data class LivePlayerUiState(
     val playerState: LivePlayerState = LivePlayerState.Idle,
     val isBuffering: Boolean = false,
     val errorMessage: String? = null,
-    val availableQualities: List<Pair<Int, String>> = emptyList(),
+    val availableQualities: List<LiveQuality> = emptyList(),
+    /** 当前画质档位标识（[LiveQuality.key]，qn * 100 + hdrType * 10 + eotf）。 */
     val currentQuality: Int = 0,
     val availableLines: List<LivePlayLine> = emptyList(),
     val currentLine: Int = 0,
@@ -84,6 +89,7 @@ class LivePlayerViewModel
     constructor(
         private val liveRepository: LiveRepository,
         private val exoPlayerFactory: ExoPlayerFactory,
+        private val videoCapabilityProvider: VideoCapabilityProvider,
     ) : ViewModel() {
         private val logger = Loggers.get("LivePlayerViewModel")
 
@@ -228,8 +234,8 @@ class LivePlayerViewModel
                         newState
                     }
 
-                    val requestedQn = _uiState.value.currentQuality.takeIf { it > 0 } ?: 0
-                    val playInfo = liveRepository.getLivePlayInfo(realRoomId, requestedQn)
+                    val requestedKey = _uiState.value.currentQuality.takeIf { it > 0 } ?: 0
+                    val playInfo = liveRepository.getLivePlayInfo(realRoomId, requestedKey)
                     val line = resolveLine(playInfo, _uiState.value.currentLine)
                     if (line == null) {
                         _uiState.update {
@@ -242,9 +248,10 @@ class LivePlayerViewModel
                     }
 
                     _uiState.update {
+                        val qualities = filterDecodableQualities(playInfo.qualities)
                         it.copy(
-                            availableQualities = playInfo.qualities,
-                            currentQuality = playInfo.currentQn.takeIf { qn -> qn > 0 } ?: requestedQn,
+                            availableQualities = qualities,
+                            currentQuality = resolveCurrentKey(qualities, playInfo.currentKey, requestedKey),
                             availableLines = playInfo.lines,
                             currentLine = line.order,
                         )
@@ -319,8 +326,8 @@ class LivePlayerViewModel
                                 appendLine("stream: ${player.streamProtocol}")
                                 val qnDesc =
                                     state.availableQualities
-                                        .firstOrNull { it.first == state.currentQuality }
-                                        ?.second
+                                        .firstOrNull { it.key == state.currentQuality }
+                                        ?.displayDesc
                                 appendLine("quality: ${qnDesc ?: "?"}(${state.currentQuality})")
                                 appendLine("line: ${state.currentLine}/${state.availableLines.size}")
                                 appendLine("roomId: ${state.realRoomId}")
@@ -398,11 +405,13 @@ class LivePlayerViewModel
         /**
          * 切换画质。
          *
-         * 切换后线路重置为第一条（qn 变化会导致可用线路集合变化）。
+         * 切换后线路重置为第一条（档位变化会导致可用线路集合变化）。
+         *
+         * @param key 目标画质档位标识（[LiveQuality.key]）
          */
-        fun changeQuality(qn: Int) {
-            _uiState.update { it.copy(currentQuality = qn, currentLine = 0) }
-            reloadAndPlay(qn)
+        fun changeQuality(key: Int) {
+            _uiState.update { it.copy(currentQuality = key, currentLine = 0) }
+            reloadAndPlay(key)
         }
 
         /**
@@ -421,22 +430,25 @@ class LivePlayerViewModel
         /**
          * 重新拉取直播流信息并播放当前选中的线路。
          *
-         * @param qn 目标画质（0 = 自动）
+         * @param key 目标画质档位标识（[LiveQuality.key]，0 = 自动）
          */
-        private fun reloadAndPlay(qn: Int) {
+        private fun reloadAndPlay(key: Int) {
             val realRoomId = _uiState.value.realRoomId
             if (realRoomId == 0) return
 
             viewModelScope.launch {
                 runCatching {
-                    val playInfo = liveRepository.getLivePlayInfo(realRoomId, qn)
+                    val playInfo = liveRepository.getLivePlayInfo(realRoomId, key)
                     val line =
                         resolveLine(playInfo, _uiState.value.currentLine)
                             ?: error("获取直播流地址失败")
                     _uiState.update {
+                        val qualities =
+                            filterDecodableQualities(playInfo.qualities)
+                                .ifEmpty { it.availableQualities }
                         it.copy(
-                            availableQualities = playInfo.qualities.ifEmpty { it.availableQualities },
-                            currentQuality = playInfo.currentQn.takeIf { current -> current > 0 } ?: qn,
+                            availableQualities = qualities,
+                            currentQuality = resolveCurrentKey(qualities, playInfo.currentKey, key),
                             availableLines = playInfo.lines,
                             currentLine = line.order,
                         )
@@ -456,6 +468,66 @@ class LivePlayerViewModel
                     }
                 }
             }
+        }
+
+        /**
+         * 过滤掉本机无法解码的 HDR 画质档位。
+         *
+         * SDR 档始终保留（维持既有行为）；HDR 档按携带它的编码（通常为 HEVC/AV1/杜比视界）
+         * 查询本机解码能力，不可解则从画质菜单中隐藏，避免用户选中后播放失败。
+         */
+        private fun filterDecodableQualities(qualities: List<LiveQuality>): List<LiveQuality> =
+            qualities.filter { quality ->
+                if (!quality.isHdr) return@filter true
+                // 无解码提示时无法做保守判定（判 AVC 反而最不保守），直接放行
+                if (quality.codecName == null && quality.codecs == null) {
+                    logger.info { "HDR quality ${quality.key}(${quality.displayDesc}) passed: no decode hints" }
+                    return@filter true
+                }
+                val decodable = videoCapabilityProvider.isDecodable(quality.toDecodeProfile())
+                if (!decodable) {
+                    logger.info { "HDR quality ${quality.key}(${quality.displayDesc}) filtered: not decodable" }
+                }
+                decodable
+            }
+
+        /**
+         * 将当前档位标识重映射到过滤后的画质列表内。
+         *
+         * 若 [currentKey] 对应的档位被能力过滤移除（或服务端降级后不存在），
+         * 回退到列表首项（最高可用档），保证菜单选中态与续播请求的 key 有效。
+         */
+        private fun resolveCurrentKey(
+            qualities: List<LiveQuality>,
+            currentKey: Int,
+            fallbackKey: Int,
+        ): Int =
+            currentKey.takeIf { k -> k > 0 && qualities.any { it.key == k } }
+                ?: qualities.firstOrNull()?.key
+                ?: fallbackKey
+
+        /**
+         * 从 HDR 档位携带的解码提示构造 [VideoDecodeProfile]。
+         *
+         * 编码判定：RFC 6381 串以 dvh1/dvhe 开头为杜比视界，否则按编码名（hevc/av1）识别。
+         * 调用方已保证 codecName/codecs 至少其一非空（无提示的 HDR 档已提前放行），
+         * 此处 else 仅兜住 codecName 无法识别的罕见情形。
+         */
+        private fun LiveQuality.toDecodeProfile(): VideoDecodeProfile {
+            val codec =
+                when {
+                    codecs?.startsWith("dvh1") == true || codecs?.startsWith("dvhe") == true -> VideoCodec.DVH1
+                    codecName?.contains("hevc") == true -> VideoCodec.HEVC
+                    codecName?.contains("av1") == true -> VideoCodec.AV1
+                    else -> VideoCodec.AVC
+                }
+            return VideoDecodeProfile(
+                codec = codec,
+                width = width,
+                height = height,
+                frameRate = null,
+                codecs = codecs,
+            )
         }
 
         /**
