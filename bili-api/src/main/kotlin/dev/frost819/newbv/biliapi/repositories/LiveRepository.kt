@@ -473,11 +473,11 @@ data class LivePlayLine(
  * @param hdrType HDR 类型标记，0 = SDR
  * @param eotf 电光转换函数标记，0 = SDR，1 = PQ(HDR10)，2 = HLG
  * @param hdrDesc HDR 徽标文案（如 "HDR"），SDR 为空串
- * @param isDolby 是否为杜比视界档（被 playurl.dolby_qn 指向或载体编码标记 dolby_type）
+ * @param isDolby 是否为杜比视界档（HDR 行被 playurl.dolby_qn 指向，或载体编码标记 dolby_type）
  * @param codecName 携带该 HDR 档的编码名（"avc"/"hevc"/"av1"），仅 HDR 档有值
  * @param codecs 携带该 HDR 档的 RFC 6381 编码串（如 `hvc1.2.4.L123`），仅 HDR 档有值
- * @param width 携带该 HDR 档的流宽度，仅 HDR 档有值
- * @param height 携带该 HDR 档的流高度，仅 HDR 档有值
+ * @param width 按 qn 档位推导的判定宽度（供解码能力判定，非流实际 rendition 尺寸），仅 HDR 档有值
+ * @param height 按 qn 档位推导的判定高度（供解码能力判定，非流实际 rendition 尺寸），仅 HDR 档有值
  */
 data class LiveQuality(
     val qn: Int,
