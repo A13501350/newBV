@@ -231,9 +231,13 @@ class LiveRepository {
                     for (qn in codec.acceptQn) {
                         offerCandidate(qn, codec.hdrType, eotf, codec, rank)
                     }
-                    // 旧契约：hdr_qn 指针指向的 HDR 档位（独立于 accept_qn 的 SDR 梯队）
-                    codec.hdrQn?.let { hdrQn ->
-                        offerCandidate(hdrQn, codec.hdrType.takeIf { it != 0 } ?: 1, eotf, codec, rank)
+                    // 旧契约：hdr_qn 指针指向的 HDR 档位（独立于 accept_qn 的 SDR 梯队）。
+                    // 仅对 HDR 载体节点有效：SDR 节点带 hdr_qn 只会产出无载体的幽灵 HDR 行
+                    // （无解码提示被能力过滤放行 → 选中后回退 SDR）
+                    if (codec.isHdrCarrier) {
+                        codec.hdrQn?.let { hdrQn ->
+                            offerCandidate(hdrQn, codec.hdrType.takeIf { it != 0 } ?: 1, eotf, codec, rank)
+                        }
                     }
                 }
             }

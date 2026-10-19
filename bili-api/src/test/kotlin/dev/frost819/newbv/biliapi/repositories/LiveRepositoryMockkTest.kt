@@ -545,6 +545,26 @@ class LiveRepositoryUnitTest {
         assertThat(hdr.isDolby).isTrue()
     }
 
+    @Test
+    fun `resolvePlayInfo drops phantom HDR row when hdr_qn set on non-HDR codec`() {
+        val data =
+            fakeRoomPlayInfoV2DataWith(
+                qnDesc =
+                    listOf(
+                        QnDesc(qn = 10000, desc = "原画"),
+                        QnDesc(qn = 30000, desc = "4K", hdrDesc = "HDR", hdrType = 1, eotf = 1),
+                    ),
+                streams = listOf(fakeHlsFmp4Stream(listOf(fakeSdrCodec().copy(hdrQn = 30000)))),
+            )
+
+        val result = repository.resolvePlayInfo(data)
+
+        // 旧契约 hdr_qn 只对 HDR 载体节点有效：SDR 节点带 hdr_qn 产出的档位没有载体提示，
+        // 选中后必然回退 SDR，只能算幽灵档位行
+        assertThat(result.qualities.none { it.isHdr }).isTrue()
+        assertThat(result.qualities.map { it.qn }).containsExactly(10000)
+    }
+
     private fun <T> fakeResponse(data: T) =
         BiliResponse(
             code = 0,
