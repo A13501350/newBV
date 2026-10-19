@@ -246,7 +246,12 @@ class LiveRepository {
                         codecs = carrier?.videoCodecs?.base,
                         width = resW,
                         height = resH,
-                        badge = qnDesc.mediaBaseDesc?.briefDesc?.badge.orEmpty(),
+                        badge =
+                            qnDesc
+                                .mediaBaseDesc
+                                ?.briefDesc
+                                ?.badge
+                                .orEmpty(),
                     )
                 }
 
