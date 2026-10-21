@@ -1,6 +1,8 @@
 package dev.frost819.newbv.core.log
 
 import android.content.Context
+import android.content.pm.PackageInfo
+import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -55,6 +57,17 @@ class CrashHandlerTest {
         assertThat(content).contains("Android Version:")
         assertThat(content).contains("Device:")
         assertThat(content).contains("======== Logs ========")
+    }
+
+    @Test
+    fun versionCodeCompat_uses_legacy_version_code_before_android9() {
+        // Android 9 以下没有 PackageInfo.longVersionCode，必须回退到 versionCode
+        @Suppress("DEPRECATION")
+        val packageInfo = PackageInfo().apply { versionCode = 123 }
+
+        val versionCode = packageInfo.versionCodeCompat(sdkInt = Build.VERSION_CODES.O_MR1)
+
+        assertThat(versionCode).isEqualTo(123L)
     }
 
     @Test

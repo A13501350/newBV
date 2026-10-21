@@ -1,6 +1,9 @@
 package dev.frost819.newbv.app.viewmodel.settings
 
 import android.app.Application
+import android.content.Context
+import android.net.ConnectivityManager
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -119,21 +122,49 @@ class LogViewerViewModel
         }
 
         /**
-         * 扫描 wlan0 接口获取本地 IPv4 地址。
+         * 获取局域网 IPv4 地址。
+         *
+         * 优先取系统当前活动网络的地址：电视可能同时存在有线、Wi-Fi、Wi-Fi Direct、
+         * VPN 等多个网卡，[NetworkInterface] 的枚举顺序不可靠，取到其他网卡的地址
+         * 会让手机无法访问日志服务器。旧系统（API 21/22）没有
+         * [ConnectivityManager.getLinkProperties]，回退到遍历网卡。
          *
          * @return IPv4 地址字符串，获取失败返回空字符串。
          */
-        private fun getLocalIpAddress(): String =
-            runCatching {
+        private fun getLocalIpAddress(): String {
+            val activeNetworkAddress =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    runCatching {
+                        val connectivityManager =
+                            getApplication<Application>()
+                                .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                        val network = connectivityManager?.activeNetwork ?: return@runCatching null
+                        connectivityManager
+                            .getLinkProperties(network)
+                            ?.linkAddresses
+                            ?.asSequence()
+                            ?.map { it.address }
+                            ?.filterIsInstance<Inet4Address>()
+                            ?.firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress }
+                            ?.hostAddress
+                    }.getOrNull()
+                } else {
+                    null
+                }
+
+            if (!activeNetworkAddress.isNullOrEmpty()) return activeNetworkAddress
+
+            return runCatching {
                 NetworkInterface
                     .getNetworkInterfaces()
                     .toList()
                     .filter { it.isUp && !it.isLoopback }
                     .flatMap { it.inetAddresses.toList() }
                     .filterIsInstance<Inet4Address>()
-                    .firstOrNull()
+                    .firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress }
                     ?.hostAddress ?: ""
             }.getOrDefault("")
+        }
 
         /**
          * 获取日志文件的类型显示名。

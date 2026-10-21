@@ -135,7 +135,9 @@ class CrashUploader(
         json.put("id", UUID.randomUUID().toString())
         json.put("versionCode", deviceInfo.appVersionCode)
         json.put("versionName", deviceInfo.appVersion)
-        json.put("crashTime", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault()).format(Date()))
+        // X 模式需要 API 24+；用 Z（+0800）再插入冒号，所有版本都能得到 +08:00
+        val rawCrashTime = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.getDefault()).format(Date())
+        json.put("crashTime", rawCrashTime.dropLast(2) + ":" + rawCrashTime.takeLast(2))
 
         val device = JSONObject()
         device.put("manufacturer", deviceInfo.manufacturer)
