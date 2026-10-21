@@ -402,6 +402,7 @@ fun VideoPlayerScreen(
                 }
                 resumeAfterComments = false
             },
+            ownerMid = uiState.authorMid,
         )
     }
 }

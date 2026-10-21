@@ -44,7 +44,7 @@ class CommentViewModelTest {
     fun `load requests hot comments and exposes page`() =
         runTest(dispatcher) {
             val root = comment(rpid = 1L, replyCount = 2)
-            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+            coEvery { repository.getComments(any(), any(), any(), any(), any(), any()) } returns
                 page(listOf(root), page = 1, total = 1, hasMore = false)
 
             viewModel.load(100L)
@@ -52,7 +52,7 @@ class CommentViewModelTest {
 
             assertThat(viewModel.uiState.value.comments).containsExactly(root)
             assertThat(viewModel.uiState.value.hasMore).isFalse()
-            coVerify { repository.getComments(100L, 1, 1, null, any()) }
+            coVerify { repository.getComments(100L, 1, 1, null, any(), any()) }
         }
 
     @Test
@@ -60,9 +60,9 @@ class CommentViewModelTest {
         runTest(dispatcher) {
             val hot = comment(rpid = 1L)
             val latest = comment(rpid = 2L)
-            coEvery { repository.getComments(100L, 1, 1, null, any()) } returns
+            coEvery { repository.getComments(100L, 1, 1, null, any(), any()) } returns
                 page(listOf(hot), page = 1, total = 1, hasMore = false)
-            coEvery { repository.getComments(100L, 0, 1, null, any()) } returns
+            coEvery { repository.getComments(100L, 0, 1, null, any(), any()) } returns
                 page(listOf(latest), page = 1, total = 1, hasMore = false)
 
             viewModel.load(100L)
@@ -80,8 +80,8 @@ class CommentViewModelTest {
             advanceUntilIdle()
             assertThat(viewModel.uiState.value.comments).containsExactly(latest)
 
-            coVerify(exactly = 1) { repository.getComments(100L, 1, 1, null, any()) }
-            coVerify(exactly = 1) { repository.getComments(100L, 0, 1, null, any()) }
+            coVerify(exactly = 1) { repository.getComments(100L, 1, 1, null, any(), any()) }
+            coVerify(exactly = 1) { repository.getComments(100L, 0, 1, null, any(), any()) }
         }
 
     @Test
@@ -89,9 +89,9 @@ class CommentViewModelTest {
         runTest(dispatcher) {
             val hot = comment(rpid = 1L)
             val latest = comment(rpid = 2L)
-            coEvery { repository.getComments(100L, 1, 1, null, any()) } returns
+            coEvery { repository.getComments(100L, 1, 1, null, any(), any()) } returns
                 page(listOf(hot), page = 1, total = 1, hasMore = false)
-            coEvery { repository.getComments(100L, 0, 1, null, any()) } returns
+            coEvery { repository.getComments(100L, 0, 1, null, any(), any()) } returns
                 page(listOf(latest), page = 1, total = 1, hasMore = false)
 
             viewModel.load(100L)
@@ -102,21 +102,21 @@ class CommentViewModelTest {
             viewModel.refresh()
             advanceUntilIdle()
 
-            coVerify(exactly = 1) { repository.getComments(100L, 1, 1, null, any()) }
-            coVerify(exactly = 2) { repository.getComments(100L, 0, 1, null, any()) }
+            coVerify(exactly = 1) { repository.getComments(100L, 1, 1, null, any(), any()) }
+            coVerify(exactly = 2) { repository.getComments(100L, 0, 1, null, any(), any()) }
 
             viewModel.changeSort(CommentSort.Hot)
             advanceUntilIdle()
             assertThat(viewModel.uiState.value.comments).containsExactly(hot)
-            coVerify(exactly = 1) { repository.getComments(100L, 1, 1, null, any()) }
+            coVerify(exactly = 1) { repository.getComments(100L, 1, 1, null, any(), any()) }
         }
 
     @Test
     fun `changing aid discards stale response`() =
         runTest(dispatcher) {
             val gate = CompletableDeferred<CommentPage>()
-            coEvery { repository.getComments(1L, 1, 1, null, any()) } coAnswers { gate.await() }
-            coEvery { repository.getComments(2L, 1, 1, null, any()) } returns
+            coEvery { repository.getComments(1L, 1, 1, null, any(), any()) } coAnswers { gate.await() }
+            coEvery { repository.getComments(2L, 1, 1, null, any(), any()) } returns
                 page(listOf(comment(rpid = 20L)), page = 1, total = 1, hasMore = false)
 
             viewModel.load(1L)
@@ -137,9 +137,9 @@ class CommentViewModelTest {
     @Test
     fun `load more appends and deduplicates by rpid`() =
         runTest(dispatcher) {
-            coEvery { repository.getComments(100L, 1, 1, null, any()) } returns
+            coEvery { repository.getComments(100L, 1, 1, null, any(), any()) } returns
                 page(listOf(comment(1L), comment(2L)), page = 1, total = 3, hasMore = true)
-            coEvery { repository.getComments(100L, 1, 2, null, any()) } returns
+            coEvery { repository.getComments(100L, 1, 2, null, any(), any()) } returns
                 page(listOf(comment(2L), comment(3L)), page = 2, total = 3, hasMore = false)
 
             viewModel.load(100L)
@@ -158,9 +158,9 @@ class CommentViewModelTest {
     fun `load more failure keeps list and allows retry`() =
         runTest(dispatcher) {
             var attempt = 0
-            coEvery { repository.getComments(100L, 1, 1, null, any()) } returns
+            coEvery { repository.getComments(100L, 1, 1, null, any(), any()) } returns
                 page(listOf(comment(1L), comment(2L)), page = 1, total = 3, hasMore = true)
-            coEvery { repository.getComments(100L, 1, 2, null, any()) } coAnswers {
+            coEvery { repository.getComments(100L, 1, 2, null, any(), any()) } coAnswers {
                 attempt++
                 if (attempt == 1) throw RuntimeException("boom")
                 page(listOf(comment(3L)), page = 2, total = 3, hasMore = false)
@@ -186,9 +186,9 @@ class CommentViewModelTest {
     @Test
     fun `load more empty page stops pagination`() =
         runTest(dispatcher) {
-            coEvery { repository.getComments(100L, 1, 1, null, any()) } returns
+            coEvery { repository.getComments(100L, 1, 1, null, any(), any()) } returns
                 page(listOf(comment(1L)), page = 1, total = 10, hasMore = true)
-            coEvery { repository.getComments(100L, 1, 2, null, any()) } returns
+            coEvery { repository.getComments(100L, 1, 2, null, any(), any()) } returns
                 page(emptyList(), page = 2, total = 10, hasMore = true)
 
             viewModel.load(100L)
@@ -205,9 +205,9 @@ class CommentViewModelTest {
         runTest(dispatcher) {
             val root = comment(rpid = 1L, replyCount = 1)
             val reply = comment(rpid = 2L, rootRpid = 1L)
-            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+            coEvery { repository.getComments(any(), any(), any(), any(), any(), any()) } returns
                 page(listOf(root), page = 1, total = 1, hasMore = false)
-            coEvery { repository.getReplies(any(), any(), any(), any(), any()) } returns
+            coEvery { repository.getReplies(any(), any(), any(), any(), any(), any()) } returns
                 page(listOf(reply), page = 1, total = 1, hasMore = false)
 
             viewModel.load(100L)
@@ -226,9 +226,9 @@ class CommentViewModelTest {
     fun `reply first page failure can be retried with one call`() =
         runTest(dispatcher) {
             var attempt = 0
-            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+            coEvery { repository.getComments(any(), any(), any(), any(), any(), any()) } returns
                 page(listOf(comment(rpid = 1L, replyCount = 1)), page = 1, total = 1, hasMore = false)
-            coEvery { repository.getReplies(any(), any(), any(), any(), any()) } coAnswers {
+            coEvery { repository.getReplies(any(), any(), any(), any(), any(), any()) } coAnswers {
                 attempt++
                 if (attempt == 1) throw RuntimeException("boom")
                 page(listOf(comment(rpid = 2L, rootRpid = 1L)), page = 1, total = 1, hasMore = false)
@@ -262,11 +262,11 @@ class CommentViewModelTest {
             val root = comment(rpid = 1L, replyCount = 25)
             val firstPage = (1L..20L).map { comment(rpid = 100L + it, rootRpid = 1L) }
             val secondPage = (21L..25L).map { comment(rpid = 100L + it, rootRpid = 1L) }
-            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+            coEvery { repository.getComments(any(), any(), any(), any(), any(), any()) } returns
                 page(listOf(root), page = 1, total = 1, hasMore = false)
-            coEvery { repository.getReplies(100L, 1L, 1, null, any()) } returns
+            coEvery { repository.getReplies(100L, 1L, 1, null, any(), any()) } returns
                 page(firstPage, page = 1, total = 25, hasMore = true)
-            coEvery { repository.getReplies(100L, 1L, 2, null, any()) } returns
+            coEvery { repository.getReplies(100L, 1L, 2, null, any(), any()) } returns
                 page(secondPage, page = 2, total = 25, hasMore = false)
 
             viewModel.load(100L)
@@ -294,9 +294,9 @@ class CommentViewModelTest {
         runTest(dispatcher) {
             val root = comment(rpid = 1L, replyCount = 1)
             val reply = comment(rpid = 2L, rootRpid = 1L)
-            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+            coEvery { repository.getComments(any(), any(), any(), any(), any(), any()) } returns
                 page(listOf(root), page = 1, total = 1, hasMore = false)
-            coEvery { repository.getReplies(any(), any(), any(), any(), any()) } returns
+            coEvery { repository.getReplies(any(), any(), any(), any(), any(), any()) } returns
                 page(listOf(reply), page = 1, total = 1, hasMore = false)
             coEvery { repository.toggleCommentLike(any(), any(), any(), any()) } returns Unit
 
@@ -323,7 +323,7 @@ class CommentViewModelTest {
     fun `toggle like emits toast and keeps state on failure`() =
         runTest(dispatcher) {
             val root = comment(rpid = 1L)
-            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+            coEvery { repository.getComments(any(), any(), any(), any(), any(), any()) } returns
                 page(listOf(root), page = 1, total = 1, hasMore = false)
             coEvery { repository.toggleCommentLike(any(), any(), any(), any()) } throws
                 RuntimeException("网络错误")

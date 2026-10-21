@@ -45,7 +45,7 @@ class CommentTest {
                     """.trimIndent(),
                 ).jsonObject
 
-        val comment = Comment.fromJson(json, oid = 456)
+        val comment = Comment.fromJson(json, oid = 456, ownerMid = 789L)
 
         assertEquals(123L, comment.rpid)
         assertEquals("测试用户", comment.userName)
@@ -56,6 +56,8 @@ class CommentTest {
         assertEquals("https://example.com/picture.png", comment.pictures.single())
         assertTrue(comment.isLiked)
         assertTrue(comment.isUp)
+        // up_like 仅表示被 UP 主点赞，不能作为 UP 主身份依据
+        assertFalse(Comment.fromJson(json, oid = 456).isUp)
     }
 
     @Test
@@ -71,37 +73,35 @@ class CommentTest {
 
     @Test
     fun `fromGrpc maps reply info into unified comment`() {
-        val comment =
-            Comment.fromGrpc(
-                replyInfo {
-                    id = 123L
-                    oid = 456L
-                    type = 1L
-                    mid = 789L
-                    root = 10L
-                    parent = 11L
-                    like = 12L
-                    count = 3L
-                    ctime = 1700000000L
-                    member =
-                        member {
-                            name = "测试用户"
-                            face = "https://example.com/avatar.png"
-                            level = 6L
-                        }
-                    content =
-                        content {
-                            message = "测试评论"
-                            pictures += picture { imgSrc = "https://example.com/picture.png" }
-                        }
-                    replyControl =
-                        replyControl {
-                            action = 1L
-                            upLike = true
-                        }
-                },
-                oid = 456L,
-            )
+        val reply =
+            replyInfo {
+                id = 123L
+                oid = 456L
+                type = 1L
+                mid = 789L
+                root = 10L
+                parent = 11L
+                like = 12L
+                count = 3L
+                ctime = 1700000000L
+                member =
+                    member {
+                        name = "测试用户"
+                        face = "https://example.com/avatar.png"
+                        level = 6L
+                    }
+                content =
+                    content {
+                        message = "测试评论"
+                        pictures += picture { imgSrc = "https://example.com/picture.png" }
+                    }
+                replyControl =
+                    replyControl {
+                        action = 1L
+                        upLike = true
+                    }
+            }
+        val comment = Comment.fromGrpc(reply, oid = 456L, ownerMid = 789L)
 
         assertEquals(123L, comment.rpid)
         assertEquals(789L, comment.mid)
@@ -111,5 +111,7 @@ class CommentTest {
         assertEquals(6, comment.level)
         assertTrue(comment.isLiked)
         assertTrue(comment.isUp)
+        // upLike 仅表示被 UP 主点赞，不能作为 UP 主身份依据
+        assertFalse(Comment.fromGrpc(reply, oid = 456L).isUp)
     }
 }

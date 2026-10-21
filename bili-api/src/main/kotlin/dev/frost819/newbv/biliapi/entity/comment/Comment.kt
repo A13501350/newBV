@@ -3,7 +3,6 @@ package dev.frost819.newbv.biliapi.entity.comment
 import bilibili.main.community.reply.v1.ReplyInfo
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -39,6 +38,7 @@ data class Comment(
             json: JsonObject,
             oid: Long,
             defaultType: Int = 1,
+            ownerMid: Long = 0L,
         ): Comment {
             val member = json["member"] as? JsonObject
             val content = json["content"] as? JsonObject
@@ -53,16 +53,17 @@ data class Comment(
                 control?.get("action")?.jsonPrimitive?.intOrNull
                     ?: json["user_action"]?.jsonPrimitive?.intOrNull
                     ?: 0
+            val mid =
+                json.long(
+                    "mid",
+                    member?.long("mid", 0L) ?: 0L,
+                )
 
             return Comment(
                 rpid = json.long("rpid", json.long("id", 0L)),
                 oid = json.long("oid", oid),
                 type = json.int("type", defaultType),
-                mid =
-                    json.long(
-                        "mid",
-                        member?.long("mid", 0L) ?: 0L,
-                    ),
+                mid = mid,
                 rootRpid = json.long("root", 0L),
                 parentRpid = json.long("parent", 0L),
                 userName = member?.string("uname") ?: "未知用户",
@@ -78,9 +79,9 @@ data class Comment(
                         json.int("count", 0),
                     ),
                 isLiked = action == 1,
-                isUp =
-                    control?.get("up_like")?.jsonPrimitive?.booleanOrNull == true ||
-                        control?.get("is_up_top")?.jsonPrimitive?.booleanOrNull == true,
+                // UP 主身份只能由评论者 mid 与视频所有者 mid 比对得出；
+                // up_like / is_up_top 表示被 UP 主点赞或置顶，不能作为身份依据
+                isUp = ownerMid != 0L && mid == ownerMid,
             )
         }
 
@@ -89,6 +90,7 @@ data class Comment(
             reply: ReplyInfo,
             oid: Long,
             defaultType: Int = 1,
+            ownerMid: Long = 0L,
         ): Comment =
             Comment(
                 rpid = reply.id,
@@ -106,7 +108,7 @@ data class Comment(
                 likeCount = reply.like,
                 replyCount = reply.count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
                 isLiked = reply.replyControl.action == 1L,
-                isUp = reply.replyControl.upLike || reply.replyControl.isUpTop,
+                isUp = ownerMid != 0L && reply.mid == ownerMid,
             )
     }
 }

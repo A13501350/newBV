@@ -170,6 +170,7 @@ private fun buildCommentRows(commentList: CommentListState): List<CommentRow> =
  * @param mode 弹窗展示模式
  * @param viewModel 评论状态 ViewModel
  * @param onDismiss 关闭回调
+ * @param ownerMid 视频所有者 mid，用于判定 UP 主评论，未知时传 0
  */
 @Composable
 fun CommentsDialog(
@@ -177,6 +178,7 @@ fun CommentsDialog(
     mode: CommentDialogMode,
     viewModel: CommentViewModel,
     onDismiss: () -> Unit,
+    ownerMid: Long = 0L,
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -184,7 +186,7 @@ fun CommentsDialog(
     var imageViewerIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(aid) {
-        viewModel.load(aid)
+        viewModel.load(aid, ownerMid)
     }
 
     LaunchedEffect(Unit) {

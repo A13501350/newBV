@@ -37,6 +37,7 @@ class CommentRepository(
      * @param page 页码，从 1 开始（Web 通道使用）
      * @param nextCursor App gRPC 通道的下一页游标，首次请求传 null
      * @param preferApiType 首选接口类型
+     * @param ownerMid 视频所有者 mid，用于判定 UP 主评论，未知时传 0
      */
     suspend fun getComments(
         aid: Long,
@@ -44,12 +45,13 @@ class CommentRepository(
         page: Int = 1,
         nextCursor: Long? = null,
         preferApiType: ApiType,
+        ownerMid: Long = 0L,
     ): CommentPage =
         when (preferApiType) {
             ApiType.Web -> {
                 val data =
                     BiliHttpApi.getVideoComments(aid, sort, page, accessKey = null).getResponseData()
-                parsePage(data, aid = aid, page = page, defaultType = 1, isThread = false)
+                parsePage(data, aid = aid, page = page, defaultType = 1, isThread = false, ownerMid = ownerMid)
             }
 
             ApiType.App -> {
@@ -74,7 +76,7 @@ class CommentRepository(
                 CommentPage(
                     comments =
                         reply.repliesList
-                            .map { Comment.fromGrpc(it, aid) }
+                            .map { Comment.fromGrpc(it, aid, ownerMid = ownerMid) }
                             .filter { it.rpid > 0L }
                             .distinctBy { it.rpid },
                     page = page,
@@ -93,6 +95,7 @@ class CommentRepository(
      * @param page 页码，从 1 开始（Web 通道使用）
      * @param nextCursor App gRPC 通道的下一页游标，首次请求传 null
      * @param preferApiType 首选接口类型
+     * @param ownerMid 视频所有者 mid，用于判定 UP 主评论，未知时传 0
      */
     suspend fun getReplies(
         aid: Long,
@@ -100,6 +103,7 @@ class CommentRepository(
         page: Int = 1,
         nextCursor: Long? = null,
         preferApiType: ApiType,
+        ownerMid: Long = 0L,
     ): CommentPage =
         when (preferApiType) {
             ApiType.Web -> {
@@ -111,7 +115,7 @@ class CommentRepository(
                             page = page,
                             accessKey = null,
                         ).getResponseData()
-                parsePage(data, aid = aid, page = page, defaultType = 1, isThread = true)
+                parsePage(data, aid = aid, page = page, defaultType = 1, isThread = true, ownerMid = ownerMid)
             }
 
             ApiType.App -> {
@@ -130,7 +134,7 @@ class CommentRepository(
                 CommentPage(
                     comments =
                         root.repliesList
-                            .map { Comment.fromGrpc(it, aid) }
+                            .map { Comment.fromGrpc(it, aid, ownerMid = ownerMid) }
                             .filter { it.rpid > 0L && it.rpid != rootRpid }
                             .distinctBy { it.rpid },
                     page = page,
@@ -182,6 +186,7 @@ class CommentRepository(
         page: Int,
         defaultType: Int,
         isThread: Boolean,
+        ownerMid: Long = 0L,
     ): CommentPage {
         val pageObject = data["page"] as? JsonObject
         val repliesJson = data["replies"] as? JsonArray
@@ -189,7 +194,7 @@ class CommentRepository(
         val comments =
             repliesJson
                 ?.mapNotNull { it as? JsonObject }
-                ?.map { Comment.fromJson(it, oid = aid, defaultType = defaultType) }
+                ?.map { Comment.fromJson(it, oid = aid, defaultType = defaultType, ownerMid = ownerMid) }
                 .orEmpty()
                 .filter { it.rpid > 0L }
                 .distinctBy { it.rpid }

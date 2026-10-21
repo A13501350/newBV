@@ -114,6 +114,7 @@ data class CommentListState(
 /** 评论弹窗 UI 状态。 */
 data class CommentUiState(
     val aid: Long = 0L,
+    val ownerMid: Long = 0L,
     val sort: CommentSort = CommentSort.Hot,
     val commentLists: Map<CommentSort, CommentListState> = emptyMap(),
     val likingIds: Set<Long> = emptySet(),
@@ -203,13 +204,17 @@ class CommentViewModel
          * 若 [aid] 与当前一致且已有缓存则直接复用，不发起请求。
          *
          * @param aid 视频 AV 号
+         * @param ownerMid 视频所有者 mid，用于判定 UP 主评论，未知时传 0
          */
-        fun load(aid: Long) {
+        fun load(
+            aid: Long,
+            ownerMid: Long = 0L,
+        ) {
             if (aid <= 0L) return
             val state = _uiState.value
             if (state.aid == aid && state.commentLists.isNotEmpty()) return
             cancelAll()
-            _uiState.value = CommentUiState(aid = aid)
+            _uiState.value = CommentUiState(aid = aid, ownerMid = ownerMid)
             startCommentsLoad(sort = _uiState.value.sort, aid = aid)
         }
 
@@ -264,6 +269,7 @@ class CommentViewModel
                                     sort = sort.apiValue,
                                     page = nextPage,
                                     preferApiType = ApiType.Web,
+                                    ownerMid = state.ownerMid,
                                 )
                             }
                         if (!isCommentListCurrent(sort, aid, generation)) return@launch
@@ -402,6 +408,7 @@ class CommentViewModel
                                     sort = sort.apiValue,
                                     page = 1,
                                     preferApiType = ApiType.Web,
+                                    ownerMid = _uiState.value.ownerMid,
                                 )
                             }
                         if (!isCommentListCurrent(sort, aid, generation)) return@launch
@@ -457,6 +464,7 @@ class CommentViewModel
                                     rootRpid = rootRpid,
                                     page = page,
                                     preferApiType = ApiType.Web,
+                                    ownerMid = _uiState.value.ownerMid,
                                 )
                             }
                         if (!isReplyListCurrent(key, sort, aid, generation)) return@launch

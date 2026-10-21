@@ -457,6 +457,7 @@ private fun VideoDetailContent(
             mode = CommentDialogMode.Detail,
             viewModel = commentViewModel,
             onDismiss = { showCommentsDialog = false },
+            ownerMid = detail.author.mid,
         )
     }
 }
