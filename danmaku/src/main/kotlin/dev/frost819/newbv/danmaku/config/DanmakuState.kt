@@ -12,6 +12,12 @@ import dev.frost819.newbv.danmaku.entity.DanmakuType
  * - [speedFactor] 滚动速度因子（默认 1.0）
  * - [maskEnabled] 是否启用弹幕防遮挡蒙版（默认 false）
  * - [enabledTypes] 启用的弹幕类型列表（默认包含 Rolling + Top + Bottom）
+ *
+ * 以及弹幕屏蔽/过滤相关参数：
+ * - [blockColorful] 是否屏蔽彩色弹幕（默认 false）
+ * - [blockRepeat] 是否屏蔽重复弹幕（默认 false）
+ * - [blockSpecial] 是否屏蔽高级弹幕（默认 false）
+ * - [aiCloudLevel] AI 智能云屏蔽等级（0 关闭，1-4 等级递增；默认 0）
  */
 data class DanmakuState(
     val scale: Float = 1.0f,
@@ -25,6 +31,10 @@ data class DanmakuState(
             DanmakuType.Top,
             DanmakuType.Bottom,
         ),
+    val blockColorful: Boolean = false,
+    val blockRepeat: Boolean = false,
+    val blockSpecial: Boolean = false,
+    val aiCloudLevel: Int = 0,
 ) {
     /**
      * 是否显示所有类型的弹幕。

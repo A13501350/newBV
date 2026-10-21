@@ -9,12 +9,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.DanmakuConfig
 import com.kuaishou.akdanmaku.data.DanmakuItemData
+import com.kuaishou.akdanmaku.ecs.component.filter.DuplicateMergingFilter
+import com.kuaishou.akdanmaku.ecs.component.filter.TextColorFilter
 import com.kuaishou.akdanmaku.ecs.component.filter.TypeFilter
 import com.kuaishou.akdanmaku.render.SimpleRenderer
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
 import dev.frost819.newbv.biliapi.entity.ApiType
+import dev.frost819.newbv.biliapi.entity.danmaku.BiliDanmakuFilterConfig
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMask
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
@@ -85,6 +88,8 @@ class DanmakuViewModel
 
         private var danmakuConfig = DanmakuConfig()
         private val danmakuTypeFilter = TypeFilter()
+        private val danmakuTextColorFilter = TextColorFilter()
+        private val danmakuDuplicateFilter = DuplicateMergingFilter()
 
         private val _danmakuState =
             MutableStateFlow(
@@ -134,6 +139,9 @@ class DanmakuViewModel
          * 旧协程返回后凭此比对丢弃结果，避免旧视频数据污染新视频。
          */
         private var loadGeneration = 0
+
+        /** B 站账号级过滤配置是否已在本次会话中应用过（仅应用一次，避免覆盖用户调整）。 */
+        private var biliFilterApplied = false
 
         /** UI 层喂入的播放进度（毫秒），驱动分段加载；conflated，仅保留最新值。 */
         private val currentTimeFlow = MutableStateFlow(0L)
@@ -236,6 +244,10 @@ class DanmakuViewModel
                     logger.info { "Danmaku closed for cid=$cid, skip segment loading" }
                     return@launch
                 }
+
+                // 从 dm/view 响应中应用 B 站账号同步来的弹幕过滤配置
+                applyBiliFilterConfig(meta.filterConfig)
+
                 logger.info {
                     "Danmaku meta: segmentSizeMs=$segmentSizeMs, segTotal=$segmentTotal, count=${meta.count}"
                 }
@@ -496,13 +508,40 @@ class DanmakuViewModel
                     is DanmakuSettingAction.SetSpeedFactor -> old.copy(speedFactor = action.factor)
                     is DanmakuSettingAction.SetMaskEnabled -> old.copy(maskEnabled = action.enabled)
                     is DanmakuSettingAction.SetEnabledTypes -> old.copy(enabledTypes = action.types)
+                    is DanmakuSettingAction.SetBlockColorful -> old.copy(blockColorful = action.enabled)
+                    is DanmakuSettingAction.SetBlockRepeat -> old.copy(blockRepeat = action.enabled)
+                    is DanmakuSettingAction.SetBlockSpecial -> old.copy(blockSpecial = action.enabled)
+                    is DanmakuSettingAction.SetAiCloudLevel -> old.copy(aiCloudLevel = action.level)
                 }
             if (old == new) return
 
             _danmakuState.update { new }
 
+            val filterChanged =
+                new.enabledTypes != old.enabledTypes ||
+                    new.blockColorful != old.blockColorful ||
+                    new.blockRepeat != old.blockRepeat ||
+                    new.blockSpecial != old.blockSpecial
+
+            if (filterChanged) {
+                initDanmakuConfig()
+            } else {
+                // 非 Filter 变更：仅更新对应配置项，避免全量重建
+                if (new.scale != old.scale) {
+                    danmakuConfig = danmakuConfig.copy(textSizeScale = new.scale)
+                    danmakuPlayer?.updateConfig(danmakuConfig)
+                }
+                if (new.speedFactor != old.speedFactor) {
+                    danmakuPlayer?.setDanmakuRollingSpeed(new.speedFactor)
+                }
+                if (new.area != old.area) {
+                    danmakuConfig = danmakuConfig.copy(screenPart = new.area)
+                    danmakuPlayer?.updateConfig(danmakuConfig)
+                }
+            }
+
+            // 持久化
             if (new.enabledTypes != old.enabledTypes) {
-                updateDanmakuConfigTypeFilter(new.enabledTypes)
                 Prefs.defaultDanmakuTypes = new.enabledTypes.map { it.toDataDanmakuType() }
             }
             if (new.scale != old.scale) {
@@ -530,11 +569,13 @@ class DanmakuViewModel
         }
 
         private fun initDanmakuConfig() {
-            val types = Prefs.defaultDanmakuTypes.map { it.toDanmakuEntity() }
-            val area = Prefs.defaultDanmakuArea
-            val scale = Prefs.defaultDanmakuScale
-            val factor = Prefs.defaultDanmakuSpeedFactor
+            val state = _danmakuState.value
+            val types = state.enabledTypes
+            val area = state.area
+            val scale = state.scale
+            val factor = state.speedFactor
 
+            // 类型过滤：屏蔽不在 enabledTypes 中的弹幕类型
             danmakuTypeFilter.clear()
             if (!types.contains(DanmakuEntityDanmakuType.All)) {
                 val allTypes = DanmakuEntityDanmakuType.entries.toMutableList()
@@ -551,46 +592,80 @@ class DanmakuViewModel
                     }.forEach { danmakuTypeFilter.addFilterItem(it) }
             }
 
+            // 彩色弹幕过滤：仅允许白色 (0xFFFFFF) 通过
+            danmakuTextColorFilter.filterColor.clear()
+            if (state.blockColorful) {
+                danmakuTextColorFilter.filterColor.add(0xFFFFFF)
+            }
+
+            val dataFilters =
+                buildList {
+                    add(danmakuTypeFilter)
+                    if (state.blockColorful) add(danmakuTextColorFilter)
+                    if (state.blockRepeat) add(danmakuDuplicateFilter)
+                }
+
             danmakuConfig =
                 danmakuConfig.copy(
                     density = 120,
                     textSizeScale = scale,
                     screenPart = area,
-                    dataFilter = listOf(danmakuTypeFilter),
+                    dataFilter = dataFilters,
                     rollingSpeedFactor = factor,
                 )
             danmakuConfig.updateFilter()
             danmakuPlayer?.updateConfig(danmakuConfig)
         }
 
-        private fun updateDanmakuConfigTypeFilter(enabledTypes: List<DanmakuEntityDanmakuType>) {
-            danmakuTypeFilter.clear()
-            if (!enabledTypes.contains(DanmakuEntityDanmakuType.All)) {
-                val allTypes = DanmakuEntityDanmakuType.entries.toMutableList()
-                allTypes.remove(DanmakuEntityDanmakuType.All)
-                allTypes.removeAll(enabledTypes)
-                allTypes
-                    .mapNotNull {
-                        when (it) {
-                            DanmakuEntityDanmakuType.Rolling -> DanmakuItemData.DANMAKU_MODE_ROLLING
-                            DanmakuEntityDanmakuType.Top -> DanmakuItemData.DANMAKU_MODE_CENTER_TOP
-                            DanmakuEntityDanmakuType.Bottom -> DanmakuItemData.DANMAKU_MODE_CENTER_BOTTOM
-                            else -> null
-                        }
-                    }.forEach { danmakuTypeFilter.addFilterItem(it) }
+        /**
+         * 将 B 站 dm/view 返回的用户过滤配置合并到本地状态并重建引擎 Filter 链。
+         *
+         * B 站配置作为本次会话的初始值：仅在首次加载元数据时应用一次，
+         * 之后用户在本应用内的调整不会被后续切集的元数据覆盖。
+         */
+        private fun applyBiliFilterConfig(config: BiliDanmakuFilterConfig) {
+            // B 站过滤配置是账号级设置，仅在本次会话首次加载元数据时作为初始值应用，
+            // 避免后续切集时覆盖用户在当前会话中已经调整的屏蔽选项
+            if (biliFilterApplied) return
+            biliFilterApplied = true
+
+            val current = _danmakuState.value
+            // blocktop/blockscroll/blockbottom 与 B 站 playerConfig 同步
+            val mergedTypes = mergeBiliDanmakuTypes(current.enabledTypes, config)
+            val mergedState =
+                current.copy(
+                    enabledTypes = mergedTypes,
+                    // 彩色/高级弹幕屏蔽：以 B 站账号设置为准作为初始值
+                    blockColorful = if (config.blockColor) true else current.blockColorful,
+                    blockSpecial = if (config.blockSpecial) true else current.blockSpecial,
+                    aiCloudLevel = config.aiLevelV2.takeIf { it > 0 } ?: config.aiLevel,
+                )
+            if (mergedState == current) return
+            _danmakuState.update { mergedState }
+            initDanmakuConfig()
+            logger.info { "Applied Bili danmaku filter config: $config" }
+        }
+
+        /**
+         * 将 B 站 playerConfig 的 blockTop/Scroll/Bottom 合并到 enabledTypes。
+         *
+         * B 站 block 语义 = 屏蔽该类型 → 我们需要把被屏蔽的类型从 enabledTypes 中移除。
+         */
+        private fun mergeBiliDanmakuTypes(
+            current: List<DanmakuEntityDanmakuType>,
+            config: BiliDanmakuFilterConfig,
+        ): List<DanmakuEntityDanmakuType> {
+            if (config.blockTop && config.blockScroll && config.blockBottom) {
+                return emptyList()
             }
-            danmakuConfig.updateFilter()
-            danmakuPlayer?.updateConfig(danmakuConfig)
-        }
-
-        private fun updateDanmakuArea(area: Float) {
-            danmakuConfig = danmakuConfig.copy(screenPart = area)
-            danmakuPlayer?.updateConfig(danmakuConfig)
-        }
-
-        private fun updateDanmakuScale(scale: Float) {
-            danmakuConfig = danmakuConfig.copy(textSizeScale = scale)
-            danmakuPlayer?.updateConfig(danmakuConfig)
+            if (config.blockTop || config.blockScroll || config.blockBottom) {
+                val result = current.toMutableList()
+                if (config.blockTop) result.remove(DanmakuEntityDanmakuType.Top)
+                if (config.blockScroll) result.remove(DanmakuEntityDanmakuType.Rolling)
+                if (config.blockBottom) result.remove(DanmakuEntityDanmakuType.Bottom)
+                return result
+            }
+            return current
         }
 
         /** 将 data 层 DanmakuType 映射为 danmaku 模块的 DanmakuType。 */
