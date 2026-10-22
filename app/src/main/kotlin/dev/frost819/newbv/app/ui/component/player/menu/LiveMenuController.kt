@@ -262,10 +262,18 @@ private fun LiveMenuList(
                     onDanmakuAreaChange = { onDanmakuSettingChange(DanmakuSettingAction.SetArea(it)) },
                     onFocusStateChange = onFocusStateChange,
                     onDanmakuMaskChange = { onDanmakuSettingChange(DanmakuSettingAction.SetMaskEnabled(it)) },
-                    onDanmakuBlockColorfulChange = { onDanmakuSettingChange(DanmakuSettingAction.SetBlockColorful(it)) },
-                    onDanmakuBlockRepeatChange = { onDanmakuSettingChange(DanmakuSettingAction.SetBlockRepeat(it)) },
-                    onDanmakuBlockSpecialChange = { onDanmakuSettingChange(DanmakuSettingAction.SetBlockSpecial(it)) },
-                    onDanmakuAiCloudLevelChange = { onDanmakuSettingChange(DanmakuSettingAction.SetAiCloudLevel(it)) },
+                    onDanmakuBlockColorfulChange = {
+                        onDanmakuSettingChange(DanmakuSettingAction.SetBlockColorful(it))
+                    },
+                    onDanmakuBlockRepeatChange = {
+                        onDanmakuSettingChange(DanmakuSettingAction.SetBlockRepeat(it))
+                    },
+                    onDanmakuBlockSpecialChange = {
+                        onDanmakuSettingChange(DanmakuSettingAction.SetBlockSpecial(it))
+                    },
+                    onDanmakuAiCloudLevelChange = {
+                        onDanmakuSettingChange(DanmakuSettingAction.SetAiCloudLevel(it))
+                    },
                 )
             }
         }
