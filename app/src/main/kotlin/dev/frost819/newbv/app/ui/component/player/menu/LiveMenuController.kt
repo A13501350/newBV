@@ -289,7 +289,6 @@ private fun LiveMenuList(
                     },
                     onFocusStateChange = onFocusStateChange,
                 )
-            }
         }
     }
 }
