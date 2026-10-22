@@ -106,6 +106,10 @@ enum class VideoPlayerDanmakuMenuItem(
     SpeedFactor("速度"),
     Area("区域"),
     Mask("防遮挡"),
+    BlockColorful("屏蔽彩色弹幕"),
+    BlockRepeat("屏蔽重复弹幕"),
+    BlockSpecial("屏蔽高级弹幕"),
+    AiCloudLevel("AI 云屏蔽等级"),
 }
 
 /** 字幕设置子项。 */

@@ -42,12 +42,20 @@ fun DanmakuMenuList(
     currentSpeedFactor: Float,
     currentArea: Float,
     currentMaskEnabled: Boolean,
+    currentBlockColorful: Boolean = false,
+    currentBlockRepeat: Boolean = false,
+    currentBlockSpecial: Boolean = false,
+    currentAiCloudLevel: Int = 0,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
+    onDanmakuBlockColorfulChange: (Boolean) -> Unit = {},
+    onDanmakuBlockRepeatChange: (Boolean) -> Unit = {},
+    onDanmakuBlockSpecialChange: (Boolean) -> Unit = {},
+    onDanmakuAiCloudLevelChange: (Int) -> Unit = {},
     onFocusStateChange: (MenuFocusState) -> Unit,
 ) {
     PlayerThreeLevelMenu(
@@ -134,6 +142,42 @@ fun DanmakuMenuList(
                     items = listOf("关闭", "开启"),
                     selected = if (currentMaskEnabled) 1 else 0,
                     onSelectedChanged = { onDanmakuMaskChange(it == 1) },
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerDanmakuMenuItem.BlockColorful ->
+                RadioMenuList(
+                    modifier = itemModifier,
+                    items = listOf("关闭", "开启"),
+                    selected = if (currentBlockColorful) 1 else 0,
+                    onSelectedChanged = { onDanmakuBlockColorfulChange(it == 1) },
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerDanmakuMenuItem.BlockRepeat ->
+                RadioMenuList(
+                    modifier = itemModifier,
+                    items = listOf("关闭", "开启"),
+                    selected = if (currentBlockRepeat) 1 else 0,
+                    onSelectedChanged = { onDanmakuBlockRepeatChange(it == 1) },
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerDanmakuMenuItem.BlockSpecial ->
+                RadioMenuList(
+                    modifier = itemModifier,
+                    items = listOf("关闭", "开启"),
+                    selected = if (currentBlockSpecial) 1 else 0,
+                    onSelectedChanged = { onDanmakuBlockSpecialChange(it == 1) },
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerDanmakuMenuItem.AiCloudLevel ->
+                RadioMenuList(
+                    modifier = itemModifier,
+                    items = listOf("关闭", "弱", "中", "强", "极强"),
+                    selected = currentAiCloudLevel.coerceIn(0, 4),
+                    onSelectedChanged = { onDanmakuAiCloudLevelChange(it) },
                     onFocusBackToParent = backToMenu,
                 )
         }
