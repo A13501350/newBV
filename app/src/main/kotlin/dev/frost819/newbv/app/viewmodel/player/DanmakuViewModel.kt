@@ -387,7 +387,8 @@ class DanmakuViewModel
                                 "aiDropped=${filterStats.aiDropped}, aiScored=${filterStats.aiScored}, " +
                                 "weightRange=${filterStats.minWeight}..${filterStats.maxWeight}, " +
                                 "aiLevel=${_danmakuState.value.aiCloudLevel}, " +
-                                "blockSpecial=${_danmakuState.value.blockSpecial}"
+                                "blockSpecial=${_danmakuState.value.blockSpecial}, " +
+                                "blockUserFilter=${_danmakuState.value.blockByUserFilter}"
                         }
                         return
                     } catch (e: TimeoutCancellationException) {
@@ -463,7 +464,7 @@ class DanmakuViewModel
                     stats.specialDropped++
                     continue
                 }
-                if (rules.matches(item.midHash, item.text)) {
+                if (state.blockByUserFilter && rules.matches(item.midHash, item.text)) {
                     stats.userDropped++
                     continue
                 }
@@ -569,6 +570,9 @@ class DanmakuViewModel
                     is DanmakuSettingAction.SetBlockColorful -> old.copy(blockColorful = action.enabled)
                     is DanmakuSettingAction.SetBlockRepeat -> old.copy(blockRepeat = action.enabled)
                     is DanmakuSettingAction.SetBlockSpecial -> old.copy(blockSpecial = action.enabled)
+                    is DanmakuSettingAction.SetBlockByUserFilter ->
+                        old.copy(blockByUserFilter = action.enabled)
+
                     is DanmakuSettingAction.SetAiCloudLevel -> old.copy(aiCloudLevel = action.level)
                 }
             if (old == new) return
@@ -590,6 +594,12 @@ class DanmakuViewModel
                         "special=${new.blockSpecial}, aiCloudLevel=${new.aiCloudLevel}"
                 }
             } else {
+                // 账号屏蔽规则由分段加载前的本地过滤生效，无需重建引擎 Filter 链
+                if (new.blockByUserFilter != old.blockByUserFilter) {
+                    logger.info {
+                        "Danmaku user filter toggle: enabled=${new.blockByUserFilter}（从下一分段起生效）"
+                    }
+                }
                 // 非 Filter 变更：仅更新对应配置项，避免全量重建
                 if (new.scale != old.scale) {
                     danmakuConfig = danmakuConfig.copy(textSizeScale = new.scale)

@@ -247,6 +247,7 @@ private fun LiveMenuList(
                     currentBlockColorful = danmakuState.blockColorful,
                     currentBlockRepeat = danmakuState.blockRepeat,
                     currentBlockSpecial = danmakuState.blockSpecial,
+                    currentBlockByUserFilter = danmakuState.blockByUserFilter,
                     currentAiCloudLevel = danmakuState.aiCloudLevel,
                     onDanmakuSwitchChange = { types ->
                         val entityTypes =
@@ -270,6 +271,9 @@ private fun LiveMenuList(
                     },
                     onDanmakuBlockSpecialChange = {
                         onDanmakuSettingChange(DanmakuSettingAction.SetBlockSpecial(it))
+                    },
+                    onDanmakuBlockByUserFilterChange = {
+                        onDanmakuSettingChange(DanmakuSettingAction.SetBlockByUserFilter(it))
                     },
                     onDanmakuAiCloudLevelChange = {
                         onDanmakuSettingChange(DanmakuSettingAction.SetAiCloudLevel(it))
