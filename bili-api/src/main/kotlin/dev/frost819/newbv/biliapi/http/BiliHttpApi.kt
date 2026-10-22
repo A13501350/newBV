@@ -505,7 +505,11 @@ object BiliHttpApi {
                     parameter("pid", avid)
                     parameter("segment_index", segmentIndex)
                 }.readRawBytes()
-        return DmSegMobileReply.parseFrom(bytes).elemsList.map { DanmakuData.fromDanmakuElem(it) }
+        val reply = DmSegMobileReply.parseFrom(bytes)
+        // ai_flag 为服务端下发的逐条 AI 评分（dmid -> 评分），用于 AI 云屏蔽本地过滤
+        val aiFlagScores =
+            reply.aiFlag.dmFlagsList.associate { it.dmid to it.flag.toInt() }
+        return reply.elemsList.map { DanmakuData.fromDanmakuElem(it, aiFlagScores[it.id] ?: 0) }
     }
 
     /**
