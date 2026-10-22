@@ -7,6 +7,7 @@ import dev.frost819.newbv.app.ui.component.player.menu.component.PlayerThreeLeve
 import dev.frost819.newbv.app.ui.component.player.menu.component.RadioMenuList
 import dev.frost819.newbv.app.ui.component.player.menu.component.StepLessMenuItem
 import dev.frost819.newbv.app.viewmodel.player.MenuFocusState
+import dev.frost819.newbv.app.viewmodel.player.VideoPlayerDanmakuFilterMenuItem
 import dev.frost819.newbv.app.viewmodel.player.VideoPlayerDanmakuMenuItem
 import dev.frost819.newbv.data.datastore.DanmakuType
 import java.text.NumberFormat
@@ -42,22 +43,12 @@ fun DanmakuMenuList(
     currentSpeedFactor: Float,
     currentArea: Float,
     currentMaskEnabled: Boolean,
-    currentBlockColorful: Boolean = false,
-    currentBlockRepeat: Boolean = false,
-    currentBlockSpecial: Boolean = false,
-    currentBlockByUserFilter: Boolean = true,
-    currentAiCloudLevel: Int = 0,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
-    onDanmakuBlockColorfulChange: (Boolean) -> Unit = {},
-    onDanmakuBlockRepeatChange: (Boolean) -> Unit = {},
-    onDanmakuBlockSpecialChange: (Boolean) -> Unit = {},
-    onDanmakuBlockByUserFilterChange: (Boolean) -> Unit = {},
-    onDanmakuAiCloudLevelChange: (Int) -> Unit = {},
     onFocusStateChange: (MenuFocusState) -> Unit,
 ) {
     PlayerThreeLevelMenu(
@@ -146,8 +137,39 @@ fun DanmakuMenuList(
                     onSelectedChanged = { onDanmakuMaskChange(it == 1) },
                     onFocusBackToParent = backToMenu,
                 )
+        }
+    }
+}
 
-            VideoPlayerDanmakuMenuItem.BlockColorful ->
+/**
+ * 弹幕屏蔽设置面板。
+ *
+ * 二级为屏蔽项列表，三级为各屏蔽项的开关/等级选择。
+ */
+@Composable
+@Suppress("LongParameterList")
+fun DanmakuFilterMenuList(
+    currentBlockColorful: Boolean = false,
+    currentBlockRepeat: Boolean = false,
+    currentBlockSpecial: Boolean = false,
+    currentBlockByUserFilter: Boolean = true,
+    currentAiCloudLevel: Int = 0,
+    onDanmakuBlockColorfulChange: (Boolean) -> Unit = {},
+    onDanmakuBlockRepeatChange: (Boolean) -> Unit = {},
+    onDanmakuBlockSpecialChange: (Boolean) -> Unit = {},
+    onDanmakuBlockByUserFilterChange: (Boolean) -> Unit = {},
+    onDanmakuAiCloudLevelChange: (Int) -> Unit = {},
+    onFocusStateChange: (MenuFocusState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PlayerThreeLevelMenu(
+        modifier = modifier,
+        categories = VideoPlayerDanmakuFilterMenuItem.entries,
+        categoryLabel = { it.displayName },
+        onFocusStateChange = onFocusStateChange,
+    ) { selectedItem, itemModifier, backToMenu ->
+        when (selectedItem) {
+            VideoPlayerDanmakuFilterMenuItem.BlockColorful ->
                 RadioMenuList(
                     modifier = itemModifier,
                     items = listOf("关闭", "开启"),
@@ -156,7 +178,7 @@ fun DanmakuMenuList(
                     onFocusBackToParent = backToMenu,
                 )
 
-            VideoPlayerDanmakuMenuItem.BlockRepeat ->
+            VideoPlayerDanmakuFilterMenuItem.BlockRepeat ->
                 RadioMenuList(
                     modifier = itemModifier,
                     items = listOf("关闭", "开启"),
@@ -165,7 +187,7 @@ fun DanmakuMenuList(
                     onFocusBackToParent = backToMenu,
                 )
 
-            VideoPlayerDanmakuMenuItem.BlockSpecial ->
+            VideoPlayerDanmakuFilterMenuItem.BlockSpecial ->
                 RadioMenuList(
                     modifier = itemModifier,
                     items = listOf("关闭", "开启"),
@@ -174,7 +196,7 @@ fun DanmakuMenuList(
                     onFocusBackToParent = backToMenu,
                 )
 
-            VideoPlayerDanmakuMenuItem.BlockByUserFilter ->
+            VideoPlayerDanmakuFilterMenuItem.BlockByUserFilter ->
                 RadioMenuList(
                     modifier = itemModifier,
                     items = listOf("关闭", "开启"),
@@ -183,7 +205,7 @@ fun DanmakuMenuList(
                     onFocusBackToParent = backToMenu,
                 )
 
-            VideoPlayerDanmakuMenuItem.AiCloudLevel ->
+            VideoPlayerDanmakuFilterMenuItem.AiCloudLevel ->
                 RadioMenuList(
                     modifier = itemModifier,
                     items = listOf("关闭", "弱", "中", "强", "极强"),
