@@ -244,6 +244,10 @@ private fun LiveMenuList(
                     currentSpeedFactor = danmakuState.speedFactor,
                     currentArea = danmakuState.area,
                     currentMaskEnabled = danmakuState.maskEnabled,
+                    currentBlockColorful = danmakuState.blockColorful,
+                    currentBlockRepeat = danmakuState.blockRepeat,
+                    currentBlockSpecial = danmakuState.blockSpecial,
+                    currentAiCloudLevel = danmakuState.aiCloudLevel,
                     onDanmakuSwitchChange = { types ->
                         val entityTypes =
                             types.mapNotNull {
@@ -258,6 +262,10 @@ private fun LiveMenuList(
                     onDanmakuAreaChange = { onDanmakuSettingChange(DanmakuSettingAction.SetArea(it)) },
                     onFocusStateChange = onFocusStateChange,
                     onDanmakuMaskChange = { onDanmakuSettingChange(DanmakuSettingAction.SetMaskEnabled(it)) },
+                    onDanmakuBlockColorfulChange = { onDanmakuSettingChange(DanmakuSettingAction.SetBlockColorful(it)) },
+                    onDanmakuBlockRepeatChange = { onDanmakuSettingChange(DanmakuSettingAction.SetBlockRepeat(it)) },
+                    onDanmakuBlockSpecialChange = { onDanmakuSettingChange(DanmakuSettingAction.SetBlockSpecial(it)) },
+                    onDanmakuAiCloudLevelChange = { onDanmakuSettingChange(DanmakuSettingAction.SetAiCloudLevel(it)) },
                 )
             }
         }
