@@ -305,11 +305,6 @@ private fun MenuList(
                     currentSpeedFactor = uiState.danmakuState.speedFactor,
                     currentArea = uiState.danmakuState.area,
                     currentMaskEnabled = uiState.danmakuState.maskEnabled,
-                    currentBlockColorful = uiState.danmakuState.blockColorful,
-                    currentBlockRepeat = uiState.danmakuState.blockRepeat,
-                    currentBlockSpecial = uiState.danmakuState.blockSpecial,
-                    currentBlockByUserFilter = uiState.danmakuState.blockByUserFilter,
-                    currentAiCloudLevel = uiState.danmakuState.aiCloudLevel,
                     onDanmakuSwitchChange = onDanmakuSwitchChange,
                     onDanmakuSizeChange = onDanmakuSizeChange,
                     onDanmakuOpacityChange = onDanmakuOpacityChange,
@@ -317,13 +312,23 @@ private fun MenuList(
                     onDanmakuAreaChange = onDanmakuAreaChange,
                     onFocusStateChange = onFocusStateChange,
                     onDanmakuMaskChange = onDanmakuMaskChange,
+                )
+            }
+
+            VideoPlayerMenuNavItem.DanmakuFilter ->
+                DanmakuFilterMenuList(
+                    currentBlockColorful = uiState.danmakuState.blockColorful,
+                    currentBlockRepeat = uiState.danmakuState.blockRepeat,
+                    currentBlockSpecial = uiState.danmakuState.blockSpecial,
+                    currentBlockByUserFilter = uiState.danmakuState.blockByUserFilter,
+                    currentAiCloudLevel = uiState.danmakuState.aiCloudLevel,
                     onDanmakuBlockColorfulChange = onDanmakuBlockColorfulChange,
                     onDanmakuBlockRepeatChange = onDanmakuBlockRepeatChange,
                     onDanmakuBlockSpecialChange = onDanmakuBlockSpecialChange,
                     onDanmakuBlockByUserFilterChange = onDanmakuBlockByUserFilterChange,
                     onDanmakuAiCloudLevelChange = onDanmakuAiCloudLevelChange,
+                    onFocusStateChange = onFocusStateChange,
                 )
-            }
 
             VideoPlayerMenuNavItem.ClosedCaption -> {
                 val subtitleTracks =

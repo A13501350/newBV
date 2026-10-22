@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.ClearAll
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Wifi
@@ -51,6 +52,7 @@ enum class LivePlayerMenuNavItem(
     Picture("画质", Icons.Outlined.Image),
     Line("线路", Icons.Outlined.Wifi),
     Danmaku("弹幕", Icons.Outlined.ClearAll),
+    DanmakuFilter("屏蔽", Icons.Outlined.Block),
 }
 
 /**
@@ -172,7 +174,9 @@ private fun LiveMenuControllerContent(
                             }
                             if (it.key == Key.DirectionLeft) {
                                 focusState =
-                                    if (selectedNavItem == LivePlayerMenuNavItem.Danmaku) {
+                                    if (selectedNavItem == LivePlayerMenuNavItem.Danmaku ||
+                                        selectedNavItem == LivePlayerMenuNavItem.DanmakuFilter
+                                    ) {
                                         MenuFocusState.Menu
                                     } else {
                                         MenuFocusState.Items
@@ -245,11 +249,6 @@ private fun LiveMenuList(
                     currentSpeedFactor = danmakuState.speedFactor,
                     currentArea = danmakuState.area,
                     currentMaskEnabled = danmakuState.maskEnabled,
-                    currentBlockColorful = danmakuState.blockColorful,
-                    currentBlockRepeat = danmakuState.blockRepeat,
-                    currentBlockSpecial = danmakuState.blockSpecial,
-                    currentBlockByUserFilter = danmakuState.blockByUserFilter,
-                    currentAiCloudLevel = danmakuState.aiCloudLevel,
                     onDanmakuSwitchChange = { types ->
                         val entityTypes =
                             types.mapNotNull {
@@ -264,6 +263,16 @@ private fun LiveMenuList(
                     onDanmakuAreaChange = { onDanmakuSettingChange(DanmakuSettingAction.SetArea(it)) },
                     onFocusStateChange = onFocusStateChange,
                     onDanmakuMaskChange = { onDanmakuSettingChange(DanmakuSettingAction.SetMaskEnabled(it)) },
+                )
+            }
+
+            LivePlayerMenuNavItem.DanmakuFilter ->
+                DanmakuFilterMenuList(
+                    currentBlockColorful = danmakuState.blockColorful,
+                    currentBlockRepeat = danmakuState.blockRepeat,
+                    currentBlockSpecial = danmakuState.blockSpecial,
+                    currentBlockByUserFilter = danmakuState.blockByUserFilter,
+                    currentAiCloudLevel = danmakuState.aiCloudLevel,
                     onDanmakuBlockColorfulChange = {
                         onDanmakuSettingChange(DanmakuSettingAction.SetBlockColorful(it))
                     },
@@ -279,6 +288,7 @@ private fun LiveMenuList(
                     onDanmakuAiCloudLevelChange = {
                         onDanmakuSettingChange(DanmakuSettingAction.SetAiCloudLevel(it))
                     },
+                    onFocusStateChange = onFocusStateChange,
                 )
             }
         }
