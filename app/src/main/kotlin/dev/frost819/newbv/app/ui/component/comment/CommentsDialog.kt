@@ -497,6 +497,8 @@ internal fun CommentCard(
                             append(comment.userName)
                             if (comment.level > 0) append("  Lv.${comment.level}")
                             if (comment.isUp) append("  UP主")
+                            if (comment.upTop) append("  置顶")
+                            if (comment.upLiked) append("  UP主觉得很赞")
                         },
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
@@ -798,6 +800,8 @@ private fun fakeComment(
         replyCount = replyCount,
         isLiked = isLiked,
         isUp = isUp,
+        upLiked = false,
+        upTop = false,
     )
 
 @Preview(device = "id:tv_1080p", showBackground = true, backgroundColor = 0xFF000000)

@@ -3,6 +3,7 @@ package dev.frost819.newbv.biliapi.entity.comment
 import bilibili.main.community.reply.v1.ReplyInfo
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -30,7 +31,12 @@ data class Comment(
     val likeCount: Long,
     val replyCount: Int,
     val isLiked: Boolean,
+    /** 评论者是否为视频 UP 主（mid 与 ownerMid 一致）。 */
     val isUp: Boolean,
+    /** UP 主是否点赞了这条评论。 */
+    val upLiked: Boolean,
+    /** UP 主是否置顶了这条评论。 */
+    val upTop: Boolean,
 ) {
     /** 从 B 站 Web/App HTTP 评论 JSON 转换为统一模型。 */
     companion object {
@@ -79,9 +85,10 @@ data class Comment(
                         json.int("count", 0),
                     ),
                 isLiked = action == 1,
-                // UP 主身份只能由评论者 mid 与视频所有者 mid 比对得出；
-                // up_like / is_up_top 表示被 UP 主点赞或置顶，不能作为身份依据
+                // UP 主身份只能由评论者 mid 与视频所有者 mid 比对得出
                 isUp = ownerMid != 0L && mid == ownerMid,
+                upLiked = control?.get("up_like")?.jsonPrimitive?.booleanOrNull == true,
+                upTop = control?.get("is_up_top")?.jsonPrimitive?.booleanOrNull == true,
             )
         }
 
@@ -109,6 +116,8 @@ data class Comment(
                 replyCount = reply.count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
                 isLiked = reply.replyControl.action == 1L,
                 isUp = ownerMid != 0L && reply.mid == ownerMid,
+                upLiked = reply.replyControl.upLike,
+                upTop = reply.replyControl.isUpTop,
             )
     }
 }

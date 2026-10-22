@@ -54,6 +54,8 @@ class CommentCardTest {
             replyCount = replyCount,
             isLiked = false,
             isUp = false,
+            upLiked = false,
+            upTop = false,
         )
 
     /**
