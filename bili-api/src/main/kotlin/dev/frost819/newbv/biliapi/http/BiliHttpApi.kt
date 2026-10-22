@@ -10,6 +10,8 @@ import dev.frost819.newbv.biliapi.http.BiliHttpApi.getRegionDynamic
 import dev.frost819.newbv.biliapi.http.entity.BiliResponse
 import dev.frost819.newbv.biliapi.http.entity.BiliResponseWithoutData
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
+import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuFilterRule
+import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuFilterRuleData
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuResponse
 import dev.frost819.newbv.biliapi.http.entity.dynamic.DynamicData
 import dev.frost819.newbv.biliapi.http.entity.history.HistoryData
@@ -538,6 +540,18 @@ object BiliHttpApi {
                 }.readRawBytes()
         return DmWebViewReply.parseFrom(bytes)
     }
+
+    /**
+     * 获取用户云端弹幕屏蔽规则（关键词 / 正则 / 用户）。
+     *
+     * 需要登录态；未登录时接口返回 -101，由调用方降级为不使用云端规则。
+     */
+    suspend fun getDanmakuFilterRules(): List<DanmakuFilterRule> =
+        client
+            .get("/x/dm/filter/user")
+            .body<BiliResponse<DanmakuFilterRuleData>>()
+            .getResponseData()
+            .rule
 
     /**
      * 获取动态列表

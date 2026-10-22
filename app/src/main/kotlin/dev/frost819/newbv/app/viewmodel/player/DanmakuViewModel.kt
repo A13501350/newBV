@@ -21,6 +21,7 @@ import dev.frost819.newbv.biliapi.entity.danmaku.BiliDanmakuFilterConfig
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMask
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
+import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuFilterRule
 import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
 import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.danmaku.config.DanmakuState
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.util.zip.CRC32
 import javax.inject.Inject
 import kotlin.math.abs
 import dev.frost819.newbv.danmaku.entity.DanmakuType as DanmakuEntityDanmakuType
@@ -144,6 +146,12 @@ class DanmakuViewModel
         /** B 站账号级过滤配置是否已在本次会话中应用过（仅应用一次，避免覆盖用户调整）。 */
         private var biliFilterApplied = false
 
+        /** 云端账号屏蔽规则是否已请求过（本次会话只请求一次）。 */
+        private var userFilterLoaded = false
+
+        /** 云端账号屏蔽规则编译结果；分段过滤在 IO 协程读取，需跨线程可见。 */
+        @Volatile private var userFilter = CompiledUserFilter()
+
         /** UI 层喂入的播放进度（毫秒），驱动分段加载；conflated，仅保留最新值。 */
         private val currentTimeFlow = MutableStateFlow(0L)
 
@@ -244,6 +252,9 @@ class DanmakuViewModel
                 logger.info {
                     "Danmaku meta: segmentSizeMs=$segmentSizeMs, segTotal=$segmentTotal, count=${meta.count}"
                 }
+
+                // 账号云端屏蔽词/正则/用户规则：本次会话只拉取一次，失败不影响播放
+                loadUserFilter()
 
                 startSegmentWatcher()
                 // 触发初始段加载：watcher 订阅 StateFlow 时会立即收到当前值
@@ -372,6 +383,7 @@ class DanmakuViewModel
                         logger.info {
                             "Load danmaku segment $segmentIndex: raw=${dataList.size}, " +
                                 "kept=${filteredList.size}, specialDropped=${filterStats.specialDropped}, " +
+                                "userDropped=${filterStats.userDropped}, " +
                                 "aiDropped=${filterStats.aiDropped}, aiScored=${filterStats.aiScored}, " +
                                 "weightRange=${filterStats.minWeight}..${filterStats.maxWeight}, " +
                                 "aiLevel=${_danmakuState.value.aiCloudLevel}, " +
@@ -424,6 +436,7 @@ class DanmakuViewModel
         private class SegmentFilterStats {
             var specialDropped: Int = 0
             var aiDropped: Int = 0
+            var userDropped: Int = 0
             var aiScored: Int = 0
             var minWeight: Int = Int.MAX_VALUE
             var maxWeight: Int = Int.MIN_VALUE
@@ -433,10 +446,12 @@ class DanmakuViewModel
          * 按当前弹幕设置过滤分段数据。
          *
          * - 高级/代码/BAS 弹幕（mode 7/8/9）引擎无法渲染，开启屏蔽时直接丢弃
+         * - 账号云端规则：屏蔽词、正则、用户（midHash）
          * - AI 云屏蔽按等级丢弃低分弹幕：评分取 weight 与服务端 ai_flag 的较大值
          */
         private fun List<DanmakuData>.filterForDisplay(stats: SegmentFilterStats): List<DanmakuData> {
             val state = _danmakuState.value
+            val rules = userFilter
             val kept = ArrayList<DanmakuData>(size)
             for (item in this) {
                 if (item.aiFlagScore != 0) stats.aiScored++
@@ -446,6 +461,10 @@ class DanmakuViewModel
                 }
                 if (state.blockSpecial && item.type in SPECIAL_DANMAKU_MODES) {
                     stats.specialDropped++
+                    continue
+                }
+                if (rules.matches(item.midHash, item.text)) {
+                    stats.userDropped++
                     continue
                 }
                 if (state.aiCloudLevel > 0 && item.shouldDropByAi(state.aiCloudLevel)) {
@@ -654,6 +673,105 @@ class DanmakuViewModel
         }
 
         /**
+         * 云端账号屏蔽规则（关键词 / 正则 / 用户）的编译结果。
+         *
+         * 用户规则为 type=2，接口下发的是 UID 的 crc32 hex（部分版本为原始 UID，
+         * 编译时统一归一化为小写 midHash），与分段数据里的 [DanmakuData.midHash] 比对。
+         */
+        private class CompiledUserFilter(
+            val keywords: List<String> = emptyList(),
+            val regexes: List<Regex> = emptyList(),
+            val blockedUserHashes: Set<String> = emptySet(),
+            val invalidRegexCount: Int = 0,
+        ) {
+            fun matches(
+                midHash: String,
+                content: String,
+            ): Boolean {
+                if (blockedUserHashes.isNotEmpty() &&
+                    midHash.isNotEmpty() &&
+                    midHash.lowercase() in blockedUserHashes
+                ) {
+                    return true
+                }
+                if (keywords.isNotEmpty() && keywords.any { content.contains(it) }) return true
+                if (regexes.isNotEmpty() && regexes.any { it.containsMatchIn(content) }) return true
+                return false
+            }
+        }
+
+        /**
+         * 拉取账号云端屏蔽规则（本次会话仅一次）。
+         *
+         * 未登录、接口异常或超时都只记录日志并降级为不使用云端规则。
+         */
+        private suspend fun loadUserFilter() {
+            if (userFilterLoaded) return
+            userFilterLoaded = true
+            try {
+                val rules =
+                    withTimeout(USER_FILTER_TIMEOUT_MS) {
+                        videoPlayRepository.getDanmakuFilterRules()
+                    }
+                val enabledRules = rules.filter { it.opened }
+                val compiled = compileUserFilter(enabledRules)
+                userFilter = compiled
+                logger.info {
+                    "Loaded danmaku user filter: total=${rules.size}, opened=${enabledRules.size}, " +
+                        "keyword=${compiled.keywords.size}, regex=${compiled.regexes.size}, " +
+                        "user=${compiled.blockedUserHashes.size}, " +
+                        "invalidRegex=${compiled.invalidRegexCount}"
+                }
+            } catch (e: TimeoutCancellationException) {
+                logger.warn { "Load danmaku user filter timeout after ${USER_FILTER_TIMEOUT_MS}ms" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 允许下一集重试
+                userFilterLoaded = false
+                logger.warn { "Load danmaku user filter failed: $e" }
+            }
+        }
+
+        private fun compileUserFilter(rules: List<DanmakuFilterRule>): CompiledUserFilter {
+            val keywords = mutableListOf<String>()
+            val regexes = mutableListOf<Regex>()
+            val userHashes = mutableSetOf<String>()
+            var invalidRegex = 0
+            for (rule in rules) {
+                val value = rule.filter.trim()
+                if (value.isEmpty()) continue
+                when (rule.type) {
+                    FILTER_TYPE_KEYWORD -> keywords += value
+                    FILTER_TYPE_REGEX -> {
+                        val pattern =
+                            if (value.length > 1 && value.startsWith("/") && value.endsWith("/")) {
+                                value.substring(1, value.length - 1)
+                            } else {
+                                value
+                            }
+                        runCatching { Regex(pattern, RegexOption.IGNORE_CASE) }
+                            .onSuccess { regexes += it }
+                            .onFailure { invalidRegex++ }
+                    }
+
+                    FILTER_TYPE_USER -> userHashes += normalizeUserRule(value)
+                }
+            }
+            return CompiledUserFilter(keywords, regexes, userHashes, invalidRegex)
+        }
+
+        /** 用户规则归一化：纯数字按原始 UID 转 crc32 hex，否则视为已下发的 midHash。 */
+        private fun normalizeUserRule(value: String): String =
+            if (value.all(Char::isDigit)) crc32Hex(value) else value.lowercase()
+
+        private fun crc32Hex(value: String): String {
+            val crc = CRC32()
+            crc.update(value.toByteArray(Charsets.US_ASCII))
+            return crc.value.toString(16)
+        }
+
+        /**
          * 将 B 站 dm/view 返回的用户过滤配置合并到本地状态并重建引擎 Filter 链。
          *
          * B 站配置作为本次会话的初始值：仅在首次加载元数据时应用一次，
@@ -743,5 +861,13 @@ class DanmakuViewModel
 
             /** 高级(7)/代码(8)/BAS(9) 弹幕，引擎无对应渲染器。 */
             private val SPECIAL_DANMAKU_MODES = setOf(7, 8, 9)
+
+            /** 云端屏蔽规则类型：0=关键词 1=正则 2=用户。 */
+            private const val FILTER_TYPE_KEYWORD = 0
+            private const val FILTER_TYPE_REGEX = 1
+            private const val FILTER_TYPE_USER = 2
+
+            /** 云端屏蔽规则拉取超时（毫秒），超时则本次会话不使用云端规则。 */
+            private const val USER_FILTER_TIMEOUT_MS = 3_000L
         }
     }
