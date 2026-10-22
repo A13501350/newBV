@@ -334,7 +334,11 @@ class VideoPlayRepository(
                                 },
                             ) ?: throw IllegalStateException("Danmaku stub is not initialized")
                         }.onFailure { handleGrpcException(it) }.getOrThrow()
-                    reply.elemsList.map { DanmakuData.fromDanmakuElem(it) }
+                    val aiFlagScores =
+                        reply.aiFlag.dmFlagsList.associate { it.dmid to it.flag.toInt() }
+                    reply.elemsList.map {
+                        DanmakuData.fromDanmakuElem(it, aiFlagScores[it.id] ?: 0)
+                    }
                 }
         }
 

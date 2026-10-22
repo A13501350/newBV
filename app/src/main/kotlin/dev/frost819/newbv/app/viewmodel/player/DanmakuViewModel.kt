@@ -370,12 +370,19 @@ class DanmakuViewModel
                                     preferApiType = if (Prefs.apiType == DataApiType.App) ApiType.App else ApiType.Web,
                                 )
                             }
-                        val items = dataList.map { it.toDanmakuItemData() }
+                        val filterStats = SegmentFilterStats()
+                        val filteredList = dataList.filterForDisplay(filterStats)
+                        val items = filteredList.map { it.toDanmakuItemData() }
                         // akdanmaku 内部维护有序数据并懒排序，无需预先排序
                         danmakuPlayer?.updateData(items)
                         loadedSegments.add(segmentIndex)
                         logger.info {
-                            "Load danmaku segment $segmentIndex success, size=${items.size}"
+                            "Load danmaku segment $segmentIndex: raw=${dataList.size}, " +
+                                "kept=${filteredList.size}, specialDropped=${filterStats.specialDropped}, " +
+                                "aiDropped=${filterStats.aiDropped}, aiScored=${filterStats.aiScored}, " +
+                                "weightRange=${filterStats.minWeight}..${filterStats.maxWeight}, " +
+                                "aiLevel=${_danmakuState.value.aiCloudLevel}, " +
+                                "blockSpecial=${_danmakuState.value.blockSpecial}"
                         }
                         return
                     } catch (e: TimeoutCancellationException) {
@@ -419,6 +426,54 @@ class DanmakuViewModel
                 textSize = size,
                 textColor = Color(color).toArgb(),
             )
+
+        /** 分段过滤统计，用于运行日志核对接口数据是否被正确解析。 */
+        private class SegmentFilterStats {
+            var specialDropped: Int = 0
+            var aiDropped: Int = 0
+            var aiScored: Int = 0
+            var minWeight: Int = Int.MAX_VALUE
+            var maxWeight: Int = Int.MIN_VALUE
+        }
+
+        /**
+         * 按当前弹幕设置过滤分段数据。
+         *
+         * - 高级/代码/BAS 弹幕（mode 7/8/9）引擎无法渲染，开启屏蔽时直接丢弃
+         * - AI 云屏蔽按等级丢弃低分弹幕：评分取 weight 与服务端 ai_flag 的较大值
+         */
+        private fun List<DanmakuData>.filterForDisplay(stats: SegmentFilterStats): List<DanmakuData> {
+            val state = _danmakuState.value
+            val kept = ArrayList<DanmakuData>(size)
+            for (item in this) {
+                if (item.aiFlagScore != 0) stats.aiScored++
+                if (item.level > 0) {
+                    stats.minWeight = minOf(stats.minWeight, item.level)
+                    stats.maxWeight = maxOf(stats.maxWeight, item.level)
+                }
+                if (state.blockSpecial && item.type in SPECIAL_DANMAKU_MODES) {
+                    stats.specialDropped++
+                    continue
+                }
+                if (state.aiCloudLevel > 0 && item.shouldDropByAi(state.aiCloudLevel)) {
+                    stats.aiDropped++
+                    continue
+                }
+                kept += item
+            }
+            if (stats.minWeight == Int.MAX_VALUE) stats.minWeight = 0
+            if (stats.maxWeight == Int.MIN_VALUE) stats.maxWeight = 0
+            return kept
+        }
+
+        private fun DanmakuData.shouldDropByAi(aiLevel: Int): Boolean {
+            val score =
+                sequenceOf(level, aiFlagScore)
+                    .filter { it != 0 }
+                    .maxOfOrNull { abs(it) }
+                    ?: return false
+            return score < aiLevel
+        }
 
         /**
          * 加载当前视频的弹幕防遮挡蒙版。
@@ -652,7 +707,7 @@ class DanmakuViewModel
                     // 彩色/高级弹幕屏蔽：以 B 站账号设置为准作为初始值
                     blockColorful = if (config.blockColor) true else current.blockColorful,
                     blockSpecial = if (config.blockSpecial) true else current.blockSpecial,
-                    aiCloudLevel = config.aiLevelV2.takeIf { it > 0 } ?: config.aiLevel,
+                    aiCloudLevel = (config.aiLevelV2.takeIf { it > 0 } ?: config.aiLevel).coerceIn(0, 4),
                 )
             if (mergedState == current) {
                 logger.info { "Bili danmaku filter config applied with no state change: $config" }
@@ -718,5 +773,8 @@ class DanmakuViewModel
 
             /** 重试退避基数（毫秒），按指数递增：1s、2s。 */
             private const val RETRY_BACKOFF_BASE_MS = 1_000L
+
+            /** 高级(7)/代码(8)/BAS(9) 弹幕，引擎无对应渲染器。 */
+            private val SPECIAL_DANMAKU_MODES = setOf(7, 8, 9)
         }
     }

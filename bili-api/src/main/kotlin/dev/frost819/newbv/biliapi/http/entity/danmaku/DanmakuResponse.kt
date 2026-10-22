@@ -21,8 +21,11 @@ data class DanmakuData(
     val pool: Int,
     val midHash: String,
     val dmid: Long,
+    /** 弹幕权重，区间 [1, 10]，用于 AI 云屏蔽等级过滤 */
     val level: Int,
     val text: String,
+    /** AI 云屏蔽评分（来自 seg 响应的 ai_flag，0 表示服务端未下发评分） */
+    val aiFlagScore: Int = 0,
 ) {
     companion object {
         fun fromString(
@@ -50,7 +53,10 @@ data class DanmakuData(
          * Web `seg.so` 与 App `DM.DmSegMobile` 双通道共用此映射。
          * 对应文档：docs/bilibili-API-collect-master/docs/danmaku/danmaku_proto.md
          */
-        fun fromDanmakuElem(elem: DanmakuElem): DanmakuData =
+        fun fromDanmakuElem(
+            elem: DanmakuElem,
+            aiFlagScore: Int = 0,
+        ): DanmakuData =
             DanmakuData(
                 // progress 为毫秒，time 为秒
                 time = elem.progress / 1000f,
@@ -64,6 +70,7 @@ data class DanmakuData(
                 dmid = elem.id,
                 level = elem.weight,
                 text = elem.content,
+                aiFlagScore = aiFlagScore,
             )
     }
 }
