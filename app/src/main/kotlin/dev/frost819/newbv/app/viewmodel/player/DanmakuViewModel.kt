@@ -9,7 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.DanmakuConfig
 import com.kuaishou.akdanmaku.data.DanmakuItemData
-import com.kuaishou.akdanmaku.ecs.component.filter.DuplicateMergingFilter
+import com.kuaishou.akdanmaku.ecs.component.filter.DuplicateMergedFilter
 import com.kuaishou.akdanmaku.ecs.component.filter.TextColorFilter
 import com.kuaishou.akdanmaku.ecs.component.filter.TypeFilter
 import com.kuaishou.akdanmaku.render.SimpleRenderer
@@ -91,7 +91,7 @@ class DanmakuViewModel
         private var danmakuConfig = DanmakuConfig()
         private val danmakuTypeFilter = TypeFilter()
         private val danmakuTextColorFilter = TextColorFilter()
-        private val danmakuDuplicateFilter = DuplicateMergingFilter()
+        private val danmakuDuplicateFilter = DuplicateMergedFilter()
 
         private val _danmakuState =
             MutableStateFlow(
@@ -102,6 +102,11 @@ class DanmakuViewModel
                     speedFactor = Prefs.defaultDanmakuSpeedFactor,
                     maskEnabled = Prefs.defaultDanmakuMask,
                     enabledTypes = Prefs.defaultDanmakuTypes.map { it.toDanmakuEntity() },
+                    blockColorful = Prefs.defaultDanmakuBlockColorful,
+                    blockRepeat = Prefs.defaultDanmakuBlockRepeat,
+                    blockSpecial = Prefs.defaultDanmakuBlockSpecial,
+                    blockByUserFilter = Prefs.defaultDanmakuBlockByUserFilter,
+                    aiCloudLevel = Prefs.defaultDanmakuAiCloudLevel,
                 ),
             )
         val danmakuState = _danmakuState.asStateFlow()
@@ -141,9 +146,6 @@ class DanmakuViewModel
          * 旧协程返回后凭此比对丢弃结果，避免旧视频数据污染新视频。
          */
         private var loadGeneration = 0
-
-        /** B 站账号级过滤配置是否已在本次会话中应用过（仅应用一次，避免覆盖用户调整）。 */
-        private var biliFilterApplied = false
 
         /** 云端账号屏蔽规则是否已请求过（本次会话只请求一次）。 */
         private var userFilterLoaded = false
@@ -383,7 +385,12 @@ class DanmakuViewModel
                             }
                         val filterStats = SegmentFilterStats()
                         val filteredList = dataList.filterForDisplay(filterStats)
-                        val items = filteredList.map { it.toDanmakuItemData() }
+                        val items =
+                            if (_danmakuState.value.blockRepeat) {
+                                filteredList.mergeDuplicates()
+                            } else {
+                                filteredList.map { it.toDanmakuItemData() }
+                            }
                         // akdanmaku 内部维护有序数据并懒排序，无需预先排序
                         danmakuPlayer?.updateData(items)
                         loadedSegments.add(segmentIndex)
@@ -395,6 +402,7 @@ class DanmakuViewModel
                                 "weightRange=${filterStats.minWeight}..${filterStats.maxWeight}, " +
                                 "aiLevel=${_danmakuState.value.aiCloudLevel}, " +
                                 "blockSpecial=${_danmakuState.value.blockSpecial}, " +
+                                "blockRepeat=${_danmakuState.value.blockRepeat}, " +
                                 "blockUserFilter=${_danmakuState.value.blockByUserFilter}"
                         }
                         return
@@ -424,12 +432,20 @@ class DanmakuViewModel
             }
         }
 
-        /** 将接口层弹幕数据转换为 akdanmaku 渲染数据。 */
-        private fun DanmakuData.toDanmakuItemData(): DanmakuItemData =
+        /**
+         * 将接口层弹幕数据转换为 akdanmaku 渲染数据。
+         *
+         * @param mergedType 合并弹幕类型，默认普通弹幕
+         * @param mergedCount 重复条数，>1 时在文本后追加 " ×N"
+         */
+        private fun DanmakuData.toDanmakuItemData(
+            mergedType: Int = DanmakuItemData.MERGED_TYPE_NORMAL,
+            mergedCount: Int = 0,
+        ): DanmakuItemData =
             DanmakuItemData(
                 danmakuId = dmid,
                 position = (time * 1000).toLong(),
-                content = text,
+                content = if (mergedCount > 1) "$text ×$mergedCount" else text,
                 mode =
                     when (type) {
                         4 -> DanmakuItemData.DANMAKU_MODE_CENTER_BOTTOM
@@ -438,7 +454,55 @@ class DanmakuViewModel
                     },
                 textSize = size,
                 textColor = Color(color).toArgb(),
+                mergedType = mergedType,
             )
+
+        /**
+         * 按内容合并重复弹幕。
+         *
+         * 相同文本的弹幕在 [MERGE_WINDOW_SECONDS] 时间窗内合并为一组：
+         * - 组内首条标为 [DanmakuItemData.MERGED_TYPE_MERGED]，文本追加 " ×N"
+         * - 组内其余标为 [DanmakuItemData.MERGED_TYPE_ORIGINAL]
+         * - 无重复的弹幕保持 [DanmakuItemData.MERGED_TYPE_NORMAL]
+         *
+         * 合并弹幕与原件均送入引擎，由 [DuplicateMergedFilter] 根据 `blockRepeat` 开关
+         * 决定展示哪一种（开启展示合并弹幕，关闭展示原件）。
+         */
+        private fun List<DanmakuData>.mergeDuplicates(): List<DanmakuItemData> {
+            if (isEmpty()) return emptyList()
+            val result = ArrayList<DanmakuItemData>(size)
+            for (group in groupBy { it.text }.values) {
+                if (group.size == 1) {
+                    result += group[0].toDanmakuItemData()
+                    continue
+                }
+                val sorted = group.sortedBy { it.time }
+                var i = 0
+                while (i < sorted.size) {
+                    val baseTime = sorted[i].time
+                    var j = i
+                    while (j < sorted.size && sorted[j].time - baseTime <= MERGE_WINDOW_SECONDS) j++
+                    val windowSize = j - i
+                    if (windowSize == 1) {
+                        result += sorted[i].toDanmakuItemData()
+                    } else {
+                        result +=
+                            sorted[i].toDanmakuItemData(
+                                mergedType = DanmakuItemData.MERGED_TYPE_MERGED,
+                                mergedCount = windowSize,
+                            )
+                        for (k in (i + 1) until j) {
+                            result +=
+                                sorted[k].toDanmakuItemData(
+                                    mergedType = DanmakuItemData.MERGED_TYPE_ORIGINAL,
+                                )
+                        }
+                    }
+                    i = j
+                }
+            }
+            return result
+        }
 
         /** 分段过滤统计，用于运行日志核对接口数据是否被正确解析。 */
         private class SegmentFilterStats {
@@ -656,6 +720,13 @@ class DanmakuViewModel
                     loadDanmakuMask()
                 }
             }
+            if (new.blockColorful != old.blockColorful) Prefs.defaultDanmakuBlockColorful = new.blockColorful
+            if (new.blockRepeat != old.blockRepeat) Prefs.defaultDanmakuBlockRepeat = new.blockRepeat
+            if (new.blockSpecial != old.blockSpecial) Prefs.defaultDanmakuBlockSpecial = new.blockSpecial
+            if (new.blockByUserFilter != old.blockByUserFilter) {
+                Prefs.defaultDanmakuBlockByUserFilter = new.blockByUserFilter
+            }
+            if (new.aiCloudLevel != old.aiCloudLevel) Prefs.defaultDanmakuAiCloudLevel = new.aiCloudLevel
         }
 
         private fun initDanmakuConfig() {
@@ -692,7 +763,11 @@ class DanmakuViewModel
                 buildList {
                     add(danmakuTypeFilter)
                     if (state.blockColorful) add(danmakuTextColorFilter)
-                    if (state.blockRepeat) add(danmakuDuplicateFilter)
+                    // DuplicateMergedFilter 始终挂载：
+                    // - blockRepeat=true: enable=true，过滤原件(MERGED_TYPE_ORIGINAL)，展示合并弹幕(带 ×N)
+                    // - blockRepeat=false: enable=false，过滤合并弹幕(MERGED_TYPE_MERGED)，展示原件
+                    danmakuDuplicateFilter.enable = state.blockRepeat
+                    add(danmakuDuplicateFilter)
                 }
 
             danmakuConfig =
@@ -821,10 +896,10 @@ class DanmakuViewModel
          * 之后用户在本应用内的调整不会被后续切集的元数据覆盖。
          */
         private fun applyBiliFilterConfig(config: BiliDanmakuFilterConfig) {
-            // B 站过滤配置是账号级设置，仅在本次会话首次加载元数据时作为初始值应用，
-            // 避免后续切集时覆盖用户在当前会话中已经调整的屏蔽选项
-            if (biliFilterApplied) return
-            biliFilterApplied = true
+            // B 站过滤配置仅在首次启动时同步一次并持久化；之后用户本地调整优先，
+            // 即使 ViewModel 重建也不再重复覆盖
+            if (Prefs.danmakuBiliFilterSynced) return
+            Prefs.danmakuBiliFilterSynced = true
 
             val current = _danmakuState.value
             // blocktop/blockscroll/blockbottom 与 B 站 playerConfig 同步
@@ -842,6 +917,11 @@ class DanmakuViewModel
                 return
             }
             _danmakuState.update { mergedState }
+            // 持久化 B 站同步的初始值，避免下次启动被重复覆盖
+            Prefs.defaultDanmakuTypes = mergedState.enabledTypes.map { it.toDataDanmakuType() }
+            Prefs.defaultDanmakuBlockColorful = mergedState.blockColorful
+            Prefs.defaultDanmakuBlockSpecial = mergedState.blockSpecial
+            Prefs.defaultDanmakuAiCloudLevel = mergedState.aiCloudLevel
             initDanmakuConfig()
             logger.info { "Applied Bili danmaku filter config: $config" }
         }
@@ -904,6 +984,9 @@ class DanmakuViewModel
 
             /** 高级(7)/代码(8)/BAS(9) 弹幕，引擎无对应渲染器。 */
             private val SPECIAL_DANMAKU_MODES = setOf(7, 8, 9)
+
+            /** 重复弹幕合并的时间窗（秒），窗口内相同文本的弹幕合并为一条。 */
+            private const val MERGE_WINDOW_SECONDS = 5f
 
             /** 云端屏蔽规则类型：0=关键词 1=正则 2=用户。 */
             private const val FILTER_TYPE_KEYWORD = 0

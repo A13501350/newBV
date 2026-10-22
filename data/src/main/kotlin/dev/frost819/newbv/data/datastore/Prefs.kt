@@ -327,6 +327,24 @@ object Prefs {
     /** 默认防遮挡蒙版开关。 */
     var defaultDanmakuMask by pref(PrefKeys.defaultDanmakuMask, false)
 
+    /** 默认屏蔽彩色弹幕开关。 */
+    var defaultDanmakuBlockColorful by pref(PrefKeys.defaultDanmakuBlockColorful, false)
+
+    /** 默认屏蔽重复弹幕开关。 */
+    var defaultDanmakuBlockRepeat by pref(PrefKeys.defaultDanmakuBlockRepeat, false)
+
+    /** 默认屏蔽高级弹幕开关。 */
+    var defaultDanmakuBlockSpecial by pref(PrefKeys.defaultDanmakuBlockSpecial, false)
+
+    /** 默认账号云端屏蔽规则开关。 */
+    var defaultDanmakuBlockByUserFilter by pref(PrefKeys.defaultDanmakuBlockByUserFilter, true)
+
+    /** 默认 AI 云屏蔽等级（0 关闭，1-4 等级递增）。 */
+    var defaultDanmakuAiCloudLevel by pref(PrefKeys.defaultDanmakuAiCloudLevel, 0)
+
+    /** B 站弹幕过滤配置是否已同步过（避免重复覆盖用户本地设置）。 */
+    var danmakuBiliFilterSynced by pref(PrefKeys.danmakuBiliFilterSynced, false)
+
     // --- 播放器 - 字幕（PRD 7.4） ---
 
     /** 默认字幕字号（SP）。 */
