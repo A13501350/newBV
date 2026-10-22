@@ -521,10 +521,16 @@ class DanmakuViewModel
                 new.enabledTypes != old.enabledTypes ||
                     new.blockColorful != old.blockColorful ||
                     new.blockRepeat != old.blockRepeat ||
-                    new.blockSpecial != old.blockSpecial
+                    new.blockSpecial != old.blockSpecial ||
+                    new.aiCloudLevel != old.aiCloudLevel
 
             if (filterChanged) {
                 initDanmakuConfig()
+                logger.info {
+                    "Danmaku filter changed: $action, " +
+                        "colorful=${new.blockColorful}, repeat=${new.blockRepeat}, " +
+                        "special=${new.blockSpecial}, aiCloudLevel=${new.aiCloudLevel}"
+                }
             } else {
                 // 非 Filter 变更：仅更新对应配置项，避免全量重建
                 if (new.scale != old.scale) {
@@ -615,6 +621,14 @@ class DanmakuViewModel
                 )
             danmakuConfig.updateFilter()
             danmakuPlayer?.updateConfig(danmakuConfig)
+
+            logger.info {
+                "Danmaku filter chain rebuilt: " +
+                    "filters=${dataFilters.map { it.javaClass.simpleName }}, " +
+                    "types=$types, blockColorful=${state.blockColorful}, " +
+                    "blockRepeat=${state.blockRepeat}, blockSpecial=${state.blockSpecial}, " +
+                    "aiCloudLevel=${state.aiCloudLevel}"
+            }
         }
 
         /**
@@ -640,7 +654,10 @@ class DanmakuViewModel
                     blockSpecial = if (config.blockSpecial) true else current.blockSpecial,
                     aiCloudLevel = config.aiLevelV2.takeIf { it > 0 } ?: config.aiLevel,
                 )
-            if (mergedState == current) return
+            if (mergedState == current) {
+                logger.info { "Bili danmaku filter config applied with no state change: $config" }
+                return
+            }
             _danmakuState.update { mergedState }
             initDanmakuConfig()
             logger.info { "Applied Bili danmaku filter config: $config" }
