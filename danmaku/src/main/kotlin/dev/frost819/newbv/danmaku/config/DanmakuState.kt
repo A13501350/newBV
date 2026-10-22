@@ -17,6 +17,7 @@ import dev.frost819.newbv.danmaku.entity.DanmakuType
  * - [blockColorful] 是否屏蔽彩色弹幕（默认 false）
  * - [blockRepeat] 是否屏蔽重复弹幕（默认 false）
  * - [blockSpecial] 是否屏蔽高级弹幕（默认 false）
+ * - [blockByUserFilter] 是否应用账号云端屏蔽规则（关键词/正则/用户，默认 true）
  * - [aiCloudLevel] AI 智能云屏蔽等级（0 关闭，1-4 等级递增；默认 0）
  */
 data class DanmakuState(
@@ -34,6 +35,7 @@ data class DanmakuState(
     val blockColorful: Boolean = false,
     val blockRepeat: Boolean = false,
     val blockSpecial: Boolean = false,
+    val blockByUserFilter: Boolean = true,
     val aiCloudLevel: Int = 0,
 ) {
     /**

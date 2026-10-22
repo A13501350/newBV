@@ -45,6 +45,7 @@ fun DanmakuMenuList(
     currentBlockColorful: Boolean = false,
     currentBlockRepeat: Boolean = false,
     currentBlockSpecial: Boolean = false,
+    currentBlockByUserFilter: Boolean = true,
     currentAiCloudLevel: Int = 0,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
@@ -55,6 +56,7 @@ fun DanmakuMenuList(
     onDanmakuBlockColorfulChange: (Boolean) -> Unit = {},
     onDanmakuBlockRepeatChange: (Boolean) -> Unit = {},
     onDanmakuBlockSpecialChange: (Boolean) -> Unit = {},
+    onDanmakuBlockByUserFilterChange: (Boolean) -> Unit = {},
     onDanmakuAiCloudLevelChange: (Int) -> Unit = {},
     onFocusStateChange: (MenuFocusState) -> Unit,
 ) {
@@ -169,6 +171,15 @@ fun DanmakuMenuList(
                     items = listOf("关闭", "开启"),
                     selected = if (currentBlockSpecial) 1 else 0,
                     onSelectedChanged = { onDanmakuBlockSpecialChange(it == 1) },
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerDanmakuMenuItem.BlockByUserFilter ->
+                RadioMenuList(
+                    modifier = itemModifier,
+                    items = listOf("关闭", "开启"),
+                    selected = if (currentBlockByUserFilter) 1 else 0,
+                    onSelectedChanged = { onDanmakuBlockByUserFilterChange(it == 1) },
                     onFocusBackToParent = backToMenu,
                 )
 

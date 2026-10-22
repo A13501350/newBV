@@ -46,6 +46,10 @@ sealed interface DanmakuSettingAction {
         val enabled: Boolean,
     ) : DanmakuSettingAction
 
+    data class SetBlockByUserFilter(
+        val enabled: Boolean,
+    ) : DanmakuSettingAction
+
     data class SetAiCloudLevel(
         val level: Int,
     ) : DanmakuSettingAction
