@@ -1,10 +1,13 @@
 package dev.frost819.newbv.app.viewmodel.player
 
 import com.google.common.truth.Truth.assertThat
+import com.kuaishou.akdanmaku.data.DanmakuItemData
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
+import dev.frost819.newbv.biliapi.entity.danmaku.BiliDanmakuFilterConfig
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
+import dev.frost819.newbv.biliapi.repositories.AuthRepository
 import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
 import dev.frost819.newbv.danmaku.entity.DanmakuType
 import dev.frost819.newbv.data.datastore.Prefs
@@ -14,6 +17,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.spyk
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +45,7 @@ import dev.frost819.newbv.data.datastore.DanmakuType as DataDanmakuType
 class DanmakuViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var videoPlayRepository: VideoPlayRepository
+    private lateinit var authRepository: AuthRepository
     private lateinit var viewModel: DanmakuViewModel
 
     @BeforeEach
@@ -62,16 +67,32 @@ class DanmakuViewModelTest {
                 DataDanmakuType.Top,
                 DataDanmakuType.Bottom,
             )
+        every { Prefs.defaultDanmakuBlockColorful } returns false
+        every { Prefs.defaultDanmakuBlockRepeat } returns false
+        every { Prefs.defaultDanmakuBlockSpecial } returns false
+        every { Prefs.defaultDanmakuBlockByUserFilter } returns true
+        every { Prefs.defaultDanmakuAiCloudLevel } returns 0
+        every { Prefs.danmakuBiliFilterSynced } returns false
+        every { Prefs.danmakuBiliFilterSyncedMid } returns 0L
         every { Prefs.defaultDanmakuScale = any() } answers {}
         every { Prefs.defaultDanmakuOpacity = any() } answers {}
         every { Prefs.defaultDanmakuArea = any() } answers {}
         every { Prefs.defaultDanmakuSpeedFactor = any() } answers {}
         every { Prefs.defaultDanmakuMask = any() } answers {}
         every { Prefs.defaultDanmakuTypes = any() } answers {}
+        every { Prefs.defaultDanmakuBlockColorful = any() } answers {}
+        every { Prefs.defaultDanmakuBlockRepeat = any() } answers {}
+        every { Prefs.defaultDanmakuBlockSpecial = any() } answers {}
+        every { Prefs.defaultDanmakuBlockByUserFilter = any() } answers {}
+        every { Prefs.defaultDanmakuAiCloudLevel = any() } answers {}
+        every { Prefs.danmakuBiliFilterSynced = any() } answers {}
+        every { Prefs.danmakuBiliFilterSyncedMid = any() } answers {}
         every { Prefs.apiType } returns DataApiType.Web
 
         videoPlayRepository = mockk()
-        viewModel = DanmakuViewModel(videoPlayRepository)
+        authRepository = AuthRepository()
+        authRepository.mid = 12345L
+        viewModel = DanmakuViewModel(videoPlayRepository, authRepository)
     }
 
     @AfterEach
@@ -593,4 +614,167 @@ class DanmakuViewModelTest {
         verify { player.seekTo(1_200_000) }
         verify(exactly = 0) { player.pause() }
     }
+
+    // === AI 云屏蔽阈值映射 ===
+
+    @Test
+    fun `shouldDropByAi uses threshold table not raw level`() {
+        // 等级 1（弱）：阈值 1，score<1 即 score=0 才丢弃，实际无过滤
+        val data1 = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 1, "text")
+        assertThat(viewModel.run { data1.shouldDropByAi(1) }).isFalse()
+
+        // 等级 2（中）：阈值 5，score<5 丢弃
+        assertThat(viewModel.run { data1.shouldDropByAi(2) }).isTrue()
+
+        // 等级 3（强）：阈值 7，score<7 丢弃
+        assertThat(viewModel.run { data1.shouldDropByAi(3) }).isTrue()
+
+        // 等级 4（极强）：阈值 10，score<10 丢弃
+        assertThat(viewModel.run { data1.shouldDropByAi(4) }).isTrue()
+
+        // score=10 的弹幕在等级 4 下保留
+        val data10 = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 10, "text")
+        assertThat(viewModel.run { data10.shouldDropByAi(4) }).isFalse()
+    }
+
+    @Test
+    fun `shouldDropByAi returns false when no score available`() {
+        val data = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 0, "text")
+        assertThat(viewModel.run { data.shouldDropByAi(3) }).isFalse()
+    }
+
+    // === 重复弹幕合并 ===
+
+    @Test
+    fun `mergeDuplicates groups by text and marks merged type`() {
+        val nowSec = (System.currentTimeMillis() / 1000).toInt()
+        val list =
+            listOf(
+                DanmakuData(1f, 1, 25, 0xFFFFFF, nowSec, 0, "h1", 1, 0, "重复内容"),
+                DanmakuData(2f, 1, 25, 0xFFFFFF, nowSec, 0, "h2", 2, 0, "重复内容"),
+                DanmakuData(3f, 1, 25, 0xFFFFFF, nowSec, 0, "h3", 3, 0, "重复内容"),
+                DanmakuData(4f, 1, 25, 0xFFFFFF, nowSec, 0, "h4", 4, 0, "正常弹幕"),
+            )
+
+        val merged = viewModel.run { list.mergeDuplicates() }
+
+        // 3 条重复弹幕：1 条 MERGED + 2 条 ORIGINAL；1 条正常弹幕：NORMAL
+        assertThat(merged).hasSize(4)
+        val mergedItems = merged.filter { it.mergedType == DanmakuItemData.MERGED_TYPE_MERGED }
+        val originalItems = merged.filter { it.mergedType == DanmakuItemData.MERGED_TYPE_ORIGINAL }
+        val normalItems = merged.filter { it.mergedType == DanmakuItemData.MERGED_TYPE_NORMAL }
+        assertThat(mergedItems).hasSize(1)
+        assertThat(originalItems).hasSize(2)
+        assertThat(normalItems).hasSize(1)
+        assertThat(mergedItems[0].content).isEqualTo("重复内容 ×3")
+    }
+
+    @Test
+    fun `mergeDuplicates does not merge across time windows`() {
+        val nowSec = (System.currentTimeMillis() / 1000).toInt()
+        val list =
+            listOf(
+                DanmakuData(1f, 1, 25, 0xFFFFFF, nowSec, 0, "h1", 1, 0, "重复内容"),
+                DanmakuData(7f, 1, 25, 0xFFFFFF, nowSec, 0, "h2", 2, 0, "重复内容"),
+            )
+
+        val merged = viewModel.run { list.mergeDuplicates() }
+
+        // time 差 6 秒超出 5 秒窗口，不合并
+        assertThat(merged).hasSize(2)
+        assertThat(merged.all { it.mergedType == DanmakuItemData.MERGED_TYPE_NORMAL }).isTrue()
+    }
+
+    // === B 站过滤配置同步门控 ===
+
+    @Test
+    fun `applyBiliFilterConfig skips when hasValidConfig is false`() =
+        runTest(testDispatcher) {
+            // 未登录时 dm/view 不返回 playerConfig/flag，config 为默认值
+            val defaultConfig = BiliDanmakuFilterConfig.DEFAULT
+
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+                DanmakuMeta(360_000, 3, false, 100, defaultConfig)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(fakeDanmakuData(1, 0f))
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            // 不应置位 synced
+            verify(exactly = 0) { Prefs.danmakuBiliFilterSynced = true }
+        }
+
+    @Test
+    fun `applyBiliFilterConfig syncs when hasValidConfig is true`() =
+        runTest(testDispatcher) {
+            val config =
+                BiliDanmakuFilterConfig(
+                    blockTop = true,
+                    blockColor = true,
+                    aiSwitch = true,
+                    aiLevel = 3,
+                    hasValidConfig = true,
+                )
+
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+                DanmakuMeta(360_000, 3, false, 100, config)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(fakeDanmakuData(1, 0f))
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            // 应置位 synced 并记录 mid
+            verify { Prefs.danmakuBiliFilterSynced = true }
+            verify { Prefs.danmakuBiliFilterSyncedMid = 12345L }
+        }
+
+    @Test
+    fun `applyBiliFilterConfig skips when already synced for same mid`() =
+        runTest(testDispatcher) {
+            every { Prefs.danmakuBiliFilterSynced } returns true
+            every { Prefs.danmakuBiliFilterSyncedMid } returns 12345L
+
+            val config =
+                BiliDanmakuFilterConfig(
+                    blockColor = true,
+                    hasValidConfig = true,
+                )
+
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+                DanmakuMeta(360_000, 3, false, 100, config)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(fakeDanmakuData(1, 0f))
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            // 已同步过同 mid，不再重复同步
+            verify(exactly = 0) { Prefs.danmakuBiliFilterSynced = true }
+        }
+
+    @Test
+    fun `applyBiliFilterConfig re-syncs when mid changes`() =
+        runTest(testDispatcher) {
+            every { Prefs.danmakuBiliFilterSynced } returns true
+            every { Prefs.danmakuBiliFilterSyncedMid } returns 99999L // 不同 mid
+
+            val config =
+                BiliDanmakuFilterConfig(
+                    blockColor = true,
+                    hasValidConfig = true,
+                )
+
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+                DanmakuMeta(360_000, 3, false, 100, config)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(fakeDanmakuData(1, 0f))
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            // mid 变化，重新同步
+            verify { Prefs.danmakuBiliFilterSyncedMid = 12345L }
+        }
 }

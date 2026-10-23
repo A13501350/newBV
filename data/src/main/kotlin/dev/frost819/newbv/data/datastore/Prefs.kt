@@ -345,6 +345,9 @@ object Prefs {
     /** B 站弹幕过滤配置是否已同步过（避免重复覆盖用户本地设置）。 */
     var danmakuBiliFilterSynced by pref(PrefKeys.danmakuBiliFilterSynced, false)
 
+    /** 已同步 B 站弹幕过滤配置的账号 mid（换账号后重新同步）。 */
+    var danmakuBiliFilterSyncedMid by pref(PrefKeys.danmakuBiliFilterSyncedMid, 0L)
+
     // --- 播放器 - 字幕（PRD 7.4） ---
 
     /** 默认字幕字号（SP）。 */
