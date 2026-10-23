@@ -109,6 +109,8 @@ class CrashUploaderTest {
         assertThat(jsonContent).contains("\"type\":\"java.lang.RuntimeException\"")
         assertThat(jsonContent).contains("\"message\":\"test crash\"")
         assertThat(jsonContent).contains("fake logcat output")
+        // 所有 API 级别都应输出带冒号偏移的 RFC 3339 时间（Android 7.0 以下无 X 模式）
+        assertThat(jsonContent).containsMatch("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}")
     }
 
     @Test

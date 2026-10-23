@@ -1,6 +1,8 @@
 package dev.frost819.newbv.core.log
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageInfo
 import android.os.Build
 import java.io.BufferedReader
 import java.io.File
@@ -238,7 +240,7 @@ class CrashHandler(
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
         return DeviceInfo(
             appVersion = packageInfo.versionName ?: "unknown",
-            appVersionCode = packageInfo.longVersionCode.toInt(),
+            appVersionCode = packageInfo.versionCodeCompat().toInt(),
             androidVersion = Build.VERSION.RELEASE ?: "unknown",
             androidSdk = Build.VERSION.SDK_INT,
             device = Build.DEVICE ?: "unknown",
@@ -251,7 +253,7 @@ class CrashHandler(
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
         writer.apply {
             appendLine("======== Device info ========")
-            appendLine("App Version: ${info.versionName} (${info.longVersionCode})")
+            appendLine("App Version: ${info.versionName} (${info.versionCodeCompat()})")
             appendLine("Android Version: ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT})")
             appendLine("Device: ${Build.DEVICE}")
             appendLine("Model: ${Build.MODEL}")
@@ -267,6 +269,25 @@ class CrashHandler(
         return "${prefix}_$date.log"
     }
 }
+
+/**
+ * 读取应用版本号，兼容 Android 9 以下设备。
+ *
+ * [PackageInfo.longVersionCode] 是 API 28 新增方法，Android 5.0 等旧系统上调用会抛
+ * [NoSuchMethodError]，导致崩溃日志写入中断并留下 0 字节文件。这里按系统版本回退
+ * 到已废弃的 [PackageInfo.versionCode]。
+ *
+ * @param sdkInt 系统 SDK 版本（默认取 [Build.VERSION.SDK_INT]，测试可显式传入）。
+ * @return 应用版本号。
+ */
+@Suppress("DEPRECATION")
+@SuppressLint("NewApi") // sdkInt 保证只在 API 28+ 才调用 longVersionCode
+internal fun PackageInfo.versionCodeCompat(sdkInt: Int = Build.VERSION.SDK_INT): Long =
+    if (sdkInt >= Build.VERSION_CODES.P) {
+        longVersionCode
+    } else {
+        versionCode.toLong()
+    }
 
 /**
  * 崩溃日志中的设备与应用信息。
