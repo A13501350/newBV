@@ -22,6 +22,7 @@ import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMask
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuFilterRule
+import dev.frost819.newbv.biliapi.repositories.AuthRepository
 import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
 import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.danmaku.config.DanmakuState
@@ -71,6 +72,7 @@ class DanmakuViewModel
     @Inject
     constructor(
         private val videoPlayRepository: VideoPlayRepository,
+        private val authRepository: AuthRepository,
     ) : ViewModel() {
         private val logger = Loggers.get("DanmakuViewModel")
 
@@ -461,7 +463,7 @@ class DanmakuViewModel
          * 合并弹幕与原件均送入引擎，由 [DuplicateMergedFilter] 根据 `blockRepeat` 开关
          * 决定展示哪一种（开启展示合并弹幕，关闭展示原件）。
          */
-        private fun List<DanmakuData>.mergeDuplicates(): List<DanmakuItemData> {
+        internal fun List<DanmakuData>.mergeDuplicates(): List<DanmakuItemData> {
             if (isEmpty()) return emptyList()
             val result = ArrayList<DanmakuItemData>(size)
             for (group in groupBy { it.text }.values) {
@@ -543,13 +545,22 @@ class DanmakuViewModel
             return kept
         }
 
-        private fun DanmakuData.shouldDropByAi(aiLevel: Int): Boolean {
+        /**
+         * AI 云屏蔽等级 → 评分阈值映射。
+         *
+         * 等级 1-4 对应评分阈值 1/5/7/10，与 B 站官方行为一致。
+         * 评分区间 1-10（weight/aiFlagScore），等级 0 表示关闭。
+         */
+        private val AI_SCORE_THRESHOLDS = intArrayOf(0, 1, 5, 7, 10)
+
+        internal fun DanmakuData.shouldDropByAi(aiLevel: Int): Boolean {
             val score =
                 sequenceOf(level, aiFlagScore)
                     .filter { it != 0 }
                     .maxOfOrNull { abs(it) }
                     ?: return false
-            return score < aiLevel
+            val threshold = AI_SCORE_THRESHOLDS.getOrElse(aiLevel) { 0 }
+            return score < threshold
         }
 
         /**
@@ -646,9 +657,7 @@ class DanmakuViewModel
             val filterChanged =
                 new.enabledTypes != old.enabledTypes ||
                     new.blockColorful != old.blockColorful ||
-                    new.blockRepeat != old.blockRepeat ||
-                    new.blockSpecial != old.blockSpecial ||
-                    new.aiCloudLevel != old.aiCloudLevel
+                    new.blockRepeat != old.blockRepeat
 
             if (filterChanged) {
                 initDanmakuConfig()
@@ -658,10 +667,21 @@ class DanmakuViewModel
                         "special=${new.blockSpecial}, aiCloudLevel=${new.aiCloudLevel}"
                 }
             } else {
-                // 账号屏蔽规则由分段加载前的本地过滤生效，无需重建引擎 Filter 链
+                // 账号屏蔽规则、高级弹幕、AI 云屏蔽均为分段加载前的本地过滤，
+                // 不经过引擎 Filter 链，切换后从下一分段起生效
                 if (new.blockByUserFilter != old.blockByUserFilter) {
                     logger.info {
                         "Danmaku user filter toggle: enabled=${new.blockByUserFilter}（从下一分段起生效）"
+                    }
+                }
+                if (new.blockSpecial != old.blockSpecial) {
+                    logger.info {
+                        "Danmaku blockSpecial toggle: enabled=${new.blockSpecial}（从下一分段起生效）"
+                    }
+                }
+                if (new.aiCloudLevel != old.aiCloudLevel) {
+                    logger.info {
+                        "Danmaku AI cloud level changed: level=${new.aiCloudLevel}（从下一分段起生效）"
                     }
                 }
                 // 非 Filter 变更：仅更新对应配置项，避免全量重建
@@ -853,7 +873,7 @@ class DanmakuViewModel
         private fun crc32Hex(value: String): String {
             val crc = CRC32()
             crc.update(value.toByteArray(Charsets.US_ASCII))
-            return crc.value.toString(16)
+            return crc.value.toString(16).padStart(8, '0')
         }
 
         /**
@@ -863,10 +883,15 @@ class DanmakuViewModel
          * 之后用户在本应用内的调整不会被后续切集的元数据覆盖。
          */
         private fun applyBiliFilterConfig(config: BiliDanmakuFilterConfig) {
-            // B 站过滤配置仅在首次启动时同步一次并持久化；之后用户本地调整优先，
-            // 即使 ViewModel 重建也不再重复覆盖
-            if (Prefs.danmakuBiliFilterSynced) return
+            // 未登录时 dm/view 不返回 playerConfig/flag，得到的是全默认值的兜底对象，
+            // 不应置位 synced，否则登录后永远不再同步
+            if (!config.hasValidConfig) return
+
+            // 同步标记与当前账号 mid 绑定：换账号后重新同步
+            val currentMid = authRepository.mid ?: 0L
+            if (Prefs.danmakuBiliFilterSynced && Prefs.danmakuBiliFilterSyncedMid == currentMid) return
             Prefs.danmakuBiliFilterSynced = true
+            Prefs.danmakuBiliFilterSyncedMid = currentMid
 
             val current = _danmakuState.value
             // blocktop/blockscroll/blockbottom 与 B 站 playerConfig 同步
@@ -874,10 +899,16 @@ class DanmakuViewModel
             val mergedState =
                 current.copy(
                     enabledTypes = mergedTypes,
-                    // 彩色/高级弹幕屏蔽：以 B 站账号设置为准作为初始值
+                    // 彩色/高级弹幕屏蔽：以 B 站账号设置为准作为初始值（单向 OR，只增不减）
                     blockColorful = if (config.blockColor) true else current.blockColorful,
                     blockSpecial = if (config.blockSpecial) true else current.blockSpecial,
-                    aiCloudLevel = (config.aiLevelV2.takeIf { it > 0 } ?: config.aiLevel).coerceIn(0, 4),
+                    // AI 云屏蔽：B 站开启且等级>0 时同步，否则保留本地设置
+                    aiCloudLevel =
+                        if (config.aiSwitch && (config.aiLevel > 0 || config.aiLevelV2 > 0)) {
+                            (config.aiLevelV2.takeIf { it > 0 } ?: config.aiLevel).coerceIn(0, 4)
+                        } else {
+                            current.aiCloudLevel
+                        },
                 )
             if (mergedState == current) {
                 logger.info { "Bili danmaku filter config applied with no state change: $config" }
@@ -906,11 +937,21 @@ class DanmakuViewModel
                 return emptyList()
             }
             if (config.blockTop || config.blockScroll || config.blockBottom) {
-                val result = current.toMutableList()
-                if (config.blockTop) result.remove(DanmakuEntityDanmakuType.Top)
-                if (config.blockScroll) result.remove(DanmakuEntityDanmakuType.Rolling)
-                if (config.blockBottom) result.remove(DanmakuEntityDanmakuType.Bottom)
-                return result
+                // 展开 All 为具体类型再移除，否则 remove(Top/Rolling/Bottom) 不命中
+                val expanded =
+                    if (current.contains(DanmakuEntityDanmakuType.All)) {
+                        mutableListOf(
+                            DanmakuEntityDanmakuType.Rolling,
+                            DanmakuEntityDanmakuType.Top,
+                            DanmakuEntityDanmakuType.Bottom,
+                        )
+                    } else {
+                        current.toMutableList()
+                    }
+                if (config.blockTop) expanded.remove(DanmakuEntityDanmakuType.Top)
+                if (config.blockScroll) expanded.remove(DanmakuEntityDanmakuType.Rolling)
+                if (config.blockBottom) expanded.remove(DanmakuEntityDanmakuType.Bottom)
+                return expanded
             }
             return current
         }

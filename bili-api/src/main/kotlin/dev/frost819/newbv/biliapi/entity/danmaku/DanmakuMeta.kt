@@ -51,6 +51,7 @@ data class DanmakuMeta(
  * @property aiLevel AI 云屏蔽等级（0-4，B 站推荐默认 0）
  * @property aiLevelV2 AI 云屏蔽 V2 等级
  * @property reportFilterContent 由用户举报形成的当前 cid 维度屏蔽词
+ * @property hasValidConfig 是否真正携带了有效配置（protobuf 中 `playerConfig` 或 `flag` 字段存在）
  */
 data class BiliDanmakuFilterConfig(
     val blockTop: Boolean = false,
@@ -62,6 +63,7 @@ data class BiliDanmakuFilterConfig(
     val aiLevel: Int = 0,
     val aiLevelV2: Int = 0,
     val reportFilterContent: List<String> = emptyList(),
+    val hasValidConfig: Boolean = false,
 ) {
     companion object {
         /** 兜底值：所有屏蔽关闭、无屏蔽词。 */
@@ -109,5 +111,6 @@ private fun DmWebViewReply.toBiliDanmakuFilterConfig(): BiliDanmakuFilterConfig 
             } else {
                 emptyList()
             },
+        hasValidConfig = hasPlayerConfig || hasFlag,
     )
 }
