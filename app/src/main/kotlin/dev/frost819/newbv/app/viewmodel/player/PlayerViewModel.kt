@@ -718,6 +718,10 @@ class PlayerViewModel
                     epid = newVideo.epid,
                     seasonId = newVideo.seasonId ?: 0,
                     title = newVideo.title,
+                    // 作者信息立即取列表项携带值（相关视频卡片已有），详情加载完成后以详情为准覆盖；
+                    // 缺失时置空而不是沿用，避免 UP 主页仍指向上一个视频的 UP 主
+                    authorMid = newVideo.authorMid ?: 0L,
+                    authorName = newVideo.authorName.orEmpty(),
                     lastPlayed = 0,
                     isBuffering = true,
                     playerState = PlayerState.Ready,
@@ -749,14 +753,27 @@ class PlayerViewModel
 
             // 异步加载详情 + 历史进度（不阻塞 playVideoWithResources）
             if (shouldUpdateDetail) {
-                viewModelScope.launch(Dispatchers.IO) {
+                viewModelScope.launch {
                     videoInfoRepository.loadVideoDetail(newVideo.aid, getApiType())
+                    val detail = videoInfoRepository.videoDetail.value?.takeIf { it.aid == newVideo.aid }
                     // 仅当历史 cid 与当前播放 cid 一致时才应用断点续播
                     val sharedState = videoInfoRepository.videoSharedState.value
                     val historyCid = sharedState?.lastPlayedCid ?: 0L
                     val historyTime = sharedState?.lastPlayedTime ?: 0
-                    if (historyCid == newVideo.cid && historyTime > 0) {
-                        _uiState.update { it.copy(lastPlayed = historyTime) }
+                    _uiState.update { state ->
+                        // 快速连续切换时，过期视频的详情不得覆盖当前视频的状态
+                        if (state.aid != newVideo.aid) return@update state
+                        state.copy(
+                            lastPlayed =
+                                if (historyCid == newVideo.cid && historyTime > 0) {
+                                    historyTime
+                                } else {
+                                    state.lastPlayed
+                                },
+                            // 详情中的作者信息最权威，覆盖列表项携带的初值
+                            authorMid = detail?.author?.mid ?: state.authorMid,
+                            authorName = detail?.author?.name ?: state.authorName,
+                        )
                     }
                 }
             }

@@ -117,6 +117,7 @@ class PlayerViewModelTest {
 
         every { videoInfoRepository.videoList } returns MutableStateFlow(emptyList())
         every { videoInfoRepository.relatedVideos } returns MutableStateFlow(emptyList())
+        every { videoInfoRepository.videoDetail } returns MutableStateFlow(null)
         every { videoInfoRepository.videoSharedState } returns MutableStateFlow(null)
 
         viewModel =
@@ -352,6 +353,75 @@ class PlayerViewModelTest {
             viewModel.playNewVideo(VideoListItem(aid = 10, cid = 20, title = "New"))
 
             verify { mockPlayer.pause() }
+        }
+
+    @Test
+    fun `playNewVideo applies author from list item immediately`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+
+            viewModel.playNewVideo(
+                VideoListItem(
+                    aid = 10,
+                    cid = 20,
+                    title = "New",
+                    authorMid = 555L,
+                    authorName = "卡片UP",
+                ),
+            )
+
+            val state = viewModel.uiState.value
+            assertThat(state.authorMid).isEqualTo(555L)
+            assertThat(state.authorName).isEqualTo("卡片UP")
+        }
+
+    @Test
+    fun `playNewVideo overrides author with loaded detail`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+            val detail = mockk<VideoDetail>()
+            every { detail.aid } returns 10L
+            every { detail.author } returns Author(mid = 777L, name = "详情UP", face = "")
+            every { videoInfoRepository.videoDetail } returns MutableStateFlow(detail)
+
+            viewModel.playNewVideo(
+                VideoListItem(
+                    aid = 10,
+                    cid = 20,
+                    title = "New",
+                    authorMid = 555L,
+                    authorName = "卡片UP",
+                ),
+            )
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertThat(state.authorMid).isEqualTo(777L)
+            assertThat(state.authorName).isEqualTo("详情UP")
+        }
+
+    @Test
+    fun `playNewVideo clears stale author when list item has none`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+            initSession(aid = 1, cid = 2)
+
+            viewModel.playNewVideo(VideoListItem(aid = 10, cid = 20, title = "New"))
+
+            // 详情返回前不能沿用上一个视频的 UP 主，否则“UP 主页”会跳错人
+            val state = viewModel.uiState.value
+            assertThat(state.authorMid).isEqualTo(0L)
+            assertThat(state.authorName).isEmpty()
+            viewModel.viewModelScope.cancel()
         }
 
     // ── online watching polling tests ────────────────────────
