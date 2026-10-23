@@ -63,6 +63,7 @@ internal object PrefKeys {
     val defaultDanmakuBlockByUserFilter = booleanPreferencesKey("dbu")
     val defaultDanmakuAiCloudLevel = intPreferencesKey("dai")
     val danmakuBiliFilterSynced = booleanPreferencesKey("dbfs")
+    val danmakuBiliFilterSyncedMid = longPreferencesKey("dbfsm")
 
     // ===== 播放器 - 字幕 =====
     val defaultSubtitleFontSize = intPreferencesKey("dsfs")
