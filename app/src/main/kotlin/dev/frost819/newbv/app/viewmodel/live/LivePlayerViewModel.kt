@@ -249,9 +249,15 @@ class LivePlayerViewModel
 
                     _uiState.update {
                         val qualities = filterDecodableQualities(playInfo.qualities)
+                        val resolvedKey = resolveCurrentKey(qualities, playInfo.currentKey, requestedKey)
+                        logger.info {
+                            "loadLive: requestedKey=$requestedKey repoCurrentKey=${playInfo.currentKey} " +
+                                "filteredKeys=${qualities.map { it.key }} resolvedKey=$resolvedKey " +
+                                "url=${line.url.substringBefore('?')}"
+                        }
                         it.copy(
                             availableQualities = qualities,
-                            currentQuality = resolveCurrentKey(qualities, playInfo.currentKey, requestedKey),
+                            currentQuality = resolvedKey,
                             availableLines = playInfo.lines,
                             currentLine = line.order,
                         )
@@ -410,6 +416,7 @@ class LivePlayerViewModel
          * @param key 目标画质档位标识（[LiveQuality.key]）
          */
         fun changeQuality(key: Int) {
+            logger.info { "changeQuality: key=$key" }
             _uiState.update { it.copy(currentQuality = key, currentLine = 0) }
             reloadAndPlay(key)
         }
@@ -446,9 +453,15 @@ class LivePlayerViewModel
                         val qualities =
                             filterDecodableQualities(playInfo.qualities)
                                 .ifEmpty { it.availableQualities }
+                        val resolvedKey = resolveCurrentKey(qualities, playInfo.currentKey, key)
+                        logger.info {
+                            "reloadAndPlay: key=$key repoCurrentKey=${playInfo.currentKey} " +
+                                "filteredKeys=${qualities.map { it.key }} resolvedKey=$resolvedKey " +
+                                "url=${line.url.substringBefore('?')}"
+                        }
                         it.copy(
                             availableQualities = qualities,
-                            currentQuality = resolveCurrentKey(qualities, playInfo.currentKey, key),
+                            currentQuality = resolvedKey,
                             availableLines = playInfo.lines,
                             currentLine = line.order,
                         )

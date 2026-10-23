@@ -185,6 +185,11 @@ class LiveRepository {
         data: RoomPlayInfoV2Data,
         requestedKey: Int = 0,
     ): LivePlayInfo {
+        logger.info {
+            "resolvePlayInfo: requestedKey=$requestedKey " +
+                "(qn=${LiveQuality.qnOf(requestedKey)}, hdrType=${LiveQuality.hdrTypeOf(requestedKey)}, " +
+                "eotf=${LiveQuality.eotfOf(requestedKey)})"
+        }
         val playUrl = data.playUrlInfo.playUrl
         // HDR 流只从可播放容器展开：flv 的 HEVC 是私有扩展（codec_id=12），Media3 不支持，
         // 若纳入会产出"选中后静默播 SDR"的档位行。容器序号与 pickBestCodec 的 HDR 偏好同源。
@@ -281,9 +286,20 @@ class LiveRepository {
                     )
                 }
 
+        qualities.forEach { q ->
+            logger.info {
+                "resolvePlayInfo: quality key=${q.key} qn=${q.qn} hdrType=${q.hdrType} eotf=${q.eotf} " +
+                    "desc=${q.desc} hdrDesc=${q.hdrDesc} badge=${q.badge} codecName=${q.codecName} codecs=${q.codecs}"
+            }
+        }
         val codec =
             pickBestCodec(data, requestedKey)
                 ?: return LivePlayInfo(currentQn = 0, qualities = qualities, lines = emptyList())
+        logger.info {
+            "resolvePlayInfo: picked codec=${codec.codecName} currentQn=${codec.currentQn} " +
+                "acceptQn=${codec.acceptQn} hdrType=${codec.hdrType} eotf=${codec.videoColorInfo?.eotf} " +
+                "codecs=${codec.videoCodecs?.base} baseUrl=${codec.baseUrl.take(80)}"
+        }
 
         // 同一编码下的每个 url_info 是一条独立 CDN 线路，按顺序去重后编号（从 1 开始）
         val lines =
@@ -296,18 +312,21 @@ class LiveRepository {
         // 当前档位标识：优先用服务端权威三元组 expected_quality 校准，其次按编码节点
         // 三元组匹配；兜底取列表首项，保证 currentKey 一定存在于 qualities（不合成悬空 key）
         val expected = data.playUrlInfo.expectedQuality
-        val currentKey =
-            expected
-                ?.let { e ->
-                    qualities
-                        .firstOrNull { it.qn == e.qn && it.hdrType == e.hdrType && it.eotf == e.eotf }
-                        ?.key
-                }
-                ?: qualities
-                    .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
+        val expectedKey =
+            expected?.let { e ->
+                qualities
+                    .firstOrNull { it.qn == e.qn && it.hdrType == e.hdrType && it.eotf == e.eotf }
                     ?.key
-                ?: qualities.firstOrNull()?.key
-                ?: 0
+            }
+        val codecKey =
+            qualities
+                .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
+                ?.key
+        val currentKey = expectedKey ?: codecKey ?: qualities.firstOrNull()?.key ?: 0
+        logger.info {
+            "resolvePlayInfo: currentKey=$currentKey " +
+                "expected=$expected(expectedKey=$expectedKey) codecKey=$codecKey firstKey=${qualities.firstOrNull()?.key}"
+        }
         return LivePlayInfo(
             currentQn = codec.currentQn,
             currentKey = currentKey,
@@ -367,6 +386,10 @@ class LiveRepository {
                         requestedEotf != 0 ||
                         playUrl.dolbyQn == requestedQn
                 )
+        logger.info {
+            "pickBestCodec: hdrRequested=$hdrRequested requestedQn=$requestedQn requestedEotf=$requestedEotf " +
+                "streams=${streams.map { s -> s.protocolName + ":" + s.format.map { it.formatName } }}"
+        }
         if (hdrRequested) {
             for ((protocol, formats) in hdrCandidates) {
                 val stream = streams.find { it.protocolName == protocol } ?: continue
@@ -387,9 +410,11 @@ class LiveRepository {
                                         (it.videoColorInfo?.eotf ?: requestedEotf) == requestedEotf
                                 )
                         } ?: continue
+                    logger.info { "pickBestCodec: HDR hit $protocol/$formatName codec=${codec.codecName}" }
                     return codec
                 }
             }
+            logger.info { "pickBestCodec: HDR miss, degrade to SDR path" }
         }
 
         for ((protocol, formats) in candidates) {
@@ -401,7 +426,10 @@ class LiveRepository {
                         ?: format.codec.find { it.codecName == "avc" }
                         ?: format.codec.firstOrNull { it.hdrType == 0 }
                         ?: format.codec.firstOrNull()
-                if (codec != null) return codec
+                if (codec != null) {
+                    logger.info { "pickBestCodec: SDR hit $protocol/$formatName codec=${codec.codecName}" }
+                    return codec
+                }
             }
         }
         val firstStream = streams.firstOrNull() ?: return null
