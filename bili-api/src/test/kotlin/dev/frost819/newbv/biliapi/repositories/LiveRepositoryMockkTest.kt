@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.biliapi.http.BiliLiveHttpApi
 import dev.frost819.newbv.biliapi.http.entity.BiliResponse
 import dev.frost819.newbv.biliapi.http.entity.live.CodecSpec
+import dev.frost819.newbv.biliapi.http.entity.live.ExpectedQuality
 import dev.frost819.newbv.biliapi.http.entity.live.FollowLiveResponse
 import dev.frost819.newbv.biliapi.http.entity.live.LiveAreaParent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveListResponse
@@ -500,6 +501,21 @@ class LiveRepositoryUnitTest {
     }
 
     @Test
+    fun `resolvePlayInfo marks current quality by picked codec rather than expected_quality`() {
+        // 实测契约：expected_quality 只报 qn 维度的 SDR 建议档（hdrType/eotf 恒为 0），
+        // HDR 播放时若以它为准会把选中态校准到 SDR 行；选中态必须跟随实际播放的编码节点
+        val hdrKey = qualityKey(10000, hdrType = 1, eotf = 1)
+        val data =
+            fakeDuplicateQnRoomPlayInfoV2Data(
+                expectedQuality = ExpectedQuality(qn = 400, hdrType = 0, eotf = 0),
+            )
+
+        val result = repository.resolvePlayInfo(data, requestedKey = hdrKey)
+
+        assertThat(result.currentKey).isEqualTo(hdrKey)
+    }
+
+    @Test
     fun `resolvePlayInfo keeps per-variant decode hints for same-qn HDR10 and HLG rows`() {
         val result = repository.resolvePlayInfo(fakeMultiHdrVariantRoomPlayInfoV2Data())
 
@@ -715,7 +731,10 @@ class LiveRepositoryUnitTest {
      *   在 flv/ts/fmp4 下携带 HDR 节点；false 用于验证"HDR 仅存在于不可解析的
      *   flv 时回退 SDR"）
      */
-    private fun fakeDuplicateQnRoomPlayInfoV2Data(includeHlsHdr: Boolean = true): RoomPlayInfoV2Data {
+    private fun fakeDuplicateQnRoomPlayInfoV2Data(
+        includeHlsHdr: Boolean = true,
+        expectedQuality: ExpectedQuality? = null,
+    ): RoomPlayInfoV2Data {
         val hdrCodec =
             PlayCodec(
                 codecName = "hevc",
@@ -805,6 +824,7 @@ class LiveRepositoryUnitTest {
                                     }
                                 },
                         ),
+                    expectedQuality = expectedQuality,
                 ),
         )
     }
