@@ -37,6 +37,13 @@ android {
                 keyPassword = signingProperties.getProperty("releaseKeyPassword")
             }
         }
+        // 固定 debug 签名：CI 构建的 debug APK 可覆盖安装，避免每次卸载丢数据
+        create("debugCi") {
+            storeFile = rootProject.file("gradle/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     defaultConfig {
@@ -73,6 +80,8 @@ android {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
+            // 固定签名：本地构建与 CI 构建共用同一 debug.keystore，可覆盖安装
+            signingConfig = signingConfigs.getByName("debugCi")
         }
     }
 
