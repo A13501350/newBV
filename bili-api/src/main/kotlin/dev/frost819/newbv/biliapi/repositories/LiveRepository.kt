@@ -293,19 +293,24 @@ class LiveRepository {
                 .mapIndexed { index, url -> LivePlayLine(order = index + 1, url = url) }
 
         val codecEotf = codec.videoColorInfo?.eotf ?: 0
-        // 当前档位标识：优先用服务端权威三元组 expected_quality 校准，其次按编码节点
-        // 三元组匹配；兜底取列表首项，保证 currentKey 一定存在于 qualities（不合成悬空 key）
+        // 当前档位标识以实际选中的编码节点三元组为准：expected_quality 只报 qn 维度的
+        // 建议档（hdrType/eotf 恒为 0），HDR 播放时若以它为准会把选中态校准到同 qn 的
+        // SDR 行（实测：切 4K/HDR 播的是 maxhdr 流，菜单却跳回"4K"）；服务端降级
+        // （未登录/权限不足）时 codec.currentQn 即降级后档位，以 codec 为准同样正确。
+        // expected 与列表首项仅作兜底，保证 currentKey 一定存在于 qualities（不合成悬空 key）
         val expected = data.playUrlInfo.expectedQuality
+        val codecKey =
+            qualities
+                .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
+                ?.key
         val currentKey =
-            expected
-                ?.let { e ->
-                    qualities
-                        .firstOrNull { it.qn == e.qn && it.hdrType == e.hdrType && it.eotf == e.eotf }
-                        ?.key
-                }
-                ?: qualities
-                    .firstOrNull { it.qn == codec.currentQn && it.hdrType == codec.hdrType && it.eotf == codecEotf }
-                    ?.key
+            codecKey
+                ?: expected
+                    ?.let { e ->
+                        qualities
+                            .firstOrNull { it.qn == e.qn && it.hdrType == e.hdrType && it.eotf == e.eotf }
+                            ?.key
+                    }
                 ?: qualities.firstOrNull()?.key
                 ?: 0
         return LivePlayInfo(

@@ -1,6 +1,8 @@
 package dev.frost819.newbv.app.ui.component.settings
 
+import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,6 +46,11 @@ import java.io.File
  * 打开后自动检查最新版本，支持下载 APK 并调起安装。
  * 下载进度通过 [LinearProgressIndicator] 实时显示。
  *
+ * Android 8.0 及以上系统会按来源应用管控「安装未知应用」权限。若未授权，
+ * 安装器会被系统静默拦截（[android.content.Context.startActivity] 不抛异常），
+ * 弹窗会停在「安装中」造成假死。因此调起安装前先检查该权限，未授权时明确
+ * 提示用户自行到系统设置中授权后重试，不再展示无限等待状态。
+ *
  * @param show 是否显示弹窗。
  * @param onHideDialog 关闭弹窗回调。
  */
@@ -64,6 +71,8 @@ fun UpdateDialog(
     val progress by animateFloatAsState(targetValue = targetProgress, label = "update progress")
     var downloadJob by remember { mutableStateOf<Job?>(null) }
     var latestRelease by remember { mutableStateOf<GithubRelease?>(null) }
+    // 暂存已下载的 APK，用户授权后重试安装时无需重新下载
+    var pendingInstallFile by remember { mutableStateOf<File?>(null) }
 
     DisposableEffect(show) {
         if (!show) {
@@ -100,7 +109,8 @@ fun UpdateDialog(
         }
     }
 
-    val installUpdate: (File) -> Unit = { file ->
+    /** 调起系统安装器安装已下载的 APK。 */
+    val launchInstaller: (File) -> Unit = { file ->
         updateStatus = UpdateStatus.Installing
         runCatching {
             val uri =
@@ -118,7 +128,26 @@ fun UpdateDialog(
                 }
             context.startActivity(intent)
         }.onFailure {
+            logger.error(it) { "Failed to launch installer" }
             updateStatus = UpdateStatus.InstallError
+        }
+    }
+
+    val installUpdate: (File) -> Unit = { file ->
+        pendingInstallFile = file
+        if (context.canRequestPackageInstallPermission()) {
+            launchInstaller(file)
+        } else {
+            // 未授权时系统会静默拦截安装器，直接进入「安装中」会假死
+            updateStatus = UpdateStatus.InstallPermissionRequired
+        }
+    }
+
+    /** 用户自行在系统设置中授权后，点击重试再次安装。 */
+    val retryInstall: () -> Unit = {
+        val file = pendingInstallFile
+        if (file != null && context.canRequestPackageInstallPermission()) {
+            launchInstaller(file)
         }
     }
 
@@ -180,6 +209,7 @@ fun UpdateDialog(
                             UpdateStatus.CheckError -> "检查更新失败"
                             UpdateStatus.DownloadError -> "下载失败"
                             UpdateStatus.InstallError -> "安装失败"
+                            UpdateStatus.InstallPermissionRequired -> "需要安装权限"
                         },
                 )
             },
@@ -222,6 +252,14 @@ fun UpdateDialog(
                         Text(text = "安装失败")
                     }
 
+                    UpdateStatus.InstallPermissionRequired -> {
+                        Text(
+                            text =
+                                "未授予「安装未知应用」权限，安装器无法启动。" +
+                                    "请到系统设置中允许 newBV 安装应用，然后点击「重试」。",
+                        )
+                    }
+
                     UpdateStatus.CheckError -> {
                         Text(text = "获取更新信息失败")
                     }
@@ -243,6 +281,15 @@ fun UpdateDialog(
                             modifier = Modifier.touchClickable(onClick = startUpdate),
                         ) {
                             Text(text = "立即更新")
+                        }
+                    }
+
+                    UpdateStatus.InstallPermissionRequired -> {
+                        Button(
+                            onClick = retryInstall,
+                            modifier = Modifier.touchClickable(onClick = retryInstall),
+                        ) {
+                            Text(text = "重试")
                         }
                     }
 
@@ -284,7 +331,7 @@ fun UpdateDialog(
                                 UpdateStatus.Ready -> "打死不更"
                                 UpdateStatus.NoAvailableUpdate -> "走了走了"
                                 UpdateStatus.CheckError, UpdateStatus.DownloadError,
-                                UpdateStatus.InstallError,
+                                UpdateStatus.InstallError, UpdateStatus.InstallPermissionRequired,
                                 -> "算了算了"
                                 UpdateStatus.Downloading, UpdateStatus.Installing -> "你已经无路可逃！"
                             },
@@ -306,6 +353,20 @@ enum class UpdateStatus {
     CheckError,
     DownloadError,
     InstallError,
+
+    /** 缺少「安装未知应用」权限，需用户自行到系统设置授权后重试。 */
+    InstallPermissionRequired,
+}
+
+/**
+ * 判断当前应用是否已被允许安装 APK。
+ *
+ * Android 8.0（API 26）起系统按来源应用管控「安装未知应用」权限；
+ * 更低版本只有全局开关，无法按应用查询，直接视为可安装。
+ */
+private fun Context.canRequestPackageInstallPermission(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+    return packageManager.canRequestPackageInstalls()
 }
 
 private fun Long.toMBString(): String =
