@@ -153,7 +153,7 @@ fun VideoPlayerScreen(
                 cid = event.cid,
                 initialPositionMs = uiState.lastPlayed.toLong() * 1000,
             )
-            danmakuViewModel.loadDanmakuMask(event.aid, event.cid)
+            danmakuViewModel.loadDanmakuMask()
             subtitleViewModel.clearSubtitle()
             subtitleViewModel.loadSubtitleList(event.aid, event.cid)
         }
