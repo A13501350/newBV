@@ -156,6 +156,14 @@ class DanmakuViewModel
         /** 云端账号屏蔽规则编译结果；分段过滤在 IO 协程读取，需跨线程可见。 */
         @Volatile private var userFilter = CompiledUserFilter()
 
+        /**
+         * B 站举报屏蔽词（dm/view `reportFilterContent`，当前 cid 维度）。
+         *
+         * 由服务端强制下发，与用户账号无关，过滤时不受本地开关控制；
+         * 随每次 [loadDanmaku] 的元数据刷新。
+         */
+        @Volatile private var reportFilterKeywords: List<String> = emptyList()
+
         /** UI 层喂入的播放进度（毫秒），驱动分段加载；conflated，仅保留最新值。 */
         private val currentTimeFlow = MutableStateFlow(0L)
 
@@ -258,6 +266,8 @@ class DanmakuViewModel
 
                 // 从 dm/view 响应中应用 B 站账号同步来的弹幕过滤配置
                 applyBiliFilterConfig(meta.filterConfig)
+                // 举报屏蔽词随每次元数据刷新（cid 维度，服务端强制内容）
+                reportFilterKeywords = meta.filterConfig.reportFilterContent
 
                 logger.info {
                     "Danmaku meta: segmentSizeMs=$segmentSizeMs, segTotal=$segmentTotal, count=${meta.count}"
@@ -270,6 +280,34 @@ class DanmakuViewModel
                 // 触发初始段加载：watcher 订阅 StateFlow 时会立即收到当前值
                 currentTimeFlow.value = initialPositionMs.coerceAtLeast(0L)
             }
+        }
+
+        /**
+         * 直播弹幕过滤准备：进入直播间时拉取账号云端屏蔽规则。
+         *
+         * 与点播共用会话内一次的拉取门控；未登录/失败仅记日志并降级。
+         */
+        fun prepareForLive() {
+            viewModelScope.launch { loadUserFilter() }
+        }
+
+        /**
+         * 直播弹幕单条过滤：账号云端规则（屏蔽词/正则/用户 midHash）。
+         *
+         * 直播 WS 弹幕无 weight/ai_flag（AI 云屏蔽无数据源）、无 mode 7/8/9
+         * 高级弹幕，因此仅应用账号屏蔽规则；midHash 由 WS mid 现算 crc32。
+         *
+         * @return true 表示该弹幕应被丢弃
+         */
+        fun shouldDropLiveDanmaku(
+            content: String,
+            mid: Long,
+        ): Boolean {
+            val state = _danmakuState.value
+            if (!state.blockByUserFilter) return false
+            val rules = userFilter
+            if (rules.isEmpty) return false
+            return rules.matches(midHash = crc32Hex(mid.toString()), content = content)
         }
 
         /**
@@ -365,6 +403,26 @@ class DanmakuViewModel
         }
 
         /**
+         * 「合并重复弹幕」开启时重载当前分段。
+         *
+         * 合并（[mergeDuplicates]）发生在分段加载时：以关闭态加载的分段
+         * 全部是 NORMAL、没有合并版本可供 Filter 切换，开启后需清空引擎
+         * 数据并重新拉取当前段及预取段，使 ×N 合并立即可见。
+         * 已播放过的历史分段不重载（对当前观看无意义）。
+         */
+        private fun reloadSegmentsForMerge() {
+            val player = danmakuPlayer ?: return
+            if (loadedSegments.isEmpty() && loadingSegments.isEmpty()) return
+            val targetSeg = segmentIndexOf(currentTimeFlow.value)
+            viewModelScope.launch {
+                player.clearData()
+                loadedSegments.clear()
+                logger.info { "Reload segments for blockRepeat merge: targetSeg=$targetSeg" }
+                ensureSegments(targetSeg)
+            }
+        }
+
+        /**
          * 拉取单个分段并追加到弹幕引擎，带超时与重试。
          *
          * 重试耗尽后放弃该段（记日志），进度进入其他段时自然恢复。
@@ -398,6 +456,7 @@ class DanmakuViewModel
                         logger.info {
                             "Load danmaku segment $segmentIndex: raw=${dataList.size}, " +
                                 "kept=${filteredList.size}, specialDropped=${filterStats.specialDropped}, " +
+                                "reportDropped=${filterStats.reportDropped}, " +
                                 "userDropped=${filterStats.userDropped}, " +
                                 "aiDropped=${filterStats.aiDropped}, aiScored=${filterStats.aiScored}, " +
                                 "weightRange=${filterStats.minWeight}..${filterStats.maxWeight}, " +
@@ -510,6 +569,7 @@ class DanmakuViewModel
             var specialDropped: Int = 0
             var aiDropped: Int = 0
             var userDropped: Int = 0
+            var reportDropped: Int = 0
             var aiScored: Int = 0
             var minWeight: Int = Int.MAX_VALUE
             var maxWeight: Int = Int.MIN_VALUE
@@ -519,12 +579,14 @@ class DanmakuViewModel
          * 按当前弹幕设置过滤分段数据。
          *
          * - 高级/代码/BAS 弹幕（mode 7/8/9）引擎无法渲染，开启屏蔽时直接丢弃
+         * - 举报屏蔽词（`reportFilterContent`，cid 维度）：服务端强制内容，无条件生效
          * - 账号云端规则：屏蔽词、正则、用户（midHash）
          * - AI 云屏蔽按等级丢弃低分弹幕：评分取 weight 与服务端 ai_flag 的较大值
          */
         private fun List<DanmakuData>.filterForDisplay(stats: SegmentFilterStats): List<DanmakuData> {
             val state = _danmakuState.value
             val rules = userFilter
+            val reportKeywords = reportFilterKeywords
             val kept = ArrayList<DanmakuData>(size)
             for (item in this) {
                 if (item.aiFlagScore != 0) stats.aiScored++
@@ -534,6 +596,10 @@ class DanmakuViewModel
                 }
                 if (state.blockSpecial && item.type in SPECIAL_DANMAKU_MODES) {
                     stats.specialDropped++
+                    continue
+                }
+                if (reportKeywords.isNotEmpty() && reportKeywords.any { item.text.contains(it) }) {
+                    stats.reportDropped++
                     continue
                 }
                 if (state.blockByUserFilter && rules.matches(item.midHash, item.text)) {
@@ -672,6 +738,10 @@ class DanmakuViewModel
                         "colorful=${new.blockColorful}, repeat=${new.blockRepeat}, " +
                         "special=${new.blockSpecial}, aiCloudLevel=${new.aiCloudLevel}"
                 }
+                // 合并发生在分段加载时：关闭态加载的分段没有合并版本，开启后需重载当前段
+                if (new.blockRepeat && !old.blockRepeat) {
+                    reloadSegmentsForMerge()
+                }
             } else {
                 // 账号屏蔽规则、高级弹幕、AI 云屏蔽均为分段加载前的本地过滤，
                 // 不经过引擎 Filter 链，切换后从下一分段起生效
@@ -795,6 +865,10 @@ class DanmakuViewModel
             val blockedUserHashes: Set<String> = emptySet(),
             val invalidRegexCount: Int = 0,
         ) {
+            /** 是否无任何可用规则（关键词/正则/用户均空），用于快速跳过过滤。 */
+            val isEmpty: Boolean
+                get() = keywords.isEmpty() && regexes.isEmpty() && blockedUserHashes.isEmpty()
+
             fun matches(
                 midHash: String,
                 content: String,
