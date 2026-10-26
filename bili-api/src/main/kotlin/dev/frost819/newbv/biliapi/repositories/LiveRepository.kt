@@ -396,17 +396,18 @@ class LiveRepository {
             val stream = streams.find { it.protocolName == protocol } ?: continue
             for (formatName in formats) {
                 val format = stream.format.find { it.formatName == formatName } ?: continue
+                val playable = format.codec.filterNot { it.isUnplayableIn(formatName) }
                 val codec =
-                    format.codec.find { it.codecName == "avc" && it.hdrType == 0 }
-                        ?: format.codec.find { it.codecName == "avc" }
-                        ?: format.codec.firstOrNull { it.hdrType == 0 }
-                        ?: format.codec.firstOrNull()
+                    playable.find { it.codecName == "avc" && it.hdrType == 0 }
+                        ?: playable.find { it.codecName == "avc" }
+                        ?: playable.firstOrNull { it.hdrType == 0 }
+                        ?: playable.firstOrNull()
                 if (codec != null) return codec
             }
         }
         val firstStream = streams.firstOrNull() ?: return null
         val firstFormat = firstStream.format.firstOrNull() ?: return null
-        return firstFormat.codec.firstOrNull()
+        return firstFormat.codec.firstOrNull { !it.isUnplayableIn(firstFormat.formatName) }
     }
 
     /**
@@ -449,6 +450,12 @@ class LiveRepository {
 /** 该编码节点是否携带 HDR 流（HDR10 用 hdrType，HLG 用 eotf，二者任一即视为 HDR 载体）。 */
 private val PlayCodec.isHdrCarrier: Boolean
     get() = hdrType != 0 || (videoColorInfo?.eotf ?: 0) != 0
+
+/**
+ * HDR 载体在 FLV 容器中不可播放（HEVC-in-FLV 为私有扩展，Media3 不支持），
+ * SDR 请求的兜底选流必须排除此组合，避免选中后解码失败。
+ */
+private fun PlayCodec.isUnplayableIn(formatName: String): Boolean = isHdrCarrier && formatName == "flv"
 
 /**
  * 直播线路。
@@ -541,7 +548,7 @@ data class LiveQuality(
  */
 data class LivePlayInfo(
     val currentQn: Int,
-    val currentKey: Int = currentQn * 100,
+    val currentKey: Int = 0,
     val qualities: List<LiveQuality>,
     val lines: List<LivePlayLine>,
 )

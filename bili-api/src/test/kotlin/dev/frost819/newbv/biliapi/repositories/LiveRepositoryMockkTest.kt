@@ -193,7 +193,7 @@ class LiveRepositoryUnitTest {
             val playInfo = fakeRoomPlayInfoV2Data()
             coEvery { BiliLiveHttpApi.getRoomPlayInfoV2(any(), any()) } returns fakeResponse(playInfo)
 
-            val result = repository.getLiveStreamInfo(1718159119, 10000)
+            val result = repository.getLiveStreamInfo(1718159119, qualityKey(10000))
 
             assertThat(result.url).isNotNull()
             assertThat(result.currentQn).isEqualTo(10000)
@@ -239,7 +239,7 @@ class LiveRepositoryUnitTest {
             val playInfo = fakeRoomPlayInfoV2Data()
             coEvery { BiliLiveHttpApi.getRoomPlayInfoV2(any(), any()) } returns fakeResponse(playInfo)
 
-            val result = repository.getLiveStreamUrl(1718159119, 10000)
+            val result = repository.getLiveStreamUrl(1718159119, qualityKey(10000))
 
             assertThat(result).isNotNull()
         }
@@ -262,7 +262,7 @@ class LiveRepositoryUnitTest {
                 )
             coEvery { BiliLiveHttpApi.getRoomPlayInfoV2(any(), any()) } returns fakeResponse(playInfo)
 
-            val result = repository.getLivePlayInfo(1718159119, 10000)
+            val result = repository.getLivePlayInfo(1718159119, qualityKey(10000))
 
             assertThat(result.qualities).hasSize(2)
             assertThat(result.qualities[0].qn).isEqualTo(10000)
@@ -461,6 +461,39 @@ class LiveRepositoryUnitTest {
         assertThat(sdr.desc).isEqualTo("原画")
         assertThat(sdr.isHdr).isFalse()
         assertThat(sdr.codecName).isNull()
+    }
+
+    @Test
+    fun `resolvePlayInfo SDR request never falls back to HDR node in flv`() {
+        val hdrFlv =
+            PlayStream(
+                protocolName = "http_stream",
+                format =
+                    listOf(
+                        PlayFormat(
+                            formatName = "flv",
+                            codec =
+                                listOf(
+                                    fakeHdrCodec(
+                                        baseUrl = "/live.flv",
+                                        hdrType = 1,
+                                        eotf = 1,
+                                        codecs = "hvc1.2.4.L123",
+                                    ),
+                                ),
+                        ),
+                    ),
+            )
+        val data =
+            fakeRoomPlayInfoV2DataWith(
+                qnDesc = listOf(QnDesc(qn = 10000, desc = "原画")),
+                streams = listOf(hdrFlv),
+            )
+
+        val result = repository.resolvePlayInfo(data)
+
+        assertThat(result.lines).isEmpty()
+        assertThat(result.qualities).isEmpty()
     }
 
     @Test

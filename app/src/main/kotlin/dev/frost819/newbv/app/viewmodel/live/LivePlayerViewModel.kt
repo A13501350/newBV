@@ -443,9 +443,13 @@ class LivePlayerViewModel
                         resolveLine(playInfo, _uiState.value.currentLine)
                             ?: error("获取直播流地址失败")
                     _uiState.update {
+                        // 响应未下发画质时保留既有列表；否则以过滤结果为准，避免残留已判定不可解的 HDR 档
                         val qualities =
-                            filterDecodableQualities(playInfo.qualities)
-                                .ifEmpty { it.availableQualities }
+                            if (playInfo.qualities.isEmpty()) {
+                                it.availableQualities
+                            } else {
+                                filterDecodableQualities(playInfo.qualities)
+                            }
                         it.copy(
                             availableQualities = qualities,
                             currentQuality = resolveCurrentKey(qualities, playInfo.currentKey, key),
@@ -479,11 +483,6 @@ class LivePlayerViewModel
         private fun filterDecodableQualities(qualities: List<LiveQuality>): List<LiveQuality> =
             qualities.filter { quality ->
                 if (!quality.isHdr) return@filter true
-                // 无解码提示时无法做保守判定（判 AVC 反而最不保守），直接放行
-                if (quality.codecName == null && quality.codecs == null) {
-                    logger.info { "HDR quality ${quality.key}(${quality.displayDesc}) passed: no decode hints" }
-                    return@filter true
-                }
                 val decodable = videoCapabilityProvider.isDecodable(quality.toDecodeProfile())
                 if (!decodable) {
                     logger.info { "HDR quality ${quality.key}(${quality.displayDesc}) filtered: not decodable" }
