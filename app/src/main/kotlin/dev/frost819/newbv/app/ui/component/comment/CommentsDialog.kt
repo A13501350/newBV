@@ -65,6 +65,7 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.frost819.newbv.app.ui.component.ListFooterTip
 import dev.frost819.newbv.app.util.ToastUtils
+import dev.frost819.newbv.app.util.formatCommentTime
 import dev.frost819.newbv.app.viewmodel.comment.CommentListState
 import dev.frost819.newbv.app.viewmodel.comment.CommentSort
 import dev.frost819.newbv.app.viewmodel.comment.CommentUiEffect
@@ -134,8 +135,8 @@ private sealed interface CommentRow {
 /**
  * 将当前排序的评论分页状态扁平化为 LazyColumn 行。
  *
- * 楼中楼展开时，在根评论后依次追加回复行与分页 footer，从而支持滚动到 footer 时
- * 按需加载下一页，而无需把全部回复塞进单个 Lazy item。
+ * 楼中楼展开时，在根评论后依次追加回复行与分页 footer，footer 内的「更多」按钮
+ * 每次触发一页加载（不随滚动自动加载），从而把请求节奏交给用户。
  *
  * @param commentList 当前排序的评论分页状态
  */
@@ -164,7 +165,8 @@ private fun buildCommentRows(commentList: CommentListState): List<CommentRow> =
  * 视频评论弹窗。
  *
  * 详情页和播放器共用该组件，不创建独立评论路由。主评论热门/最新各自缓存，楼中楼
- * 默认收起，点击回复数量后在对应根评论下方按需分页加载并展开。
+ * 默认收起；展开时加载第一页，后续分页由 footer 的「更多」按钮手动触发，不随滚动
+ * 自动加载。
  *
  * @param aid 视频 AV 号
  * @param mode 弹窗展示模式
@@ -275,7 +277,6 @@ private fun CommentsContent(
     val latestListState = rememberLazyListState()
     val listState = if (state.sort == CommentSort.Hot) hotListState else latestListState
     val rows = remember(state.commentList) { buildCommentRows(state.commentList) }
-    val rowsByKey = remember(rows) { rows.associateBy { it.key } }
 
     // 评论文本展开状态：纯 UI 态，按 rpid 记录，切换排序/分页重排时保持
     val expandedCommentIds = remember { mutableStateMapOf<Long, Boolean>() }
@@ -298,23 +299,8 @@ private fun CommentsContent(
             }
     }
 
-    // 楼中楼分页 footer 进入可见区时自动加载下一页
-    LaunchedEffect(listState, rowsByKey) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { info -> info.key } }
-            .distinctUntilChanged()
-            .collect { visibleKeys ->
-                visibleKeys.forEach { key ->
-                    val row = rowsByKey[key]
-                    if (row is CommentRow.ReplyFooter) {
-                        val replyList = state.commentList.replyList(row.rootRpid)
-                        // 错误态停止自动加载，改由 footer 的重试按钮触发
-                        if (replyList != null && !replyList.initialError && !replyList.loadMoreError) {
-                            onLoadMoreReplies(row.rootRpid)
-                        }
-                    }
-                }
-            }
-    }
+    // 楼中楼分页不随滚动自动加载：由 footer 的「更多」按钮手动触发，避免展开后
+    // 一次性拉取全部回复（也便于用户按需控制请求）
 
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Text(
@@ -489,16 +475,27 @@ internal fun CommentCard(
                 contentScale = ContentScale.Crop,
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text =
-                        buildString {
-                            append(comment.userName)
-                            if (comment.level > 0) append("  Lv.${comment.level}")
-                            if (comment.isUp) append("  UP主")
-                        },
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        modifier = Modifier.weight(1f),
+                        text =
+                            buildString {
+                                append(comment.userName)
+                                if (comment.level > 0) append("  Lv.${comment.level}")
+                                if (comment.isUp) append("  UP主")
+                            },
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    val timeText = remember(comment.ctime) { comment.ctime.formatCommentTime() }
+                    if (timeText.isNotEmpty()) {
+                        Text(
+                            text = timeText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Text(
                     text = comment.message,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -577,9 +574,14 @@ internal fun CommentCard(
     }
 }
 
-/** 楼中楼分页 footer：展示加载中、加载失败重试或加载更多。 */
+/**
+ * 楼中楼分页 footer。
+ *
+ * 第一页由展开自动加载，后续页仅在用户点击「更多」时加载一页，
+ * 加载中/失败分别展示状态与重试入口。
+ */
 @Composable
-private fun ReplyFooterRow(
+internal fun ReplyFooterRow(
     replyList: ReplyListState,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
@@ -610,7 +612,14 @@ private fun ReplyFooterRow(
                 Text(text = "回复加载中…", style = MaterialTheme.typography.labelMedium)
             }
             else -> {
-                DialogActionButton(text = "加载更多回复", icon = Icons.Outlined.ExpandMore, onClick = onLoadMore)
+                val loadedCount = replyList.replies.size
+                val label =
+                    if (replyList.total > loadedCount) {
+                        "更多回复（$loadedCount/${replyList.total}）"
+                    } else {
+                        "更多回复"
+                    }
+                DialogActionButton(text = label, icon = Icons.Outlined.ExpandMore, onClick = onLoadMore)
             }
         }
     }
