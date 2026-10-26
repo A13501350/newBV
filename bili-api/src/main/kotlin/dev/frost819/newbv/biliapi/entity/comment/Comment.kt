@@ -130,6 +130,8 @@ data class Comment(
  * @property total 服务端返回的评论总数，未知时为 0
  * @property hasMore 是否还有下一页
  * @property nextCursor App gRPC 通道的下一页游标，Web 通道为 null
+ * @property replyPreviews 根评论 rpid -> 接口自带的楼中楼预览（仅一层，通常 3 条），
+ *   用于收起态直接展示，避免为预览额外请求
  */
 @Serializable
 data class CommentPage(
@@ -138,6 +140,7 @@ data class CommentPage(
     val total: Int,
     val hasMore: Boolean,
     val nextCursor: Long? = null,
+    val replyPreviews: Map<Long, List<Comment>> = emptyMap(),
 )
 
 private fun JsonObject.string(name: String): String? = this[name]?.jsonPrimitive?.contentOrNull

@@ -136,6 +136,40 @@ class CommentRepositoryUnitTest {
             assertThat(result.comments[1].isUp).isFalse()
         }
 
+    @Test
+    fun `getComments Web parses one level reply previews`() =
+        runTest {
+            val data =
+                repliesJson(
+                    responses = 2,
+                    total = 2,
+                    previews = mapOf(RPID to listOf(9001L, 9002L)),
+                )
+            coEvery { BiliHttpApi.getVideoComments(any(), any(), any(), any(), any()) } returns
+                BiliResponse(code = 0, message = "", data = data)
+
+            val result = repository.getComments(aid = AID, sort = 1, page = 1, preferApiType = ApiType.Web)
+
+            // 只有带预览的根评论会出现在 map 中
+            assertThat(result.replyPreviews.keys).containsExactly(RPID)
+            val previews = result.replyPreviews[RPID].orEmpty()
+            assertThat(previews.map { it.rpid }).containsExactly(9001L, 9002L).inOrder()
+            assertThat(previews[0].message).isEqualTo("预览9001")
+        }
+
+    @Test
+    fun `getReplies Web does not produce reply previews`() =
+        runTest {
+            // 楼中楼分页接口的条目没有可用的嵌套预览，解析结果应为空
+            val data = repliesJson(responses = 1, total = 1, previews = mapOf(RPID to listOf(9001L)))
+            coEvery { BiliHttpApi.getVideoCommentReplies(any(), any(), any(), any(), any()) } returns
+                BiliResponse(code = 0, message = "", data = data)
+
+            val result = repository.getReplies(aid = AID, rootRpid = RPID, page = 1, preferApiType = ApiType.Web)
+
+            assertThat(result.replyPreviews).isEmpty()
+        }
+
     // ------------------------------------------------------------------
     // getComments (App gRPC)
     // ------------------------------------------------------------------
@@ -275,6 +309,7 @@ class CommentRepositoryUnitTest {
         size: Int? = null,
         rpids: List<Long>? = null,
         upperMid: Long? = null,
+        previews: Map<Long, List<Long>> = emptyMap(),
     ): JsonObject {
         val ids = rpids ?: List(responses) { RPID + it }
         return json
@@ -313,6 +348,27 @@ class CommentRepositoryUnitTest {
                                             "content",
                                             buildJsonObject { put("message", "评论${i + 1}") },
                                         )
+                                        previews[rpid]?.let { nestedIds ->
+                                            put(
+                                                "replies",
+                                                buildJsonArray {
+                                                    nestedIds.forEach { nestedRpid ->
+                                                        add(
+                                                            buildJsonObject {
+                                                                put("rpid", nestedRpid)
+                                                                put("mid", 2000L + nestedRpid)
+                                                                put(
+                                                                    "content",
+                                                                    buildJsonObject {
+                                                                        put("message", "预览$nestedRpid")
+                                                                    },
+                                                                )
+                                                            },
+                                                        )
+                                                    }
+                                                },
+                                            )
+                                        }
                                     },
                                 )
                             }

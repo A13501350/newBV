@@ -65,6 +65,7 @@ class CommentCardTest {
         replyCount: Int = 0,
         initiallyExpanded: Boolean = false,
         ctime: Long = 0L,
+        previewReplyCount: Int = 0,
         onToggleTextExpand: () -> Unit = {},
     ) {
         composeRule.setContent {
@@ -86,6 +87,7 @@ class CommentCardTest {
                         onToggleReplies = {},
                         onToggleLike = {},
                         onImageClick = { _, _ -> },
+                        previewReplyCount = previewReplyCount,
                     )
                 }
             }
@@ -134,5 +136,19 @@ class CommentCardTest {
 
         composeRule.onNodeWithText("刚刚").assertDoesNotExist()
         composeRule.onNodeWithText("分钟前", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun replyButton_withPreviews_showsTotalLabel() {
+        setContent("这是一条评论内容", replyCount = 5, previewReplyCount = 3)
+
+        composeRule.onNodeWithText("共 5 条回复").assertIsDisplayed()
+    }
+
+    @Test
+    fun replyButton_withoutPreviews_keepsReplyLabel() {
+        setContent("这是一条评论内容", replyCount = 5, previewReplyCount = 0)
+
+        composeRule.onNodeWithText("回复 5").assertIsDisplayed()
     }
 }

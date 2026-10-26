@@ -22,7 +22,7 @@ import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 /**
  * [ReplyFooterRow] 的插桩测试。
  *
- * 验证楼中楼分页 footer 的「更多」按钮：展示已加载进度、点击只触发一次加载回调，
+ * 验证楼中楼分页 footer 的「更多回复」按钮：点击只触发一次加载回调，
  * 以及加载中/失败状态下的文案与重试入口。
  */
 @RunWith(AndroidJUnit4::class)
@@ -64,7 +64,7 @@ class ReplyFooterRowTest {
     }
 
     @Test
-    fun moreButton_showsLoadedProgressAndTriggersOnce() {
+    fun moreButton_showsPlainLabelAndTriggersOnce() {
         var loadMoreCalls = 0
         val replyList =
             ReplyListState(
@@ -79,28 +79,10 @@ class ReplyFooterRowTest {
         composeRule.setContent { renderFooter(replyList, onLoadMore = { loadMoreCalls++ }) }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("更多回复（20/53）").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("更多回复").assertIsDisplayed().performClick()
         composeRule.waitForIdle()
 
         assertThat(loadMoreCalls).isEqualTo(1)
-    }
-
-    @Test
-    fun moreButton_withoutTotal_showsPlainLabel() {
-        val replyList =
-            ReplyListState(
-                rootRpid = 1L,
-                replies = List(20) { fakeReply(it) },
-                page = 1,
-                total = 0,
-                hasMore = true,
-                expanded = true,
-                loaded = true,
-            )
-        composeRule.setContent { renderFooter(replyList) }
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithText("更多回复").assertIsDisplayed()
     }
 
     @Test
@@ -120,7 +102,7 @@ class ReplyFooterRowTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("回复加载中…").assertIsDisplayed()
-        composeRule.onNodeWithText("更多回复（20/53）").assertDoesNotExist()
+        composeRule.onNodeWithText("更多回复").assertDoesNotExist()
     }
 
     @Test
