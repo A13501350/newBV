@@ -623,7 +623,7 @@ class DanmakuViewModel
          * 等级 1-4 对应评分阈值 1/5/7/10，与 B 站官方行为一致。
          * 评分区间 1-10（weight/aiFlagScore），等级 0 表示关闭。
          */
-        private val AI_SCORE_THRESHOLDS = intArrayOf(0, 1, 5, 7, 10)
+        private val aiScoreThresholds = intArrayOf(0, 1, 5, 7, 10)
 
         internal fun DanmakuData.shouldDropByAi(aiLevel: Int): Boolean {
             val score =
@@ -631,7 +631,7 @@ class DanmakuViewModel
                     .filter { it != 0 }
                     .maxOfOrNull { abs(it) }
                     ?: return false
-            val threshold = AI_SCORE_THRESHOLDS.getOrElse(aiLevel) { 0 }
+            val threshold = aiScoreThresholds.getOrElse(aiLevel) { 0 }
             return score < threshold
         }
 
