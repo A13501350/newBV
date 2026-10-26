@@ -74,7 +74,7 @@ class CommentRepository(
                 CommentPage(
                     comments =
                         reply.repliesList
-                            .map { Comment.fromGrpc(it, aid) }
+                            .map { Comment.fromGrpc(it, aid, upperMid = reply.subjectControl.upMid) }
                             .filter { it.rpid > 0L }
                             .distinctBy { it.rpid },
                     page = page,
@@ -130,7 +130,7 @@ class CommentRepository(
                 CommentPage(
                     comments =
                         root.repliesList
-                            .map { Comment.fromGrpc(it, aid) }
+                            .map { Comment.fromGrpc(it, aid, upperMid = reply.subjectControl.upMid) }
                             .filter { it.rpid > 0L && it.rpid != rootRpid }
                             .distinctBy { it.rpid },
                     page = page,
@@ -186,10 +186,12 @@ class CommentRepository(
         val pageObject = data["page"] as? JsonObject
         val repliesJson = data["replies"] as? JsonArray
         val rawCount = repliesJson?.count { it is JsonObject } ?: 0
+        // UP 主 mid 用于标记「UP主」评论；主评论与楼中楼响应均携带 data.upper.mid
+        val upperMid = (data["upper"] as? JsonObject)?.longValue("mid") ?: 0L
         val comments =
             repliesJson
                 ?.mapNotNull { it as? JsonObject }
-                ?.map { Comment.fromJson(it, oid = aid, defaultType = defaultType) }
+                ?.map { Comment.fromJson(it, oid = aid, defaultType = defaultType, upperMid = upperMid) }
                 .orEmpty()
                 .filter { it.rpid > 0L }
                 .distinctBy { it.rpid }

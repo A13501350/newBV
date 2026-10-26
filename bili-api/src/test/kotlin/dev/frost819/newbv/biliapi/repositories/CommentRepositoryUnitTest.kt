@@ -121,6 +121,21 @@ class CommentRepositoryUnitTest {
             assertThat(result.comments.map { it.rpid }).containsExactly(RPID)
         }
 
+    @Test
+    fun `getComments Web marks UP author by upper mid`() =
+        runTest {
+            // 回归：此前用 reply_control.up_like 判断「UP主」，会把 UP 点赞过的评论误标为 UP 主
+            val data = repliesJson(responses = 2, total = 2, upperMid = 1000L)
+            coEvery { BiliHttpApi.getVideoComments(any(), any(), any(), any(), any()) } returns
+                BiliResponse(code = 0, message = "", data = data)
+
+            val result = repository.getComments(aid = AID, sort = 1, page = 1, preferApiType = ApiType.Web)
+
+            assertThat(result.comments[0].mid).isEqualTo(1000L)
+            assertThat(result.comments[0].isUp).isTrue()
+            assertThat(result.comments[1].isUp).isFalse()
+        }
+
     // ------------------------------------------------------------------
     // getComments (App gRPC)
     // ------------------------------------------------------------------
@@ -259,11 +274,18 @@ class CommentRepositoryUnitTest {
         num: Int? = null,
         size: Int? = null,
         rpids: List<Long>? = null,
+        upperMid: Long? = null,
     ): JsonObject {
         val ids = rpids ?: List(responses) { RPID + it }
         return json
             .parseToJsonElement(
                 buildJsonObject {
+                    upperMid?.let { mid ->
+                        put(
+                            "upper",
+                            buildJsonObject { put("mid", mid) },
+                        )
+                    }
                     put(
                         "replies",
                         buildJsonArray {
