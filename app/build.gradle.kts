@@ -124,6 +124,10 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":data"))
 
+    // === Network debugging（debug 包生效，release 为 no-op） ===
+    debugImplementation(libs.chucker)
+    releaseImplementation(libs.chucker.no.op)
+
     // === AndroidX Core ===
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
