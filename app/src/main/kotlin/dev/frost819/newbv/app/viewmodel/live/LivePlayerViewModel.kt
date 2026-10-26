@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.data.DanmakuItemData
@@ -67,6 +69,9 @@ class LivePlayerViewModel
             private set
 
         private var danmakuPlayer: DanmakuPlayer? = null
+
+        /** 直播弹幕单条过滤函数（账号云端屏蔽规则），由 [loadLive] 注入。 */
+        private var danmakuFilter: ((content: String, mid: Long) -> Boolean)? = null
 
         private val _uiState = MutableStateFlow(LivePlayerUiState())
         val uiState: StateFlow<LivePlayerUiState> = _uiState.asStateFlow()
@@ -172,12 +177,16 @@ class LivePlayerViewModel
          *
          * @param roomId 房间号
          * @param danmakuPlayer 弹幕播放器实例（由 DanmakuViewModel 提供）
+         * @param danmakuFilter 直播弹幕单条过滤函数（由 DanmakuViewModel 提供，
+         *   账号云端屏蔽规则）；返回 true 表示丢弃该条弹幕，null 表示不过滤
          */
         fun loadLive(
             roomId: Long,
             danmakuPlayer: DanmakuPlayer? = null,
+            danmakuFilter: ((content: String, mid: Long) -> Boolean)? = null,
         ) {
             this.danmakuPlayer = danmakuPlayer
+            this.danmakuFilter = danmakuFilter
             loadLiveInternal(roomId)
         }
 
@@ -344,7 +353,7 @@ class LivePlayerViewModel
             viewModelScope.launch(Dispatchers.Main.immediate) {
                 when (event) {
                     is DanmakuEvent -> {
-                        sendDanmaku(event.content, event.mid)
+                        sendDanmaku(event.content, event.mid, event.mode, event.color)
                     }
                     is OnlineRankCountEvent -> {
                         _uiState.update {
@@ -356,19 +365,34 @@ class LivePlayerViewModel
             }
         }
 
+        /**
+         * 发送直播弹幕到引擎。
+         *
+         * 先套用账号云端屏蔽规则（屏蔽词/正则/用户），命中直接丢弃；
+         * mode/color 由 WS 协议透传（身份弹幕带颜色，4/5 为底部/顶部），
+         * 仅 1-6 为引擎可渲染的普通模式，7+（高级弹幕变体）折叠为滚动。
+         */
         private fun sendDanmaku(
             content: String,
             mid: Long,
+            mode: Int = 1,
+            textColor: Int = 0xFFFFFF,
         ) {
+            if (danmakuFilter?.invoke(content, mid) == true) return
             val danmakuId = danmakuIdCounter++
             val data =
                 DanmakuItemData(
                     danmakuId = danmakuId,
                     position = danmakuPlayer?.getCurrentTimeMs() ?: 0,
                     content = content,
-                    mode = DanmakuItemData.DANMAKU_MODE_ROLLING,
+                    mode =
+                        when (mode) {
+                            4 -> DanmakuItemData.DANMAKU_MODE_CENTER_BOTTOM
+                            5 -> DanmakuItemData.DANMAKU_MODE_CENTER_TOP
+                            else -> DanmakuItemData.DANMAKU_MODE_ROLLING
+                        },
                     textSize = 25,
-                    textColor = 0xFFFFFF,
+                    textColor = Color(textColor).toArgb(),
                     score = 0,
                     danmakuStyle = 0,
                     rank = 0,
@@ -542,6 +566,7 @@ class LivePlayerViewModel
             videoPlayer?.release()
             videoPlayer = null
             danmakuPlayer = null
+            danmakuFilter = null
         }
 
         override fun onCleared() {
