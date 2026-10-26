@@ -1070,6 +1070,16 @@ class PlayerViewModel
                     ?: availableCodecs.minByOrNull { it.ordinal }
             val targetAudio = calculateTargetAudio(availableAudioList, Prefs.defaultAudio)
 
+            // 因设备解码能力而降档时提示用户实际使用的组合（服务端缺档不提示）
+            decodeFallbackNotice(
+                requestedQualityId = requestedQualityId,
+                selected = candidate,
+                preferredCodec = Prefs.defaultVideoCodec,
+                targetQualityCodecs = availableCodecs,
+            )?.let { message ->
+                viewModelScope.launch { _uiEffect.emit(PlayerUiEffect.ShowToast(message)) }
+            }
+
             _uiState.update {
                 it.copy(
                     availableQuality = resolutionMap,
@@ -1424,6 +1434,9 @@ class PlayerViewModel
             val audioUrl = audioCdnCandidates.firstOrNull()
             val position = player.currentPosition
             logger.info { "CDN fallback #$nextIndex -> $videoUrl" }
+            viewModelScope.launch {
+                _uiEffect.emit(PlayerUiEffect.ShowToast("当前播放线路异常，已切换到备用线路"))
+            }
             _uiState.update { it.copy(isBuffering = true) }
             player.playUrl(videoUrl, audioUrl)
             player.prepare()
@@ -1550,3 +1563,42 @@ class PlayerViewModel
             // 不取消 detachedWorkScope：退出前的最后一次进度上报需要在 VM 清理后继续完成，由超时兜底
         }
     }
+
+/**
+ * 生成起播自动选流因设备解码能力受限而降档时的提示文案。
+ *
+ * 只在「服务端提供、但本机解不了」时提示：
+ * - 画质：[requestedQualityId] 取自服务端可用画质，选中画质低于它说明目标画质因能力被放弃；
+ * - 编码：偏好编码在选中画质下可选却未被选中，说明是能力限制而非服务端缺档。
+ *
+ * 服务端本身不提供的画质 / 编码不提示，避免把资源缺失误报成设备限制。
+ *
+ * @param requestedQualityId 服务端可用且最接近用户偏好的画质（qn）
+ * @param selected 能力感知选流选中的组合；null 表示能力判定无可用组合（交由运行时回退提示）
+ * @param preferredCodec 用户偏好的编码
+ * @param targetQualityCodecs 选中画质下服务端提供的编码
+ * @return 提示文案；无需提示时返回 null
+ */
+internal fun decodeFallbackNotice(
+    requestedQualityId: Int,
+    selected: PlaybackCandidate?,
+    preferredCodec: VideoCodec,
+    targetQualityCodecs: List<VideoCodec>,
+): String? {
+    if (selected == null) return null
+    val qualityDowngraded = selected.quality < requestedQualityId
+    val codecDowngraded = selected.codec != preferredCodec && preferredCodec in targetQualityCodecs
+    if (!qualityDowngraded && !codecDowngraded) return null
+
+    val unsupported =
+        buildList {
+            if (qualityDowngraded) add(Resolution.fromCode(requestedQualityId).displayName)
+            if (codecDowngraded) add(preferredCodec.displayName)
+        }
+    val actual =
+        buildList {
+            if (qualityDowngraded) add(Resolution.fromCode(selected.quality).displayName)
+            if (codecDowngraded) add(selected.codec.displayName)
+        }
+    return "当前设备不支持 ${unsupported.joinToString(" · ")}，已切换到 ${actual.joinToString(" · ")}"
+}
