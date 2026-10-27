@@ -8,6 +8,7 @@
 
 [![Android Sdk Require](https://img.shields.io/badge/Android-5.0%2B-informational?logo=android)](https://apilevels.com/#:~:text=Jetpack%20Compose%20requires%20a%20minSdk%20of%2021%20or%20higher)
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+[![Release](https://img.shields.io/github/v/release/Frost819/newBV?label=release&logo=github)](../../releases)
 
 **newBV 不支持在中国大陆地区内使用，如有相关使用需求请使用 [云视听小电视](https://app.bilibili.com)**
 
@@ -26,13 +27,13 @@ newBV 是基于 [BV](https://github.com/aaa1115910/bv) 重构的 [哔哩哔哩](
 
 ### 功能升级
 
-- **直播观看**：直播首页（推荐 / 分区 / 关注 / 直播排行榜）、直播播放（HLS/FLV，多线路手动切换）、WebSocket 实时弹幕、实时人气
-- **评论**：详情页评论预览、独立评论弹窗（全部 / 热门、无限滚动、楼中楼、评论点赞）、播放器内评论
+- **直播观看**：直播首页（推荐 / 分区 / 关注 / 直播排行榜）、直播播放（HLS/FLV，多线路手动切换）、HDR 档位（按设备解码能力过滤与展示）、WebSocket 实时弹幕、实时人气
+- **评论**：详情页评论预览、独立评论弹窗（全部 / 热门、无限滚动、楼中楼、评论点赞）、根评论楼中楼预览、评论相对时间、回复手动分页、播放器内评论
 - **缓存自动清理**：缓存阈值可调（50/100/200/500MB / 不限制）、LRU 自动清理、手动清理、日志占用查看及清理
 - **触屏适配**：D-pad / 触屏运行时双模式，播放器手势（快进 / 亮度 / 音量）
 - **主题**：黑夜 / 白天 / 跟随系统三档，全新品牌配色
 - **视频卡片已播进度条**：历史 / 稍后再看 / UP 主页卡片显示观看进度
-- **播放器增强**：点赞·投币·收藏快捷键（长按一键三连）、同时观看人数、自定义快捷键触发提示、弹幕分段加载（基于AkDanmaku自研 `danmaku-engine`）
+- **播放器增强**：点赞·投币·收藏快捷键（长按一键三连）、同时观看人数、自定义快捷键触发提示、起播自动降档与线路切换提示、打开详情 / UP 主空间返回后续播、弹幕分段加载（基于AkDanmaku自研 `danmaku-engine`）
 - **诊断与崩溃**：关键操作诊断日志 + 局域网日志网页端；本地崩溃日志 + 可选自建端点上报
 
 ### 架构
@@ -68,6 +69,7 @@ newBV 是基于 [BV](https://github.com/aaa1115910/bv) 重构的 [哔哩哔哩](
 ## 开发文档
 
 - [AGENTS.md](AGENTS.md) — AI 协作开发规范（架构决策、代码规范、测试策略、踩坑经验）
+- [更新日志](../../releases) — 各版本发布说明与 APK 下载
 
 ## 致谢
 
