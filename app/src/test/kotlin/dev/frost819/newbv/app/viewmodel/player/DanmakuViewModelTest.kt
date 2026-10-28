@@ -283,7 +283,7 @@ class DanmakuViewModelTest {
             every { Prefs.defaultDanmakuMask } returns true
             stubDanmakuLoading()
             coEvery { videoPlayRepository.getDanmakuMask(any(), any(), any()) } returns null
-            val enabledViewModel = DanmakuViewModel(videoPlayRepository)
+            val enabledViewModel = DanmakuViewModel(videoPlayRepository, authRepository)
 
             enabledViewModel.loadDanmaku(aid = 1L, cid = 2L)
             enabledViewModel.loadDanmakuMask()
