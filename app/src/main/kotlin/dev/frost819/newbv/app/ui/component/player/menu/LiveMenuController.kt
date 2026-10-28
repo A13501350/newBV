@@ -38,6 +38,7 @@ import dev.frost819.newbv.app.viewmodel.player.LocalMenuFocusStateData
 import dev.frost819.newbv.app.viewmodel.player.MenuFocusState
 import dev.frost819.newbv.app.viewmodel.player.MenuFocusStateData
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
+import dev.frost819.newbv.biliapi.repositories.LiveQuality
 import dev.frost819.newbv.danmaku.config.DanmakuState
 import dev.frost819.newbv.data.datastore.DanmakuType
 
@@ -62,9 +63,9 @@ enum class LivePlayerMenuNavItem(
  * 画质、线路 Tab 简化为二级：MenuNav ↔ Items（跳过 Menu 层级）。
  *
  * @param show 是否显示
- * @param availableQualities 可用画质列表（qn, desc）
- * @param currentQuality 当前画质 qn
- * @param onQualityChange 画质变化回调
+ * @param availableQualities 可用画质列表（HDR 档经本机解码能力过滤）
+ * @param currentQuality 当前画质档位标识（[LiveQuality.key]）
+ * @param onQualityChange 画质变化回调（回传 [LiveQuality.key]）
  * @param availableLines 可用线路列表
  * @param currentLine 当前线路序号（从 1 开始）
  * @param onLineChange 线路变化回调
@@ -76,7 +77,7 @@ enum class LivePlayerMenuNavItem(
 fun LiveMenuController(
     modifier: Modifier = Modifier,
     show: Boolean,
-    availableQualities: List<Pair<Int, String>>,
+    availableQualities: List<LiveQuality>,
     currentQuality: Int,
     onQualityChange: (Int) -> Unit,
     availableLines: List<LivePlayLine>,
@@ -122,7 +123,7 @@ fun LiveMenuController(
 @Composable
 @Suppress("LongParameterList")
 private fun LiveMenuControllerContent(
-    availableQualities: List<Pair<Int, String>>,
+    availableQualities: List<LiveQuality>,
     currentQuality: Int,
     onQualityChange: (Int) -> Unit,
     availableLines: List<LivePlayLine>,
@@ -203,7 +204,7 @@ private fun LiveMenuControllerContent(
 @Suppress("LongParameterList")
 private fun LiveMenuList(
     selectedNavMenu: LivePlayerMenuNavItem,
-    availableQualities: List<Pair<Int, String>>,
+    availableQualities: List<LiveQuality>,
     currentQuality: Int,
     onQualityChange: (Int) -> Unit,
     availableLines: List<LivePlayLine>,
@@ -219,9 +220,9 @@ private fun LiveMenuList(
             LivePlayerMenuNavItem.Picture ->
                 PlayerTwoLevelMenu(
                     items = availableQualities,
-                    selected = availableQualities.firstOrNull { it.first == currentQuality },
-                    itemLabel = { it.second },
-                    onItemSelected = { onQualityChange(it.first) },
+                    selected = availableQualities.firstOrNull { it.key == currentQuality },
+                    itemLabel = { it.displayDesc },
+                    onItemSelected = { onQualityChange(it.key) },
                     navFocusRequester = navFocusRequester,
                     onFocusStateChange = onFocusStateChange,
                 )

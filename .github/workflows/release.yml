@@ -21,6 +21,26 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify release preconditions
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          NOTES=".github/release-notes/${TAG}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::缺少发版摘要 $NOTES，请先提交该文件再打 tag"
+            exit 1
+          fi
+
+          PREV="$(git tag --sort=-v:refname | grep -vxF "$TAG" | head -n 1 || true)"
+          if [ -n "$PREV" ]; then
+            HIGHEST="$(printf '%s\n%s\n' "$PREV" "$TAG" | sort -V | tail -n 1)"
+            if [ "$HIGHEST" != "$TAG" ]; then
+              echo "::error::tag $TAG 不大于已有最新 tag $PREV"
+              exit 1
+            fi
+          fi
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:

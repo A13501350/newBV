@@ -261,6 +261,70 @@ class DanmakuViewModelTest {
         assertThat(viewModel.danmakuMask.value).isNull()
     }
 
+    // === 蒙版按需加载 ===
+
+    @Test
+    fun `loadDanmakuMask skips request when mask disabled`() =
+        runTest(testDispatcher) {
+            stubDanmakuLoading()
+
+            // 防遮挡默认关闭：进入播放器/切集不应发起蒙版请求
+            viewModel.loadDanmaku(aid = 1L, cid = 2L)
+            viewModel.loadDanmakuMask()
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { videoPlayRepository.getDanmakuMask(any(), any(), any()) }
+            assertThat(viewModel.danmakuMask.value).isNull()
+        }
+
+    @Test
+    fun `loadDanmakuMask requests mask when mask enabled`() =
+        runTest(testDispatcher) {
+            every { Prefs.defaultDanmakuMask } returns true
+            stubDanmakuLoading()
+            coEvery { videoPlayRepository.getDanmakuMask(any(), any(), any()) } returns null
+            val enabledViewModel = DanmakuViewModel(videoPlayRepository)
+
+            enabledViewModel.loadDanmaku(aid = 1L, cid = 2L)
+            enabledViewModel.loadDanmakuMask()
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { videoPlayRepository.getDanmakuMask(1L, 2L, any()) }
+        }
+
+    @Test
+    fun `enabling mask after video loaded loads mask lazily`() =
+        runTest(testDispatcher) {
+            stubDanmakuLoading()
+            coEvery { videoPlayRepository.getDanmakuMask(any(), any(), any()) } returns null
+            // 关闭状态下加载视频+蒙版：不请求
+            viewModel.loadDanmaku(aid = 11L, cid = 22L)
+            viewModel.loadDanmakuMask()
+            advanceUntilIdle()
+
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMaskEnabled(true))
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { videoPlayRepository.getDanmakuMask(11L, 22L, any()) }
+        }
+
+    @Test
+    fun `enabling mask without video does not request`() =
+        runTest(testDispatcher) {
+            // 直播等场景从不调用 loadDanmaku，打开开关也不应发起请求
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMaskEnabled(true))
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { videoPlayRepository.getDanmakuMask(any(), any(), any()) }
+        }
+
+    /** 为 [DanmakuViewModel.loadDanmaku] 提供元数据与分段桩，避免无关的 MockK 未桩化异常。 */
+    private fun stubDanmakuLoading() {
+        coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+            DanmakuMeta(360_000, 3, false, 100)
+        coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns emptyList()
+    }
+
     @Test
     fun `danmakuPlayer initial value is null`() {
         assertThat(viewModel.danmakuPlayer).isNull()

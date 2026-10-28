@@ -77,7 +77,7 @@ fun NavGraphBuilder.videoPlayerScreen(navController: NavController) {
                     playerViewModel.uiState.value.lastPlayed
                         .toLong() * 1000,
             )
-            danmakuViewModel.loadDanmakuMask(route.aid, actualCid)
+            danmakuViewModel.loadDanmakuMask()
             subtitleViewModel.loadSubtitleList(route.aid, actualCid)
             // 7. 获取播放地址并开始播放
             playerViewModel.markSessionStarted()

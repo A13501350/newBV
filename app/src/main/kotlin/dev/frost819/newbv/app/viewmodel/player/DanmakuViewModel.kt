@@ -28,7 +28,6 @@ import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.danmaku.config.DanmakuState
 import dev.frost819.newbv.data.datastore.Prefs
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -205,6 +204,8 @@ class DanmakuViewModel
             segmentWatchJob?.cancel()
             segmentWatchJob = null
             loadGeneration++
+            currentAid = 0L
+            currentCid = 0L
             loadedSegments.clear()
             loadingSegments.clear()
             danmakuClosed = false
@@ -636,18 +637,27 @@ class DanmakuViewModel
         }
 
         /**
-         * 加载弹幕防遮挡蒙版。
+         * 加载当前视频的弹幕防遮挡蒙版。
          *
-         * @param aid 视频 AV 号
-         * @param cid 视频 CID
+         * 视频标识复用 [loadDanmaku] 记录的 [currentAid] / [currentCid]，需在其之后调用。
+         * 防遮挡默认关闭且蒙版只在开启时需要渲染，因此关闭状态下直接跳过请求，
+         * 待用户打开开关时由 [updateDanmakuState] 补加载。
          */
-        fun loadDanmakuMask(
-            aid: Long,
-            cid: Long,
-        ) {
+        fun loadDanmakuMask() {
             maskFetchJob?.cancel()
+            maskFetchJob = null
+            val aid = currentAid
+            val cid = currentCid
+            if (cid <= 0L) {
+                logger.info { "No current video, skip loading danmaku mask" }
+                return
+            }
+            if (!_danmakuState.value.maskEnabled) {
+                logger.info { "Danmaku mask disabled, skip loading (aid=$aid, cid=$cid)" }
+                return
+            }
             maskFetchJob =
-                viewModelScope.launch(Dispatchers.IO) {
+                viewModelScope.launch {
                     try {
                         val mask =
                             withTimeout(LOAD_TIMEOUT_MS) {
@@ -760,29 +770,34 @@ class DanmakuViewModel
                         "Danmaku AI cloud level changed: level=${new.aiCloudLevel}（从下一分段起生效）"
                     }
                 }
-                // 非 Filter 变更：仅更新对应配置项，避免全量重建
-                if (new.scale != old.scale) {
-                    danmakuConfig = danmakuConfig.copy(textSizeScale = new.scale)
-                    danmakuPlayer?.updateConfig(danmakuConfig)
-                }
-                if (new.speedFactor != old.speedFactor) {
-                    danmakuPlayer?.setDanmakuRollingSpeed(new.speedFactor)
-                }
-                if (new.area != old.area) {
-                    danmakuConfig = danmakuConfig.copy(screenPart = new.area)
-                    danmakuPlayer?.updateConfig(danmakuConfig)
-                }
             }
 
             // 持久化
             if (new.enabledTypes != old.enabledTypes) {
                 Prefs.defaultDanmakuTypes = new.enabledTypes.map { it.toDataDanmakuType() }
             }
-            if (new.scale != old.scale) Prefs.defaultDanmakuScale = new.scale
-            if (new.speedFactor != old.speedFactor) Prefs.defaultDanmakuSpeedFactor = new.speedFactor
-            if (new.area != old.area) Prefs.defaultDanmakuArea = new.area
-            if (new.opacity != old.opacity) Prefs.defaultDanmakuOpacity = new.opacity
-            if (new.maskEnabled != old.maskEnabled) Prefs.defaultDanmakuMask = new.maskEnabled
+            if (new.scale != old.scale) {
+                updateDanmakuScale(new.scale)
+                Prefs.defaultDanmakuScale = new.scale
+            }
+            if (new.speedFactor != old.speedFactor) {
+                danmakuPlayer?.setDanmakuRollingSpeed(new.speedFactor)
+                Prefs.defaultDanmakuSpeedFactor = new.speedFactor
+            }
+            if (new.area != old.area) {
+                updateDanmakuArea(new.area)
+                Prefs.defaultDanmakuArea = new.area
+            }
+            if (new.opacity != old.opacity) {
+                Prefs.defaultDanmakuOpacity = new.opacity
+            }
+            if (new.maskEnabled != old.maskEnabled) {
+                Prefs.defaultDanmakuMask = new.maskEnabled
+                // 蒙版只在开启时请求：关闭期间不下载，打开后若当前视频尚未加载则补加载
+                if (new.maskEnabled && _danmakuMask.value == null && currentCid > 0L) {
+                    loadDanmakuMask()
+                }
+            }
             if (new.blockColorful != old.blockColorful) Prefs.defaultDanmakuBlockColorful = new.blockColorful
             if (new.blockRepeat != old.blockRepeat) Prefs.defaultDanmakuBlockRepeat = new.blockRepeat
             if (new.blockSpecial != old.blockSpecial) Prefs.defaultDanmakuBlockSpecial = new.blockSpecial
@@ -851,6 +866,16 @@ class DanmakuViewModel
                     "blockRepeat=${state.blockRepeat}, blockSpecial=${state.blockSpecial}, " +
                     "aiCloudLevel=${state.aiCloudLevel}"
             }
+        }
+
+        private fun updateDanmakuArea(area: Float) {
+            danmakuConfig = danmakuConfig.copy(screenPart = area)
+            danmakuPlayer?.updateConfig(danmakuConfig)
+        }
+
+        private fun updateDanmakuScale(scale: Float) {
+            danmakuConfig = danmakuConfig.copy(textSizeScale = scale)
+            danmakuPlayer?.updateConfig(danmakuConfig)
         }
 
         /**
