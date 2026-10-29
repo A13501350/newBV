@@ -137,7 +137,7 @@ fun BufferingTip(modifier: Modifier = Modifier) {
 /**
  * 播放错误提示。
  *
- * 屏幕中央显示的半透明错误框，包含标题和错误信息。
+ * 屏幕中央显示半透明错误框：标题 + 具体错误信息。
  *
  * @param errorMessage 错误信息（为 null 时显示"未知错误"）
  */
@@ -159,10 +159,9 @@ fun PlayErrorTip(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "播放器正在抽风",
+                text = "播放错误",
                 style = MaterialTheme.typography.titleLarge,
             )
-            Text(text = " _(:з」∠)_")
             Spacer(modifier = Modifier.height(12.dp))
             Text(text = "错误信息：${errorMessage ?: "未知错误"}")
         }

@@ -48,7 +48,7 @@ class PlayStateTipsTest {
         setContent(isPlaying = false, isBuffering = false, isError = false)
         // PlayStateTips 内部用 Pause icon，没有文字，验证无错误/缓冲文字即可
         composeRule.onNodeWithText("缓冲中...").assertDoesNotExist()
-        composeRule.onNodeWithText("播放器正在抽风").assertDoesNotExist()
+        composeRule.onNodeWithText("播放错误").assertDoesNotExist()
     }
 
     @Test
@@ -59,10 +59,10 @@ class PlayStateTipsTest {
     }
 
     @Test
-    fun error_showsErrorTitle() {
+    fun error_showsTitle() {
         setContent(isPlaying = false, isBuffering = false, isError = true)
 
-        composeRule.onNodeWithText("播放器正在抽风").assertIsDisplayed()
+        composeRule.onNodeWithText("播放错误").assertIsDisplayed()
     }
 
     @Test
@@ -88,7 +88,7 @@ class PlayStateTipsTest {
     fun error_takes_priority_over_buffering() {
         setContent(isPlaying = false, isBuffering = true, isError = true)
 
-        composeRule.onNodeWithText("播放器正在抽风").assertIsDisplayed()
+        composeRule.onNodeWithText("播放错误").assertIsDisplayed()
         composeRule.onNodeWithText("缓冲中...").assertDoesNotExist()
     }
 
@@ -97,6 +97,6 @@ class PlayStateTipsTest {
         setContent(isPlaying = true, isBuffering = false, isError = false)
 
         composeRule.onNodeWithText("缓冲中...").assertDoesNotExist()
-        composeRule.onNodeWithText("播放器正在抽风").assertDoesNotExist()
+        composeRule.onNodeWithText("播放错误").assertDoesNotExist()
     }
 }
