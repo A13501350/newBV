@@ -145,7 +145,6 @@ class LivePlayerViewModel
                     roomId = roomId,
                     title = title,
                     cover = cover,
-                    playerState = LivePlayerState.Loading,
                 )
             }
         }
@@ -197,7 +196,7 @@ class LivePlayerViewModel
 
         private fun loadLiveInternal(roomId: Long) {
             viewModelScope.launch {
-                _uiState.update { it.copy(playerState = LivePlayerState.Loading) }
+                _uiState.update { it.copy(playerState = LivePlayerState.Loading, isBuffering = true) }
 
                 runCatching {
                     val roomInit = liveRepository.getRoomInit(roomId.toInt())

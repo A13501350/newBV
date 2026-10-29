@@ -620,8 +620,7 @@ class PlayerViewModel
 
         /** 立即播放下一集。 */
         fun playNextNow() {
-            playNextCountdownJob?.cancel()
-            _uiState.update { it.copy(showSkipToNextEp = false) }
+            cancelPlayNext()
             val target = findNextPlayTarget()
             if (target != null) {
                 playNextTarget(target)
@@ -632,8 +631,7 @@ class PlayerViewModel
 
         /** 立即播放上一集。 */
         fun playPreviousNow() {
-            playNextCountdownJob?.cancel()
-            _uiState.update { it.copy(showSkipToNextEp = false) }
+            cancelPlayNext()
             val target = findPreviousPlayTarget()
             if (target != null) {
                 playNextTarget(target)
@@ -886,16 +884,14 @@ class PlayerViewModel
             videoPlayer?.let { player ->
                 // resolveMediaUrls 在开启自动选源时会做测速（挂起），需放入协程
                 viewModelScope.launch {
-                    player.pause()
-                    val currentPosition = player.currentPosition
-                    // 切换期间清掉旧错误态：否则错误浮层会盖住新的加载状态，看起来像点了没反应
-                    _uiState.update { it.copy(playerState = PlayerState.Ready, isBuffering = true) }
+                    // 先解析地址（可能测速）再切换：解析期间旧流照常播放，不出现暂停空档
                     val mediaUrls = resolveMediaUrls(new.qualityId, new.videoCodec, new.audio)
                     if (mediaUrls == null) {
+                        player.pause()
                         failPlayback("视频源解析失败，请稍后重试")
                         return@launch
                     }
-                    replayMedia(mediaUrls, currentPosition)
+                    replayMedia(mediaUrls, player.currentPosition)
                 }
             }
         }
@@ -915,6 +911,9 @@ class PlayerViewModel
         /**
          * 用新的媒体地址在指定位置续播。
          *
+         * 手动换档、编码/音轨回退、CDN 回退都走这里：进入缓冲态、清掉旧错误态都在此处完成，
+         * 调用方不必再自己维护 `isBuffering`。
+         *
          * @param urls 重新解析出的视频 / 音频地址
          * @param position 续播位置（毫秒），0 表示从头播放
          */
@@ -923,6 +922,7 @@ class PlayerViewModel
             position: Long,
         ) {
             val player = videoPlayer ?: return
+            _uiState.update { it.copy(playerState = PlayerState.Ready, isBuffering = true) }
             player.pause()
             player.playUrl(urls.videoUrl, urls.audioUrl)
             player.prepare()
@@ -972,7 +972,6 @@ class PlayerViewModel
                             videoCodec = next.codec,
                         ),
                     availableVideoCodec = codecsFor(next.quality),
-                    isBuffering = true,
                 )
             }
             replayMedia(urls, position)
@@ -1010,7 +1009,6 @@ class PlayerViewModel
             _uiState.update {
                 it.copy(
                     mediaProfileState = it.mediaProfileState.copy(audio = next),
-                    isBuffering = true,
                 )
             }
             replayMedia(urls, position)
@@ -1524,11 +1522,7 @@ class PlayerViewModel
             viewModelScope.launch {
                 _uiEffect.emit(PlayerUiEffect.ShowToast("当前播放线路异常，已切换到备用线路"))
             }
-            _uiState.update { it.copy(isBuffering = true) }
-            player.playUrl(videoUrl, audioUrl)
-            player.prepare()
-            if (position > 0) player.seekTo(position)
-            player.start()
+            replayMedia(MediaUrls(videoUrl = videoUrl, audioUrl = audioUrl), position)
             return true
         }
 

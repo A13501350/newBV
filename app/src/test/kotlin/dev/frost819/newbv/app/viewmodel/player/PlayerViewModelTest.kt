@@ -934,6 +934,27 @@ class PlayerViewModelTest {
         }
 
     @Test
+    fun `updateMediaProfile replays at current position after resolving`() =
+        runTest(testDispatcher) {
+            setVideoPlayer(mockPlayer)
+            every { mockPlayer.currentPosition } returns 42_000L
+            setPlayData(
+                PlayData(
+                    dashVideos = listOf(dashVideo(120, 7, "avc1.640034", 2160, 3840)),
+                    dashAudios = listOf(dashAudio(30280)),
+                ),
+            )
+
+            viewModel.updateMediaProfile(MediaProfileSettingAction.SetQuality(120))
+            advanceUntilIdle()
+
+            // 解析成功后从当前位置续播，并进入缓冲态
+            verify { mockPlayer.playUrl(any(), any()) }
+            verify { mockPlayer.seekTo(42_000L) }
+            assertThat(viewModel.uiState.value.isBuffering).isTrue()
+        }
+
+    @Test
     fun `updateMediaProfile reports failure when media urls cannot be resolved`() =
         runTest(testDispatcher) {
             // Given: playData 为空（首次加载失败 / 未加载），解析必然返回 null
@@ -1042,7 +1063,9 @@ class PlayerViewModelTest {
             verify { mockPlayer.prepare() }
             verify { mockPlayer.seekTo(5000L) }
             verify { mockPlayer.start() }
+            // 重播统一由 replayMedia 进入缓冲态
             assertThat(viewModel.uiState.value.playerState).isNotInstanceOf(PlayerState.Error::class.java)
+            assertThat(viewModel.uiState.value.isBuffering).isTrue()
         }
 
     @Test
@@ -1362,6 +1385,7 @@ class PlayerViewModelTest {
 
             // 音轨状态同步到最低可用 AAC 档，并从出错位置续播
             assertThat(viewModel.uiState.value.mediaProfileState.audio).isEqualTo(Audio.A192K)
+            assertThat(viewModel.uiState.value.isBuffering).isTrue()
             verify { mockPlayer.playUrl(any(), any()) }
             verify { mockPlayer.seekTo(30_000L) }
         }
