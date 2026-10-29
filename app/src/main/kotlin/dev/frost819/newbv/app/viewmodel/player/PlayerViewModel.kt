@@ -248,6 +248,8 @@ class PlayerViewModel
 
                 override fun onPause() {
                     logger.info { "onPause" }
+                    // 出错后 ExoPlayer 会紧跟着回调 isPlaying=false，不能把错误态覆盖成暂停态
+                    if (_uiState.value.playerState is PlayerState.Error) return
                     _uiState.update { it.copy(playerState = PlayerState.Paused) }
                 }
 

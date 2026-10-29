@@ -685,6 +685,20 @@ class PlayerViewModelTest {
         }
 
     @Test
+    fun `onPause after error keeps error state`() =
+        runTest(testDispatcher) {
+            // Given: 出错后 ExoPlayer 会立刻回调 isPlaying=false
+            val listener = getVideoPlayerListener()
+            listener.onError(RuntimeException("boom"))
+
+            // When
+            listener.onPause()
+
+            // Then: 错误提示不能被暂停态覆盖
+            assertThat(viewModel.uiState.value.playerState).isInstanceOf(PlayerState.Error::class.java)
+        }
+
+    @Test
     fun `onPlay sets PlayerState Playing and clears isBuffering`() =
         runTest(testDispatcher) {
             val listener = getVideoPlayerListener()

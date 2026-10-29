@@ -113,6 +113,58 @@ class LivePlayerViewModel
         val debugInfo: StateFlow<String> = _debugInfo.asStateFlow()
 
         /**
+         * 播放器事件回调。
+         *
+         * 提成字段（而非内联匿名对象）便于单测直接驱动各回调；错误态统一由 [failPlayback] 写入。
+         */
+        private val videoPlayerListener =
+            object : VideoPlayerListener {
+                override fun onError(error: Exception) {
+                    logger.error(error) { "Live player error" }
+                    failPlayback(error.toPlaybackErrorMessage())
+                }
+
+                override fun onVideoDecodeUnsupported() {
+                    logger.error { "Live video decode unsupported: quality=${_uiState.value.currentQuality}" }
+                    // 直播是单条流，无法换编码；提示用户切画质或线路自救
+                    failPlayback("解码失败，请尝试切换画质或线路")
+                }
+
+                override fun onAudioDecodeUnsupported() {
+                    logger.error { "Live audio decode unsupported: quality=${_uiState.value.currentQuality}" }
+                    failPlayback("音频解码失败，请尝试切换线路")
+                }
+
+                override fun onReady() {
+                    _uiState.update {
+                        it.copy(playerState = LivePlayerState.Playing, isBuffering = false)
+                    }
+                }
+
+                override fun onPlay() {
+                    _uiState.update { it.copy(playerState = LivePlayerState.Playing) }
+                }
+
+                override fun onPause() {
+                    // 出错后 ExoPlayer 会紧跟着回调 isPlaying=false，不能把错误态覆盖成暂停态
+                    if (_uiState.value.playerState == LivePlayerState.Error) return
+                    _uiState.update { it.copy(playerState = LivePlayerState.Paused) }
+                }
+
+                override fun onBuffering() {
+                    _uiState.update { it.copy(isBuffering = true) }
+                }
+
+                override fun onEnd() {
+                    _uiState.update { it.copy(playerState = LivePlayerState.Ended) }
+                }
+
+                override fun onSeekBack(seekBackIncrementMs: Long) {}
+
+                override fun onSeekForward(seekForwardIncrementMs: Long) {}
+            }
+
+        /**
          * 初始化直播间信息。
          */
         fun init(
@@ -143,47 +195,7 @@ class LivePlayerViewModel
                     referer = "https://live.bilibili.com",
                 )
             videoPlayer = exoPlayerFactory.create(context, options)
-            videoPlayer?.setPlayerEventListener(
-                object : VideoPlayerListener {
-                    override fun onError(error: Exception) {
-                        logger.error(error) { "Live player error" }
-
-                        _uiState.update {
-                            it.copy(
-                                playerState = LivePlayerState.Error,
-                                isBuffering = false,
-                                errorMessage = error.toPlaybackErrorMessage(),
-                            )
-                        }
-                    }
-
-                    override fun onReady() {
-                        _uiState.update {
-                            it.copy(playerState = LivePlayerState.Playing, isBuffering = false)
-                        }
-                    }
-
-                    override fun onPlay() {
-                        _uiState.update { it.copy(playerState = LivePlayerState.Playing) }
-                    }
-
-                    override fun onPause() {
-                        _uiState.update { it.copy(playerState = LivePlayerState.Paused) }
-                    }
-
-                    override fun onBuffering() {
-                        _uiState.update { it.copy(isBuffering = true) }
-                    }
-
-                    override fun onEnd() {
-                        _uiState.update { it.copy(playerState = LivePlayerState.Ended) }
-                    }
-
-                    override fun onSeekBack(seekBackIncrementMs: Long) {}
-
-                    override fun onSeekForward(seekForwardIncrementMs: Long) {}
-                },
-            )
+            videoPlayer?.setPlayerEventListener(videoPlayerListener)
             videoPlayer?.initPlayer()
             videoPlayer?.setOptions()
         }
@@ -240,12 +252,7 @@ class LivePlayerViewModel
                     val playInfo = liveRepository.getLivePlayInfo(realRoomId, requestedKey)
                     val line = resolveLine(playInfo, _uiState.value.currentLine)
                     if (line == null) {
-                        _uiState.update {
-                            it.copy(
-                                playerState = LivePlayerState.Error,
-                                errorMessage = "获取直播流地址失败",
-                            )
-                        }
+                        failPlayback("获取直播流地址失败")
                         return@launch
                     }
 
@@ -269,13 +276,26 @@ class LivePlayerViewModel
                 }.onFailure { error ->
                     if (error is CancellationException) throw error
                     logger.error(error) { "Failed to load live" }
-                    _uiState.update {
-                        it.copy(
-                            playerState = LivePlayerState.Error,
-                            errorMessage = error.toPlaybackLoadErrorMessage(),
-                        )
-                    }
+                    failPlayback(error.toPlaybackLoadErrorMessage())
                 }
+            }
+        }
+
+        /**
+         * 置错误态。
+         *
+         * 同时清掉缓冲标记：错误浮层优先级高于转圈，残留的 `isBuffering` 还会让
+         * 后续重连误判为仍在加载。
+         *
+         * @param message 面向用户的错误文案
+         */
+        private fun failPlayback(message: String) {
+            _uiState.update {
+                it.copy(
+                    playerState = LivePlayerState.Error,
+                    isBuffering = false,
+                    errorMessage = message,
+                )
             }
         }
 
@@ -465,13 +485,7 @@ class LivePlayerViewModel
                 }.onFailure { error ->
                     if (error is CancellationException) throw error
                     logger.error(error) { "Failed to reload live stream" }
-                    _uiState.update {
-                        it.copy(
-                            playerState = LivePlayerState.Error,
-                            isBuffering = false,
-                            errorMessage = error.toPlaybackLoadErrorMessage(),
-                        )
-                    }
+                    failPlayback(error.toPlaybackLoadErrorMessage())
                 }
             }
         }
