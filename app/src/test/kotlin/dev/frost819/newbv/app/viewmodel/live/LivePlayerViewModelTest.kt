@@ -137,7 +137,7 @@ class LivePlayerViewModelTest {
 
             // Then
             assertThat(viewModel.uiState.value.playerState).isEqualTo(LivePlayerState.Error)
-            assertThat(viewModel.uiState.value.errorMessage).isEqualTo("boom")
+            assertThat(viewModel.uiState.value.errorMessage).isEqualTo("视频源加载失败，请稍后重试")
         }
 
     @Test

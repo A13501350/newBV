@@ -12,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.frost819.newbv.app.ui.component.livecard.formatOnlineCount
 import dev.frost819.newbv.app.util.VideoCapabilityProvider
 import dev.frost819.newbv.app.util.VideoDecodeProfile
+import dev.frost819.newbv.app.util.toPlaybackLoadErrorMessage
 import dev.frost819.newbv.biliapi.http.entity.live.DanmakuEvent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveEvent
 import dev.frost819.newbv.biliapi.http.entity.live.OnlineRankCountEvent
@@ -28,6 +29,7 @@ import dev.frost819.newbv.player.VideoPlayerListener
 import dev.frost819.newbv.player.VideoPlayerOptions
 import dev.frost819.newbv.player.impl.exo.ExoMediaPlayer
 import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
+import dev.frost819.newbv.player.toPlaybackErrorMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -150,7 +152,7 @@ class LivePlayerViewModel
                             it.copy(
                                 playerState = LivePlayerState.Error,
                                 isBuffering = false,
-                                errorMessage = error.message,
+                                errorMessage = error.toPlaybackErrorMessage(),
                             )
                         }
                     }
@@ -270,7 +272,7 @@ class LivePlayerViewModel
                     _uiState.update {
                         it.copy(
                             playerState = LivePlayerState.Error,
-                            errorMessage = error.message,
+                            errorMessage = error.toPlaybackLoadErrorMessage(),
                         )
                     }
                 }
@@ -467,7 +469,7 @@ class LivePlayerViewModel
                         it.copy(
                             playerState = LivePlayerState.Error,
                             isBuffering = false,
-                            errorMessage = error.message,
+                            errorMessage = error.toPlaybackLoadErrorMessage(),
                         )
                     }
                 }

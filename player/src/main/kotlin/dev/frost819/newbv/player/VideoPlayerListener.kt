@@ -17,6 +17,14 @@ interface VideoPlayerListener {
      */
     fun onVideoDecodeUnsupported() {}
 
+    /**
+     * 音频解码器无法处理当前音轨（音频输出链路初始化 / 写入失败，或压缩帧超出解码器缓冲）。
+     *
+     * 与 [onError] 区分：调用方据此回退到其它音轨（通常降级到 AAC）后重试，
+     * 而非直接报错。默认空实现，兼容仅关心 [onError] 的使用者。
+     */
+    fun onAudioDecodeUnsupported() {}
+
     /** 播放器准备就绪，可以开始播放 */
     fun onReady()
 

@@ -25,6 +25,7 @@ import dev.frost819.newbv.app.util.collectCodecs
 import dev.frost819.newbv.app.util.findTrack
 import dev.frost819.newbv.app.util.orderQualities
 import dev.frost819.newbv.app.util.pickDecodableProfile
+import dev.frost819.newbv.app.util.toPlaybackLoadErrorMessage
 import dev.frost819.newbv.app.util.trackMatchesCodec
 import dev.frost819.newbv.biliapi.entity.ApiType
 import dev.frost819.newbv.biliapi.entity.DashVideo
@@ -47,6 +48,7 @@ import dev.frost819.newbv.player.CdnSelector
 import dev.frost819.newbv.player.VideoPlayerListener
 import dev.frost819.newbv.player.VideoPlayerOptions
 import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
+import dev.frost819.newbv.player.toPlaybackErrorMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -75,6 +77,14 @@ private const val PLAYER_ACTION_TIMEOUT_MS = 10_000L
 
 /** 同时观看人数刷新间隔（cid 就绪后周期轮询）。 */
 private const val ONLINE_WATCH_REFRESH_MS = 60_000L
+
+/**
+ * 音频解码失败时的回退顺序。
+ *
+ * 只回退 AAC 三档：Dolby Atmos / Hi-Res 的高码率压缩帧才是设备解码器输入缓冲
+ * 溢出的来源（实测 32KB），换画质或视频编码都无效。
+ */
+private val AUDIO_FALLBACK_ORDER = listOf(Audio.A192K, Audio.A132K, Audio.A64K)
 
 /**
  * 播放器主 ViewModel。
@@ -136,6 +146,9 @@ class PlayerViewModel
         /** 本次播放已尝试过的「画质|编码」组合，用于解码回退去重与终止。 */
         private val attemptedDecodeProfiles = mutableSetOf<String>()
 
+        /** 本次播放已尝试过的音轨，用于音频解码回退去重与终止。 */
+        private val attemptedAudioFallbacks = mutableSetOf<Audio>()
+
         /** 当前视频轨道按推荐顺序排列的 CDN 候选（开启自动选源时按测速排序）。 */
         private var videoCdnCandidates: List<String> = emptyList()
 
@@ -196,12 +209,8 @@ class PlayerViewModel
                     logger.info { "onError: $error" }
                     // 自动选源模式下，优先尝试切换到下一个候选 CDN，避免单个节点故障导致播放中断
                     if (Prefs.autoSelectCdn && tryNextCdnFallback()) return
-                    _uiState.update {
-                        it.copy(
-                            playerState = PlayerState.Error(error.message ?: "Unknown error"),
-                            isBuffering = false,
-                        )
-                    }
+                    // 其余错误进入错误态
+                    failPlayback(error.toPlaybackErrorMessage())
                 }
 
                 override fun onVideoDecodeUnsupported() {
@@ -210,6 +219,14 @@ class PlayerViewModel
                             "codec=${_uiState.value.mediaProfileState.videoCodec}"
                     }
                     viewModelScope.launch { handleDecodeUnsupported() }
+                }
+
+                override fun onAudioDecodeUnsupported() {
+                    logger.info {
+                        "onAudioDecodeUnsupported: audio=${_uiState.value.mediaProfileState.audio}, " +
+                            "codec=${_uiState.value.mediaProfileState.videoCodec}"
+                    }
+                    viewModelScope.launch { handleAudioUnsupported() }
                 }
 
                 override fun onReady() {
@@ -746,7 +763,7 @@ class PlayerViewModel
                         ),
                 )
             }
-            resetDecodeFallbackState()
+            resetFallbackState()
 
             // 通知 UI 层重载弹幕/字幕（非阻塞，避免卡住 playNewVideo）
             viewModelScope.launch { _videoSwitchEvent.emit(VideoSwitchEvent(newVideo.aid, newVideo.cid)) }
@@ -811,12 +828,7 @@ class PlayerViewModel
                         throw e
                     } catch (e: Exception) {
                         logger.error(e) { "Loading video data error: $e" }
-                        _uiState.update {
-                            it.copy(
-                                playerState = PlayerState.Error(e.message ?: "未知错误"),
-                                isBuffering = false,
-                            )
-                        }
+                        failPlayback(e.toPlaybackLoadErrorMessage())
                     }
                 }
         }
@@ -859,7 +871,7 @@ class PlayerViewModel
             if (old == new) return
 
             // 用户手动切换，重置回退状态，避免误判为「已尝试」
-            resetDecodeFallbackState()
+            resetFallbackState()
 
             // 同步刷新该画质下的可用编码列表（编码菜单随画质联动）
             _uiState.update {
@@ -887,9 +899,32 @@ class PlayerViewModel
 
         // ── 解码回退 ──────────────────────────────────────────────
 
-        /** 清除解码回退状态（切集 / 手动切换媒体格式时调用）。 */
-        private fun resetDecodeFallbackState() {
+        /**
+         * 清除回退状态（切集 / 手动切换媒体格式时调用）。
+         *
+         * 视频编码回退与音轨回退都按「一次播放意图」计数，换片或换档后应重新获得机会。
+         */
+        private fun resetFallbackState() {
             attemptedDecodeProfiles.clear()
+            attemptedAudioFallbacks.clear()
+        }
+
+        /**
+         * 用新的媒体地址在指定位置续播。
+         *
+         * @param urls 重新解析出的视频 / 音频地址
+         * @param position 续播位置（毫秒），0 表示从头播放
+         */
+        private fun replayMedia(
+            urls: MediaUrls,
+            position: Long,
+        ) {
+            val player = videoPlayer ?: return
+            player.pause()
+            player.playUrl(urls.videoUrl, urls.audioUrl)
+            player.prepare()
+            if (position > 0) player.seekTo(position)
+            player.start()
         }
 
         /**
@@ -937,11 +972,60 @@ class PlayerViewModel
                     isBuffering = true,
                 )
             }
-            player.pause()
-            player.playUrl(urls.videoUrl, urls.audioUrl)
-            player.prepare()
-            if (position > 0) player.seekTo(position)
-            player.start()
+            replayMedia(urls, position)
+        }
+
+        /**
+         * 处理「当前音轨本机解码不了」：回退到下一档未尝试的 AAC 音轨并从原位置续播。
+         *
+         * 触发来源是 [VideoPlayerListener.onAudioDecodeUnsupported]，典型场景是
+         * Dolby Atmos / Hi-Res 的压缩帧超出设备解码器输入缓冲。每个音轨只会被尝试一次
+         * （[attemptedAudioFallbacks] 去重），候选穷尽后上报播放错误。
+         */
+        private suspend fun handleAudioUnsupported() {
+            val current = _uiState.value.mediaProfileState
+            attemptedAudioFallbacks.add(current.audio)
+
+            val next =
+                nextAudioCandidate(current.audio) ?: run {
+                    failPlayback("音频解码失败，请在播放器菜单中切换音轨")
+                    return
+                }
+            val player =
+                videoPlayer ?: run {
+                    failPlayback("播放器未初始化")
+                    return
+                }
+            val urls = resolveMediaUrls(current.qualityId, current.videoCodec, next)
+            if (urls == null) {
+                failPlayback("视频源解析失败")
+                return
+            }
+
+            _uiEffect.emit(PlayerUiEffect.ShowToast("当前音轨解码失败，已切换到 ${next.displayName}"))
+            val position = player.currentPosition
+            _uiState.update {
+                it.copy(
+                    mediaProfileState = it.mediaProfileState.copy(audio = next),
+                    isBuffering = true,
+                )
+            }
+            replayMedia(urls, position)
+        }
+
+        /**
+         * 计算下一个可回退的音轨。
+         *
+         * 按 [AUDIO_FALLBACK_ORDER] 取第一个「未尝试过且服务端确实提供」的音轨；
+         * `availableAudio` 尚未填充时（早期状态）退化为按编码顺序尝试。
+         */
+        private fun nextAudioCandidate(current: Audio): Audio? {
+            val available = _uiState.value.availableAudio
+            return AUDIO_FALLBACK_ORDER.firstOrNull { candidate ->
+                candidate != current &&
+                    candidate !in attemptedAudioFallbacks &&
+                    (available.isEmpty() || candidate in available)
+            }
         }
 
         /**
