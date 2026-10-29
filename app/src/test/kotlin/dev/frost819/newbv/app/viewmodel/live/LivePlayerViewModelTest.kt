@@ -222,6 +222,36 @@ class LivePlayerViewModelTest {
             assertThat(qualities.map { it.qn }).containsExactly(30000, 10000)
         }
 
+    @Test
+    fun `changeLine clears stale error message and shows loading`() =
+        runTest(testDispatcher) {
+            // Given: 上一次播放失败后用户手动换线路
+            updateUiState {
+                it.copy(
+                    realRoomId = 123,
+                    currentQuality = 10000,
+                    playerState = LivePlayerState.Error,
+                    errorMessage = "播放失败，请稍后重试",
+                    isBuffering = false,
+                )
+            }
+            coEvery { liveRepository.getLivePlayInfo(123, 10000) } returns
+                LivePlayInfo(
+                    currentQn = 10000,
+                    qualities = listOf(LiveQuality(10000, "原画")),
+                    lines = listOf(LivePlayLine(1, "url-1"), LivePlayLine(2, "url-2")),
+                )
+
+            // When
+            viewModel.changeLine(2)
+            advanceUntilIdle()
+
+            // Then: 旧错误不再残留，播放成功路径恢复为可播放状态
+            val state = viewModel.uiState.value
+            assertThat(state.errorMessage).isNull()
+            assertThat(state.playerState).isNotEqualTo(LivePlayerState.Error)
+        }
+
     // ── 播放器回调 ───────────────────────────────────────────
 
     @Test

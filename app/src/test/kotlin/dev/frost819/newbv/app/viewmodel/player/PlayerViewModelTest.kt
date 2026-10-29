@@ -933,6 +933,25 @@ class PlayerViewModelTest {
             verify { mockPlayer.pause() }
         }
 
+    @Test
+    fun `updateMediaProfile reports failure when media urls cannot be resolved`() =
+        runTest(testDispatcher) {
+            // Given: playData 为空（首次加载失败 / 未加载），解析必然返回 null
+            setVideoPlayer(mockPlayer)
+            updateUiState { it.copy(playerState = PlayerState.Playing, isBuffering = false) }
+
+            // When
+            viewModel.updateMediaProfile(MediaProfileSettingAction.SetQuality(116))
+            advanceUntilIdle()
+
+            // Then: 不再静默无操作，而是给出可见错误
+            val state = viewModel.uiState.value
+            assertThat(state.playerState).isInstanceOf(PlayerState.Error::class.java)
+            assertThat((state.playerState as PlayerState.Error).message)
+                .isEqualTo("视频源解析失败，请稍后重试")
+            assertThat(state.isBuffering).isFalse()
+        }
+
     // ── detachPlayer test ─────────────────────────────────────
 
     @Test

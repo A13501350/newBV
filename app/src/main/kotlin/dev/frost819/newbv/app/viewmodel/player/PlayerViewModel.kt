@@ -888,13 +888,14 @@ class PlayerViewModel
                 viewModelScope.launch {
                     player.pause()
                     val currentPosition = player.currentPosition
+                    // 切换期间清掉旧错误态：否则错误浮层会盖住新的加载状态，看起来像点了没反应
+                    _uiState.update { it.copy(playerState = PlayerState.Ready, isBuffering = true) }
                     val mediaUrls = resolveMediaUrls(new.qualityId, new.videoCodec, new.audio)
-                    if (mediaUrls != null) {
-                        player.playUrl(mediaUrls.videoUrl, mediaUrls.audioUrl)
-                        player.prepare()
-                        if (currentPosition > 0) player.seekTo(currentPosition)
-                        player.start()
+                    if (mediaUrls == null) {
+                        failPlayback("视频源解析失败，请稍后重试")
+                        return@launch
                     }
+                    replayMedia(mediaUrls, currentPosition)
                 }
             }
         }
