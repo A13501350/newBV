@@ -38,19 +38,17 @@ import dev.frost819.newbv.core.theme.BVTheme
  * @param modifier 修饰符
  * @param isPlaying 是否正在播放
  * @param isBuffering 是否正在缓冲
- * @param isError 是否发生错误
- * @param errorMessage 错误信息（为 null 时显示"未知错误"）
+ * @param errorMessage 错误信息；非 null 即错误态（优先于缓冲与暂停提示）
  */
 @Composable
 fun PlayStateTips(
     modifier: Modifier = Modifier,
     isPlaying: Boolean,
     isBuffering: Boolean,
-    isError: Boolean,
     errorMessage: String? = null,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
-        if (!isPlaying && !isBuffering && !isError) {
+        if (!isPlaying && !isBuffering && errorMessage == null) {
             PauseIcon(
                 modifier =
                     Modifier
@@ -58,12 +56,12 @@ fun PlayStateTips(
                         .padding(24.dp),
             )
         }
-        if (isBuffering && !isError) {
+        if (isBuffering && errorMessage == null) {
             BufferingTip(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        if (isError) {
+        if (errorMessage != null) {
             PlayErrorTip(
                 modifier = Modifier.align(Alignment.Center),
                 errorMessage = errorMessage,
@@ -139,12 +137,12 @@ fun BufferingTip(modifier: Modifier = Modifier) {
  *
  * 屏幕中央显示半透明错误框：标题 + 具体错误信息。
  *
- * @param errorMessage 错误信息（为 null 时显示"未知错误"）
+ * @param errorMessage 错误信息
  */
 @Composable
 fun PlayErrorTip(
     modifier: Modifier = Modifier,
-    errorMessage: String?,
+    errorMessage: String,
 ) {
     Surface(
         modifier = modifier,
@@ -163,7 +161,7 @@ fun PlayErrorTip(
                 style = MaterialTheme.typography.titleLarge,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Text(text = "错误信息：${errorMessage ?: "未知错误"}")
+            Text(text = "错误信息：$errorMessage")
         }
     }
 }
@@ -177,7 +175,6 @@ private fun PlayStateTipsPausedPreview() {
         PlayStateTips(
             isPlaying = false,
             isBuffering = false,
-            isError = false,
         )
     }
 }
@@ -189,7 +186,6 @@ private fun PlayStateTipsBufferingPreview() {
         PlayStateTips(
             isPlaying = false,
             isBuffering = true,
-            isError = false,
         )
     }
 }
@@ -201,7 +197,6 @@ private fun PlayStateTipsErrorPreview() {
         PlayStateTips(
             isPlaying = false,
             isBuffering = false,
-            isError = true,
             errorMessage = "网络连接失败 (404)",
         )
     }

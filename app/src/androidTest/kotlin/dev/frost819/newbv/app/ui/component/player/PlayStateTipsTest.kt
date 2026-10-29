@@ -25,7 +25,6 @@ class PlayStateTipsTest {
     private fun setContent(
         isPlaying: Boolean,
         isBuffering: Boolean,
-        isError: Boolean,
         errorMessage: String? = null,
     ) {
         composeRule.setContent {
@@ -34,7 +33,6 @@ class PlayStateTipsTest {
                     PlayStateTips(
                         isPlaying = isPlaying,
                         isBuffering = isBuffering,
-                        isError = isError,
                         errorMessage = errorMessage,
                     )
                 }
@@ -45,7 +43,7 @@ class PlayStateTipsTest {
 
     @Test
     fun paused_showsPauseIcon() {
-        setContent(isPlaying = false, isBuffering = false, isError = false)
+        setContent(isPlaying = false, isBuffering = false)
         // PlayStateTips 内部用 Pause icon，没有文字，验证无错误/缓冲文字即可
         composeRule.onNodeWithText("缓冲中...").assertDoesNotExist()
         composeRule.onNodeWithText("播放错误").assertDoesNotExist()
@@ -53,14 +51,14 @@ class PlayStateTipsTest {
 
     @Test
     fun buffering_showsBufferingText() {
-        setContent(isPlaying = false, isBuffering = true, isError = false)
+        setContent(isPlaying = false, isBuffering = true)
 
         composeRule.onNodeWithText("缓冲中...").assertIsDisplayed()
     }
 
     @Test
     fun error_showsTitle() {
-        setContent(isPlaying = false, isBuffering = false, isError = true)
+        setContent(isPlaying = false, isBuffering = false, errorMessage = "网络连接失败")
 
         composeRule.onNodeWithText("播放错误").assertIsDisplayed()
     }
@@ -70,7 +68,6 @@ class PlayStateTipsTest {
         setContent(
             isPlaying = false,
             isBuffering = false,
-            isError = true,
             errorMessage = "网络连接失败",
         )
 
@@ -78,15 +75,8 @@ class PlayStateTipsTest {
     }
 
     @Test
-    fun error_withNullMessage_showsUnknownError() {
-        setContent(isPlaying = false, isBuffering = false, isError = true, errorMessage = null)
-
-        composeRule.onNodeWithText("错误信息：未知错误").assertIsDisplayed()
-    }
-
-    @Test
     fun error_takes_priority_over_buffering() {
-        setContent(isPlaying = false, isBuffering = true, isError = true)
+        setContent(isPlaying = false, isBuffering = true, errorMessage = "网络连接失败")
 
         composeRule.onNodeWithText("播放错误").assertIsDisplayed()
         composeRule.onNodeWithText("缓冲中...").assertDoesNotExist()
@@ -94,7 +84,7 @@ class PlayStateTipsTest {
 
     @Test
     fun playing_showsNothing() {
-        setContent(isPlaying = true, isBuffering = false, isError = false)
+        setContent(isPlaying = true, isBuffering = false)
 
         composeRule.onNodeWithText("缓冲中...").assertDoesNotExist()
         composeRule.onNodeWithText("播放错误").assertDoesNotExist()

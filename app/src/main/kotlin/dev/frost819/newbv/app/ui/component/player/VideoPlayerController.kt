@@ -43,6 +43,7 @@ import dev.frost819.newbv.app.ui.component.player.menu.MenuController
 import dev.frost819.newbv.app.ui.state.player.PlayerState
 import dev.frost819.newbv.app.ui.state.player.PlayerUiState
 import dev.frost819.newbv.app.ui.state.player.SeekerState
+import dev.frost819.newbv.app.ui.state.player.errorMessage
 import dev.frost819.newbv.app.util.VideoShotImageCache
 import dev.frost819.newbv.biliapi.entity.video.Subtitle
 import dev.frost819.newbv.core.theme.BVTheme
@@ -526,8 +527,7 @@ fun VideoPlayerController(
             PlayStateTips(
                 isPlaying = uiState.playerState == PlayerState.Playing,
                 isBuffering = uiState.isBuffering,
-                isError = uiState.playerState is PlayerState.Error,
-                errorMessage = (uiState.playerState as? PlayerState.Error)?.message,
+                errorMessage = uiState.playerState.errorMessage,
             )
 
             // 手势提示（亮度/音量/倍速反馈）

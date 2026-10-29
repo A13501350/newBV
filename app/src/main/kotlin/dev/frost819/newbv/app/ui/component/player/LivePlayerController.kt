@@ -51,7 +51,6 @@ import dev.frost819.newbv.data.datastore.Prefs
  *
  * @param isPlaying 是否正在播放
  * @param isBuffering 是否缓冲中
- * @param isError 是否出错
  * @param errorMessage 错误信息
  * @param title 直播间标题
  * @param areaName 分区名
@@ -79,7 +78,6 @@ fun LivePlayerController(
     modifier: Modifier = Modifier,
     isPlaying: Boolean,
     isBuffering: Boolean,
-    isError: Boolean,
     errorMessage: String?,
     title: String,
     areaName: String,
@@ -290,7 +288,6 @@ fun LivePlayerController(
             PlayStateTips(
                 isPlaying = isPlaying,
                 isBuffering = isBuffering,
-                isError = isError,
                 errorMessage = errorMessage,
             )
 

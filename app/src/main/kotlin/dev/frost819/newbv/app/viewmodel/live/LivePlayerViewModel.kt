@@ -10,6 +10,8 @@ import com.kuaishou.akdanmaku.data.DanmakuItemData
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.frost819.newbv.app.ui.component.livecard.formatOnlineCount
+import dev.frost819.newbv.app.ui.state.live.LivePlayerState
+import dev.frost819.newbv.app.ui.state.live.LivePlayerUiState
 import dev.frost819.newbv.app.util.VideoCapabilityProvider
 import dev.frost819.newbv.app.util.VideoDecodeProfile
 import dev.frost819.newbv.app.util.toPlaybackLoadErrorMessage
@@ -42,40 +44,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-/**
- * 直播播放器状态。
- */
-enum class LivePlayerState {
-    Idle,
-    Loading,
-    Playing,
-    Paused,
-    Buffering,
-    Error,
-    Ended,
-}
-
-/**
- * 直播播放器 UI 状态。
- */
-data class LivePlayerUiState(
-    val title: String = "",
-    val cover: String = "",
-    val roomId: Long = 0,
-    val realRoomId: Int = 0,
-    val liveStatus: Int = 0,
-    val areaName: String = "",
-    val onlineCount: String = "0",
-    val playerState: LivePlayerState = LivePlayerState.Idle,
-    val isBuffering: Boolean = false,
-    val errorMessage: String? = null,
-    val availableQualities: List<LiveQuality> = emptyList(),
-    /** 当前画质档位标识（[LiveQuality.key]，qn * 100 + hdrType * 10 + eotf）。 */
-    val currentQuality: Int = 0,
-    val availableLines: List<LivePlayLine> = emptyList(),
-    val currentLine: Int = 0,
-)
 
 /**
  * 直播播放器 ViewModel。
@@ -137,22 +105,17 @@ class LivePlayerViewModel
 
                 override fun onReady() {
                     _uiState.update {
-                        it.copy(
-                            playerState = LivePlayerState.Playing,
-                            isBuffering = false,
-                            // 恢复播放后清掉旧错误文案，避免下次仅切状态时残留显示
-                            errorMessage = null,
-                        )
+                        it.copy(playerState = LivePlayerState.Playing, isBuffering = false)
                     }
                 }
 
                 override fun onPlay() {
-                    _uiState.update { it.copy(playerState = LivePlayerState.Playing, errorMessage = null) }
+                    _uiState.update { it.copy(playerState = LivePlayerState.Playing) }
                 }
 
                 override fun onPause() {
                     // 出错后 ExoPlayer 会紧跟着回调 isPlaying=false，不能把错误态覆盖成暂停态
-                    if (_uiState.value.playerState == LivePlayerState.Error) return
+                    if (_uiState.value.playerState is LivePlayerState.Error) return
                     _uiState.update { it.copy(playerState = LivePlayerState.Paused) }
                 }
 
@@ -234,7 +197,7 @@ class LivePlayerViewModel
 
         private fun loadLiveInternal(roomId: Long) {
             viewModelScope.launch {
-                _uiState.update { it.copy(playerState = LivePlayerState.Loading, errorMessage = null) }
+                _uiState.update { it.copy(playerState = LivePlayerState.Loading) }
 
                 runCatching {
                     val roomInit = liveRepository.getRoomInit(roomId.toInt())
@@ -297,9 +260,8 @@ class LivePlayerViewModel
         private fun failPlayback(message: String) {
             _uiState.update {
                 it.copy(
-                    playerState = LivePlayerState.Error,
+                    playerState = LivePlayerState.Error(message),
                     isBuffering = false,
-                    errorMessage = message,
                 )
             }
         }
@@ -466,7 +428,7 @@ class LivePlayerViewModel
             viewModelScope.launch {
                 // 换档/换线路期间进入加载态并清掉旧错误，避免错误浮层压住新的加载状态
                 _uiState.update {
-                    it.copy(playerState = LivePlayerState.Loading, isBuffering = true, errorMessage = null)
+                    it.copy(playerState = LivePlayerState.Loading, isBuffering = true)
                 }
                 runCatching {
                     val playInfo = liveRepository.getLivePlayInfo(realRoomId, key)

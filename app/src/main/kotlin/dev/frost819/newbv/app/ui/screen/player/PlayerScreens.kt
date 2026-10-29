@@ -20,8 +20,8 @@ import dev.frost819.newbv.app.ui.component.PlaceholderScreen
 import dev.frost819.newbv.app.ui.navigation.LivePlayerRoute
 import dev.frost819.newbv.app.ui.navigation.SeasonPlayerRoute
 import dev.frost819.newbv.app.ui.navigation.VideoPlayerRoute
+import dev.frost819.newbv.app.ui.state.live.LivePlayerState
 import dev.frost819.newbv.app.ui.state.player.PlayerState
-import dev.frost819.newbv.app.viewmodel.live.LivePlayerState
 import dev.frost819.newbv.app.viewmodel.player.DanmakuViewModel
 import dev.frost819.newbv.app.viewmodel.player.PlayerViewModel
 import dev.frost819.newbv.app.viewmodel.player.SubtitleViewModel

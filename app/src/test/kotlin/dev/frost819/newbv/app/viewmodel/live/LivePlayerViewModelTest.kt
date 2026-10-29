@@ -3,6 +3,8 @@ package dev.frost819.newbv.app.viewmodel.live
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.viewModelScope
 import com.google.common.truth.Truth.assertThat
+import dev.frost819.newbv.app.ui.state.live.LivePlayerState
+import dev.frost819.newbv.app.ui.state.live.LivePlayerUiState
 import dev.frost819.newbv.app.util.VideoCapabilityProvider
 import dev.frost819.newbv.biliapi.repositories.LivePlayInfo
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
@@ -137,8 +139,9 @@ class LivePlayerViewModelTest {
             advanceUntilIdle()
 
             // Then
-            assertThat(viewModel.uiState.value.playerState).isEqualTo(LivePlayerState.Error)
-            assertThat(viewModel.uiState.value.errorMessage).isEqualTo("视频源加载失败，请稍后重试")
+            val state = viewModel.uiState.value.playerState
+            assertThat(state).isInstanceOf(LivePlayerState.Error::class.java)
+            assertThat((state as LivePlayerState.Error).message).isEqualTo("视频源加载失败，请稍后重试")
         }
 
     @Test
@@ -223,15 +226,14 @@ class LivePlayerViewModelTest {
         }
 
     @Test
-    fun `changeLine clears stale error message and shows loading`() =
+    fun `changeLine leaves error state while reloading`() =
         runTest(testDispatcher) {
             // Given: 上一次播放失败后用户手动换线路
             updateUiState {
                 it.copy(
                     realRoomId = 123,
                     currentQuality = 10000,
-                    playerState = LivePlayerState.Error,
-                    errorMessage = "播放失败，请稍后重试",
+                    playerState = LivePlayerState.Error("播放失败，请稍后重试"),
                     isBuffering = false,
                 )
             }
@@ -246,10 +248,10 @@ class LivePlayerViewModelTest {
             viewModel.changeLine(2)
             advanceUntilIdle()
 
-            // Then: 旧错误不再残留，播放成功路径恢复为可播放状态
+            // Then: 错误态（连同文案）随状态切换消失，进入加载态
             val state = viewModel.uiState.value
-            assertThat(state.errorMessage).isNull()
-            assertThat(state.playerState).isNotEqualTo(LivePlayerState.Error)
+            assertThat(state.playerState).isNotInstanceOf(LivePlayerState.Error::class.java)
+            assertThat(state.playerState).isEqualTo(LivePlayerState.Loading)
         }
 
     // ── 播放器回调 ───────────────────────────────────────────
@@ -262,8 +264,8 @@ class LivePlayerViewModelTest {
 
             // Then
             val state = viewModel.uiState.value
-            assertThat(state.playerState).isEqualTo(LivePlayerState.Error)
-            assertThat(state.errorMessage).isEqualTo("播放失败，请稍后重试")
+            assertThat(state.playerState)
+                .isEqualTo(LivePlayerState.Error("播放失败，请稍后重试"))
             assertThat(state.isBuffering).isFalse()
         }
 
@@ -278,7 +280,7 @@ class LivePlayerViewModelTest {
             listener.onPause()
 
             // Then: 错误提示不能被暂停态覆盖
-            assertThat(viewModel.uiState.value.playerState).isEqualTo(LivePlayerState.Error)
+            assertThat(viewModel.uiState.value.playerState).isInstanceOf(LivePlayerState.Error::class.java)
         }
 
     @Test
@@ -289,8 +291,8 @@ class LivePlayerViewModelTest {
 
             // Then
             val state = viewModel.uiState.value
-            assertThat(state.playerState).isEqualTo(LivePlayerState.Error)
-            assertThat(state.errorMessage).isEqualTo("解码失败，请尝试切换画质或线路")
+            assertThat(state.playerState)
+                .isEqualTo(LivePlayerState.Error("解码失败，请尝试切换画质或线路"))
             assertThat(state.isBuffering).isFalse()
         }
 
@@ -302,8 +304,8 @@ class LivePlayerViewModelTest {
 
             // Then
             val state = viewModel.uiState.value
-            assertThat(state.playerState).isEqualTo(LivePlayerState.Error)
-            assertThat(state.errorMessage).isEqualTo("音频解码失败，请尝试切换线路")
+            assertThat(state.playerState)
+                .isEqualTo(LivePlayerState.Error("音频解码失败，请尝试切换线路"))
         }
 
     // ── Helpers ──────────────────────────────────────────────
