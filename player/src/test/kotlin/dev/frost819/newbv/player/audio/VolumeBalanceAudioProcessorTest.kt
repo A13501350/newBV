@@ -86,11 +86,12 @@ class VolumeBalanceAudioProcessorTest {
 
     @Test
     fun `quiet input is amplified end to end`() {
-        // Given：MEDIUM 档，RMS -15dBFS 的正弦（期望增益收敛到档位上限 +2dB）
+        // Given：MEDIUM 档，RMS -30dBFS 的安静正弦（期望增益收敛到档位上限 +2dB；
+        // 目标响度 -20dBFS 下，-15dBFS 已属偏响内容，会被衰减）
         val processor = VolumeBalanceAudioProcessor()
         processor.level = AudioBalanceLevel.MEDIUM
         processor.configure(pcm16Format())
-        val inputRmsDb = -15.0
+        val inputRmsDb = -30.0
         val amplitude = amplitudeForRms(inputRmsDb)
 
         // When：喂 30 秒（1024 帧/块，贴近真实音频块大小）

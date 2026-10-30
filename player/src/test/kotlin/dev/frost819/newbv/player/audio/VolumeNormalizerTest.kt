@@ -43,15 +43,16 @@ class VolumeNormalizerTest {
 
     @Test
     fun `calibrates and applies level-clamped gain for quiet program`() {
-        // Given：MEDIUM 档（起播 -1.5dB，最大 +2.0dB），RMS 约 -15dBFS 的节目
+        // Given：MEDIUM 档（起播 -1.5dB，最大 +2.0dB），RMS 约 -30dBFS 的安静节目
+        // （目标响度 -20dBFS 下，-15dBFS 已属偏响内容，会被衰减而非放大）
         val normalizer = VolumeNormalizer(AudioBalanceLevel.MEDIUM)
-        val inputRmsDb = -15.0
+        val inputRmsDb = -30.0
         val amplitude = amplitudeForRms(inputRmsDb)
 
         // When：喂 30 秒（校准窗 2s + 充分收敛）
         val lastOutput = feed16(normalizer, seconds = 30, amplitude = amplitude)
 
-        // Then：校准完成，增益收敛到档位上限 +2dB，输出响度 = 输入 + 增益
+        // Then：校准完成，期望增益 +10dB 被档位钳制到上限 +2dB，输出响度 = 输入 + 增益
         val stats = normalizer.snapshot()
         assertTrue(stats.calibrated)
         assertEquals(inputRmsDb, stats.programRmsDb!!.toDouble(), 0.5)
@@ -222,7 +223,7 @@ class VolumeNormalizerTest {
 
     // ── 测试辅助 ──────────────────────────────────────────
 
-    /** 每秒一块喂 16-bit 正弦，返回最后一块处理后的样本。 */
+    /** 以 [framesPerBlock] 帧为块喂入共 [seconds] 秒 16-bit 正弦，返回最后一块处理后的样本。 */
     private fun feed16(
         normalizer: VolumeNormalizer,
         seconds: Int,
@@ -230,7 +231,8 @@ class VolumeNormalizerTest {
         framesPerBlock: Int = 48_000,
     ): ShortArray {
         var last = ShortArray(0)
-        repeat(seconds) {
+        val blockCount = seconds * 48_000 / framesPerBlock
+        repeat(blockCount) {
             val block = sine16(frames = framesPerBlock, amplitude = amplitude)
             normalizer.processPcm16(block, block.size)
             last = block
