@@ -206,7 +206,6 @@ class PrefDelegateTest {
             Prefs.deviceCookies = "test_cookies"
             Prefs.crashReportEnabled = true
             Prefs.enableSoftwareVideoDecoder = true
-            Prefs.enableFfmpegAudioRenderer = true
             Prefs.defaultDanmakuScale = 2.0f
             Prefs.defaultDanmakuOpacity = 0.5f
             Prefs.defaultDanmakuSpeedFactor = 2.0f

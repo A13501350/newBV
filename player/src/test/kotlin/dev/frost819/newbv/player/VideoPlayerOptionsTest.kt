@@ -15,7 +15,6 @@ class VideoPlayerOptionsTest {
 
         assertThat(options.userAgent).isNull()
         assertThat(options.referer).isNull()
-        assertThat(options.enableFfmpegAudioRenderer).isFalse()
         assertThat(options.enableSoftwareVideoDecoder).isFalse()
     }
 
@@ -25,13 +24,11 @@ class VideoPlayerOptionsTest {
             VideoPlayerOptions(
                 userAgent = "Mozilla/5.0",
                 referer = "https://www.bilibili.com",
-                enableFfmpegAudioRenderer = true,
                 enableSoftwareVideoDecoder = true,
             )
 
         assertThat(options.userAgent).isEqualTo("Mozilla/5.0")
         assertThat(options.referer).isEqualTo("https://www.bilibili.com")
-        assertThat(options.enableFfmpegAudioRenderer).isTrue()
         assertThat(options.enableSoftwareVideoDecoder).isTrue()
     }
 
@@ -54,12 +51,12 @@ class VideoPlayerOptionsTest {
 
     @Test
     fun `copy creates independent instance with modified field`() {
-        val original = VideoPlayerOptions(userAgent = "UA", enableFfmpegAudioRenderer = false)
-        val copied = original.copy(enableFfmpegAudioRenderer = true)
+        val original = VideoPlayerOptions(userAgent = "UA", enableSoftwareVideoDecoder = false)
+        val copied = original.copy(enableSoftwareVideoDecoder = true)
 
         assertThat(copied.userAgent).isEqualTo("UA")
-        assertThat(copied.enableFfmpegAudioRenderer).isTrue()
-        assertThat(original.enableFfmpegAudioRenderer).isFalse()
+        assertThat(copied.enableSoftwareVideoDecoder).isTrue()
+        assertThat(original.enableSoftwareVideoDecoder).isFalse()
     }
 
     @Test

@@ -446,7 +446,6 @@ class PlayerViewModel
                         PlayerConstants.getReferer(
                             if (apiType == DataApiType.App) ApiType.App else ApiType.Web,
                         ),
-                    enableFfmpegAudioRenderer = Prefs.enableFfmpegAudioRenderer,
                     enableSoftwareVideoDecoder = Prefs.enableSoftwareVideoDecoder,
                 )
 

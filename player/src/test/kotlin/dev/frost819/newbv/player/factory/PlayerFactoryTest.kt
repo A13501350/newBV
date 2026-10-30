@@ -82,13 +82,12 @@ class PlayerFactoryTest {
     fun `create passes options to implementation`() {
         val factory = DummyPlayerFactory()
         val context = mockk<Context>()
-        val options = VideoPlayerOptions(userAgent = "TestUA", enableFfmpegAudioRenderer = true)
+        val options = VideoPlayerOptions(userAgent = "TestUA")
 
         factory.create(context, options)
 
         assertThat(factory.lastOptions).isEqualTo(options)
         assertThat(factory.lastOptions?.userAgent).isEqualTo("TestUA")
-        assertThat(factory.lastOptions?.enableFfmpegAudioRenderer).isTrue()
     }
 
     @Test

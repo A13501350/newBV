@@ -548,7 +548,6 @@ CDN 选择 [简化]:
 **解码模式**：
 - 硬件解码（默认）：使用设备 MediaCodec 硬件解码器
 - 软件视频解码（可选）：过滤到 `OMX.google.*` / `c2.android.*` 软件解码器
-- FFmpeg 音频解码（可选）：通过 `EXTENSION_RENDERER_MODE_ON` 启用 FFmpeg 音频渲染器（支持 flac/mp3/aac/ac3/eac3）
 
 ---
 
@@ -2147,7 +2146,6 @@ CompositionLocalProvider(LocalInteractionTracker provides tracker) {
 | 自定义播放快捷键 | JSON | "" | 可绑定多组 | `player_custom_shortcuts` |
 | 快捷键触发提示 [新增] | 开关 | 开 | — | `shortcut_trigger_tips` |
 | 启用视频软解 | 开关 | 关 | — | `enable_software_video_decoder` |
-| 启用音频软解 (FFmpeg) | 开关 | 关 | — | `enable_ffmpeg_audio_renderer` |
 
 ### 7.2 界面设置
 

@@ -198,11 +198,6 @@ class PrefsTest {
     }
 
     @Test
-    fun `default enableFfmpegAudioRenderer is false`() {
-        assertThat(Prefs.enableFfmpegAudioRenderer).isFalse()
-    }
-
-    @Test
     fun `default playerCustomShortcuts is empty`() {
         assertThat(Prefs.playerCustomShortcuts).isEmpty()
     }

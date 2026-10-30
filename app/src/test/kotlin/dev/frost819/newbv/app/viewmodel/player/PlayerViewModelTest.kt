@@ -114,7 +114,6 @@ class PlayerViewModelTest {
         every { Prefs.incognitoMode } returns true
         every { Prefs.actionAfterPlay } returns ActionAfterPlay.Pause
         every { Prefs.defaultPlaySpeed } returns PlaySpeed.X1
-        every { Prefs.enableFfmpegAudioRenderer } returns false
         every { Prefs.enableSoftwareVideoDecoder } returns false
         every { Prefs.autoSelectCdn } returns false
 

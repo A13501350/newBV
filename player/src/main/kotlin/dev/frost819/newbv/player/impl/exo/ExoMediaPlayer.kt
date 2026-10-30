@@ -41,7 +41,6 @@ import java.util.Locale
  * - DASH 视频流（视频+音频分离，使用 [MergingMediaSource] 合并）
  * - HLS / FLV 直播流（使用 [ProgressiveMediaSource]）
  * - 软件解码 / 硬件解码切换
- * - FFmpeg 音频渲染器（需配合 ffmpegDecoder 库）
  *
  * @param context Android Context
  * @param options 播放器配置
@@ -95,12 +94,6 @@ class ExoMediaPlayer(
     override fun initPlayer() {
         val renderersFactory =
             DefaultRenderersFactory(context).apply {
-                setExtensionRendererMode(
-                    when (options.enableFfmpegAudioRenderer) {
-                        true -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-                        false -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
-                    },
-                )
                 if (options.enableSoftwareVideoDecoder) {
                     // 强制软件解码：只选择 OMX.google.* / c2.android.* 开头的解码器
                     setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->

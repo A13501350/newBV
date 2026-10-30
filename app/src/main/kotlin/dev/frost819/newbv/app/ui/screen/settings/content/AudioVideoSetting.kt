@@ -34,7 +34,7 @@ import dev.frost819.newbv.data.datastore.VideoCodec
 /**
  * 音视频设置页。
  *
- * 画质/编码/音轨/倍速/播放结束动作/快捷键/软解/FFmpeg 音频。
+ * 画质/编码/音轨/倍速/播放结束动作/快捷键/软解。
  */
 @Composable
 fun AudioVideoSetting(modifier: Modifier = Modifier) {
@@ -54,7 +54,6 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
     var selectedActionAfterPlay by remember { mutableStateOf(Prefs.actionAfterPlay) }
     var playerCustomShortcuts by remember { mutableStateOf(PlayerCustomShortcutsStore.get()) }
 
-    var enableFfmpegAudioRenderer by remember { mutableStateOf(Prefs.enableFfmpegAudioRenderer) }
     var enableSoftwareVideoDecoder by remember { mutableStateOf(Prefs.enableSoftwareVideoDecoder) }
     var showPlayerDebugInfo by remember { mutableStateOf(Prefs.showPlayerDebugInfo) }
     var autoSelectCdn by remember { mutableStateOf(Prefs.autoSelectCdn) }
@@ -110,15 +109,6 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
             onCheckedChange = {
                 enableSoftwareVideoDecoder = it
                 Prefs.enableSoftwareVideoDecoder = it
-            },
-        )
-        SettingSwitchListItem(
-            title = "FFmpeg 音频渲染",
-            supportText = "使用 FFmpeg 进行音频解码渲染",
-            checked = enableFfmpegAudioRenderer,
-            onCheckedChange = {
-                enableFfmpegAudioRenderer = it
-                Prefs.enableFfmpegAudioRenderer = it
             },
         )
         SettingSwitchListItem(
