@@ -579,14 +579,12 @@ fun VideoPlayerController(
             )
 
             // 分集列表
+            // 切换视频后保持列表展开，方便连续选集；按返回键收起
             VideoListController(
                 show = showListController,
                 currentCid = uiState.cid,
                 videoList = uiState.videoList,
-                onPlayNewVideo = { item ->
-                    onPlayNewVideo(item)
-                    showListController = false
-                },
+                onPlayNewVideo = onPlayNewVideo,
             )
 
             // 设置菜单
