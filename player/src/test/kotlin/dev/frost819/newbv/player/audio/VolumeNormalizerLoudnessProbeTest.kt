@@ -34,7 +34,7 @@ class VolumeNormalizerLoudnessProbeTest {
                 // Given：按场景生成 40 秒信号，逐块喂入并记录增益轨迹
                 val normalizer = VolumeNormalizer(level)
                 var maxOutputPeak = 0.0
-                var maxGainStepDb = 0.0
+                var maxGainStepDb = 0.0f
                 var prevGainDb = normalizer.snapshot().gainDb
                 var lastOutputRmsDb = -120.0
 
