@@ -58,6 +58,16 @@ jobs:
           echo "$SIGNING_PROPERTIES" | base64 -d > signing.properties
           echo "$SIGN_KEY" | base64 -d > key.jks
 
+      - name: Configure crash report token
+        env:
+          CRASH_REPORT_TOKEN: ${{ secrets.CRASH_REPORT_TOKEN }}
+        run: |
+          if [ -z "$CRASH_REPORT_TOKEN" ]; then
+            echo "::warning::未配置 CRASH_REPORT_TOKEN，崩溃上传将不可用"
+          else
+            echo "crashReport.token=$CRASH_REPORT_TOKEN" >> local.properties
+          fi
+
       - name: Build release APK
         env:
           NEWBV_VERSION_BASE: ${{ github.ref_name }}
@@ -71,6 +81,7 @@ jobs:
           echo "versionCode=$(jq -r '.elements[0].versionCode' "$META")" >> "$GITHUB_ENV"
           echo "versionName=$(jq -r '.elements[0].versionName' "$META")" >> "$GITHUB_ENV"
 
+      # CRASH_UPLOAD_TOKEN 为 Worker 管理端 AUTH_TOKEN；APK 内使用的是 CRASH_REPORT_TOKEN
       - name: Upload mapping to crash backend
         env:
           CRASH_UPLOAD_TOKEN: ${{ secrets.CRASH_UPLOAD_TOKEN }}
