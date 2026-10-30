@@ -93,7 +93,15 @@ class VolumeNormalizerLoudnessProbeTest {
         const val PEAK_TOLERANCE = 0.001
         const val MIN_SANE_GAIN_DB = -40f
         const val MAX_SANE_GAIN_DB = 3.0f
-        const val MAX_GAIN_STEP_DB = 3.0
+
+        /**
+         * 单块最大增益变化（pumping 守卫）。
+         *
+         * 按 1s 探针块粒度校准：HIGH 档 attack 1.5s → alpha(1s)≈0.49，
+         * 最大设计行程 startup(-3dB)→desired(-16dB) 约 13dB → 单块约 6.4dB
+         * 为理论上限；真实播放块（10~20ms）下单块变化比此小一个数量级。
+         */
+        const val MAX_GAIN_STEP_DB = 7.0
 
         /** 正弦生成：指定 RMS（dBFS）与频率。 */
         fun sine(
