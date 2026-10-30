@@ -33,6 +33,26 @@ sealed interface DanmakuSettingAction {
     data class SetEnabledTypes(
         val types: List<DanmakuType>,
     ) : DanmakuSettingAction
+
+    data class SetBlockColorful(
+        val enabled: Boolean,
+    ) : DanmakuSettingAction
+
+    data class SetBlockRepeat(
+        val enabled: Boolean,
+    ) : DanmakuSettingAction
+
+    data class SetBlockSpecial(
+        val enabled: Boolean,
+    ) : DanmakuSettingAction
+
+    data class SetBlockByUserFilter(
+        val enabled: Boolean,
+    ) : DanmakuSettingAction
+
+    data class SetAiCloudLevel(
+        val level: Int,
+    ) : DanmakuSettingAction
 }
 
 /**
