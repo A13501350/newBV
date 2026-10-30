@@ -9,6 +9,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 崩溃日志上传器。
@@ -47,6 +48,7 @@ class CrashUploader(
         private const val WORKER_URL = "https://crash-log.frost819.site"
         private const val UPLOAD_PATH = "/api/crash/upload"
         private const val UPLOAD_TIMEOUT_MS = 5_000
+        private const val CRASH_UPLOAD_WAIT_MS = 6_000L
         private const val CRASH_JSON_PREFIX = "logs_crash"
         private const val CRASH_JSON_SUFFIX = ".json"
         private const val UPLOAD_ATTEMPTS_KEY = "_uploadAttempts"
@@ -114,10 +116,41 @@ class CrashUploader(
         val json = buildCrashJson(deviceInfo, thread, throwable, logcatText)
         val jsonFile = saveJsonFile(json)
 
-        when (attemptUpload(jsonFile)) {
+        when (attemptImmediateUpload(jsonFile)) {
             UploadAttemptResult.Success -> logger.info { "Crash log uploaded successfully" }
             UploadAttemptResult.Retry -> logger.warn { "Crash log upload failed, will retry on next launch" }
             UploadAttemptResult.Dropped -> logger.warn { "Crash log dropped after $MAX_UPLOAD_ATTEMPTS attempts" }
+        }
+    }
+
+    /**
+     * 崩溃时的立即上传：在临时线程执行，并最多等待 [CRASH_UPLOAD_WAIT_MS]。
+     *
+     * Android 禁止在主线程发起网络请求，而主线程崩溃时 uncaught handler 仍在主线程，
+     * 直接上传会抛 [android.os.NetworkOnMainThreadException]（message 为 null）。
+     * 因此把上传放到后台线程，并在进程退出前等待一小段时间；超时则保留 JSON，
+     * 下次启动由 [uploadPendingCrashLogs] 继续重试。
+     */
+    private fun attemptImmediateUpload(file: File): UploadAttemptResult {
+        val result = AtomicReference<UploadAttemptResult?>(null)
+        val uploadThread =
+            Thread(
+                {
+                    result.set(
+                        runCatching { attemptUpload(file) }
+                            .getOrElse { UploadAttemptResult.Retry },
+                    )
+                },
+                "CrashUpload",
+            ).apply { isDaemon = true }
+
+        return runCatching {
+            uploadThread.start()
+            uploadThread.join(CRASH_UPLOAD_WAIT_MS)
+            result.get() ?: UploadAttemptResult.Retry
+        }.getOrElse {
+            logger.warn(it) { "Failed to start crash upload thread" }
+            UploadAttemptResult.Retry
         }
     }
 
