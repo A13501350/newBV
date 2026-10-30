@@ -30,7 +30,9 @@ import kotlin.math.sqrt
  *
  * @param initialLevel 初始档位
  */
-class VolumeNormalizer(initialLevel: AudioBalanceLevel = AudioBalanceLevel.OFF) {
+class VolumeNormalizer(
+    initialLevel: AudioBalanceLevel = AudioBalanceLevel.OFF,
+) {
     /** 当前档位。volatile 写入，任意线程；变更在下一个音频块生效。 */
     @Volatile
     var level: AudioBalanceLevel = initialLevel

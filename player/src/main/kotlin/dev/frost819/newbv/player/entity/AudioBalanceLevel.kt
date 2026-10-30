@@ -23,7 +23,6 @@ enum class AudioBalanceLevel(
          *
          * @param name 存储的枚举名，null 或未知值（历史/脏数据）回退 [OFF]
          */
-        fun fromName(name: String?): AudioBalanceLevel =
-            entries.firstOrNull { it.name == name } ?: OFF
+        fun fromName(name: String?): AudioBalanceLevel = entries.firstOrNull { it.name == name } ?: OFF
     }
 }

@@ -115,19 +115,21 @@ class ExoMediaPlayer(
                     context: Context,
                     enableFloatOutput: Boolean,
                     enableAudioTrackPlaybackParams: Boolean,
-                ): AudioSink =
-                    DefaultAudioSink
+                ): AudioSink {
+                    // 音量均衡在前：增益处理先于静音跳过与变速重采样
+                    val audioProcessors =
+                        arrayOf(
+                            volumeBalanceProcessor,
+                            SilenceSkippingAudioProcessor(),
+                            SonicAudioProcessor(),
+                        )
+                    return DefaultAudioSink
                         .Builder(context)
-                        // 音量均衡在前：增益处理先于静音跳过与变速重采样
-                        .setAudioProcessors(
-                            arrayOf(
-                                volumeBalanceProcessor,
-                                SilenceSkippingAudioProcessor(),
-                                SonicAudioProcessor(),
-                            ),
-                        ).setEnableFloatOutput(enableFloatOutput)
+                        .setAudioProcessors(audioProcessors)
+                        .setEnableFloatOutput(enableFloatOutput)
                         .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                         .build()
+                }
             }.apply {
                 if (options.enableSoftwareVideoDecoder) {
                     // 强制软件解码：只选择 OMX.google.* / c2.android.* 开头的解码器
