@@ -6,12 +6,16 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.hls.playlist.DefaultHlsPlaylistParserFactory
 import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
@@ -26,6 +30,8 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.upstream.ParsingLoadable
 import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.VideoPlayerOptions
+import dev.frost819.newbv.player.audio.VolumeBalanceAudioProcessor
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 import dev.frost819.newbv.player.formatMinSec
 import dev.frost819.newbv.player.isAudioRenderError
 import dev.frost819.newbv.player.isVideoDecodeError
@@ -87,13 +93,42 @@ class ExoMediaPlayer(
 
     private val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 
+    /**
+     * 音量均衡处理器，常驻音频处理器链。
+     *
+     * OFF 档走字节级直通，因此档位切换（含播放中）无需重建播放器；
+     * 不能只在开启时挂载——AudioSink 的处理器链在配置后不可动态增删。
+     */
+    private val volumeBalanceProcessor =
+        VolumeBalanceAudioProcessor().apply {
+            level = options.audioBalanceLevel
+        }
+
     init {
         initPlayer()
     }
 
     override fun initPlayer() {
         val renderersFactory =
-            DefaultRenderersFactory(context).apply {
+            object : DefaultRenderersFactory(context) {
+                override fun buildAudioSink(
+                    context: Context,
+                    enableFloatOutput: Boolean,
+                    enableAudioTrackPlaybackParams: Boolean,
+                ): AudioSink =
+                    DefaultAudioSink
+                        .Builder(context)
+                        // 音量均衡在前：增益处理先于静音跳过与变速重采样
+                        .setAudioProcessors(
+                            arrayOf(
+                                volumeBalanceProcessor,
+                                SilenceSkippingAudioProcessor(),
+                                SonicAudioProcessor(),
+                            ),
+                        ).setEnableFloatOutput(enableFloatOutput)
+                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                        .build()
+            }.apply {
                 if (options.enableSoftwareVideoDecoder) {
                     // 强制软件解码：只选择 OMX.google.* / c2.android.* 开头的解码器
                     setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
@@ -246,6 +281,12 @@ class ExoMediaPlayer(
         get() = mPlayer?.playbackParameters?.speed ?: 1f
         set(value) {
             mPlayer?.setPlaybackSpeed(value)
+        }
+
+    override var volumeBalanceLevel: AudioBalanceLevel
+        get() = volumeBalanceProcessor.level
+        set(value) {
+            volumeBalanceProcessor.level = value
         }
 
     override val tcpSpeed: Long

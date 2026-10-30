@@ -72,6 +72,13 @@ abstract class AbstractVideoPlayer {
     /** 播放速度（1.0 = 正常速度） */
     abstract var speed: Float
 
+    /**
+     * 音量均衡档位（PCM 级自适应响度归一）。
+     *
+     * 写入后对后续音频块即时生效，无需重建播放器；OFF 为直通。
+     */
+    abstract var volumeBalanceLevel: AudioBalanceLevel
+
     /** 当前缓冲的网速（字节/秒），部分实现可能返回 0 */
     abstract val tcpSpeed: Long
 
