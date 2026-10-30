@@ -1,5 +1,7 @@
 package dev.frost819.newbv.player
 
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
+
 /**
  * 视频播放器抽象基类。
  *
