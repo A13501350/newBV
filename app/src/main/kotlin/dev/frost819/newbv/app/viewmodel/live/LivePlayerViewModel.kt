@@ -4,8 +4,6 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.data.DanmakuItemData
@@ -392,7 +390,7 @@ class LivePlayerViewModel
                             else -> DanmakuItemData.DANMAKU_MODE_ROLLING
                         },
                     textSize = 25,
-                    textColor = Color(textColor).toArgb(),
+                    textColor = textColor,
                     score = 0,
                     danmakuStyle = 0,
                     rank = 0,

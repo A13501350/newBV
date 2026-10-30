@@ -931,4 +931,44 @@ class DanmakuViewModelTest {
 
             assertThat(viewModel.shouldDropLiveDanmaku("这是广告", mid = 1L)).isFalse()
         }
+
+    // === 未登录与重复弹幕热切换 ===
+
+    @Test
+    fun `unlogged user skips cloud filter request`() =
+        runTest(testDispatcher) {
+            // 未登录时接口必返回 -101，不应发起无效请求
+            authRepository.mid = null
+            stubDanmakuLoading()
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { videoPlayRepository.getDanmakuFilterRules() }
+            assertThat(viewModel.danmakuState.value.userFilterRuleCount).isEqualTo(0)
+        }
+
+    @Test
+    fun `toggle blockRepeat does not refetch segments`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+                DanmakuMeta(360_000, 3, false, 100)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(fakeDanmakuData(1, 0f))
+            viewModel.danmakuPlayer = mockk(relaxed = true)
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+            coVerify(exactly = 1) {
+                videoPlayRepository.getDanmakuSegment(aid = 1, cid = 2, segmentIndex = 1, preferApiType = any())
+            }
+
+            // 合并项/原件随分段始终成对生成，切换开关靠 DuplicateMergedFilter 热切换，无需重新下载
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetBlockRepeat(true))
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) {
+                videoPlayRepository.getDanmakuSegment(aid = 1, cid = 2, segmentIndex = 1, preferApiType = any())
+            }
+        }
 }

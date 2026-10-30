@@ -3,8 +3,6 @@ package dev.frost819.newbv.app.viewmodel.player
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.DanmakuConfig
@@ -322,7 +320,10 @@ class DanmakuViewModel
             if (!state.blockByUserFilter) return false
             val rules = userFilter
             if (rules.isEmpty) return false
-            return rules.matches(midHash = crc32Hex(mid.toString()), content = content)
+            // 仅在配置了用户屏蔽时才计算 midHash：该方法由 WS 回调在主线程调用，
+            // 无用户规则的直播间不应为每条弹幕分配 CRC32 与字符串编码
+            val midHash = if (rules.blockedUserHashes.isEmpty()) "" else crc32Hex(mid.toString())
+            return rules.matches(midHash = midHash, content = content)
         }
 
         /**
@@ -467,17 +468,13 @@ class DanmakuViewModel
                             }
                         // 逐条过滤+合并是 CPU 密集操作（单段可达数千条 × N 条规则），
                         // 放到 [filterDispatcher]，避免在 Main 上掉帧
-                        val blockRepeat = _danmakuState.value.blockRepeat
                         val (items, filterStats, keptCount) =
                             withContext(filterDispatcher) {
                                 val stats = SegmentFilterStats()
                                 val filteredList = dataList.filterForDisplay(stats)
-                                val result =
-                                    if (blockRepeat) {
-                                        filteredList.mergeDuplicates()
-                                    } else {
-                                        filteredList.map { it.toDanmakuItemData() }
-                                    }
+                                // 合并项与原件始终成对生成：DuplicateMergedFilter 已挂在
+                                // 引擎链上按 enable 热切换，切换 blockRepeat 无需重新下载分段
+                                val result = filteredList.mergeDuplicates()
                                 Triple(result, stats, filteredList.size)
                             }
                         if (generation != loadGeneration) return
@@ -518,8 +515,10 @@ class DanmakuViewModel
                     }
                 }
             } finally {
-                // 取消/失败/成功都要移除标记：失败段允许后续触发重试
-                loadingSegments.remove(segmentIndex)
+                // 取消/失败/成功都要移除标记：失败段允许后续触发重试。
+                // 仅当 generation 未变时移除：重载/切集已清空集合并推进 generation，
+                // 此时集合中的同段标记属于新请求，误删会导致重复下载
+                if (generation == loadGeneration) loadingSegments.remove(segmentIndex)
             }
         }
 
@@ -544,7 +543,7 @@ class DanmakuViewModel
                         else -> DanmakuItemData.DANMAKU_MODE_ROLLING
                     },
                 textSize = size,
-                textColor = Color(color).toArgb(),
+                textColor = color,
                 mergedType = mergedType,
             )
 
@@ -779,10 +778,8 @@ class DanmakuViewModel
                         "colorful=${new.blockColorful}, repeat=${new.blockRepeat}, " +
                         "special=${new.blockSpecial}, aiCloudLevel=${new.aiCloudLevel}"
                 }
-                // 合并发生在分段加载时：已加载分段没有合并版本，切换后需重载当前段
-                if (new.blockRepeat != old.blockRepeat) {
-                    reloadCurrentSegments("blockRepeat")
-                }
+                // blockRepeat 不重载分段：合并项/原件随分段始终成对生成，
+                // initDanmakuConfig 已更新 DuplicateMergedFilter.enable 并 updateFilter 热切换
             } else {
                 // 账号屏蔽规则、高级弹幕、AI 云屏蔽均为分段加载期的本地过滤，
                 // 不经过引擎 Filter 链，切换后重载当前分段使其立即生效
@@ -950,11 +947,13 @@ class DanmakuViewModel
         /**
          * 拉取账号云端屏蔽规则（同一账号本次会话仅一次）。
          *
-         * 未登录、接口异常或超时都只记录日志并降级为不使用云端规则；
-         * 失败/超时后 [userFilterLoadedMid] 置回 null，进入下一集或直播间时重试。
+         * 未登录时直接跳过（接口必返回 -101，不发无效请求）；
+         * 接口异常或超时只记录日志并降级为不使用云端规则，
+         * 失败/超时后 [userFilterLoadedMid] 不置位，进入下一集或直播间时重试。
          */
         private suspend fun loadUserFilter() {
-            val mid = authRepository.mid ?: 0L
+            // 未登录时 /x/dm/filter/user 必返回 -101，直接跳过，避免每集重复无效请求
+            val mid = authRepository.mid ?: return
             if (userFilterLoadedMid == mid) return
             try {
                 val rules =
