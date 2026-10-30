@@ -218,16 +218,11 @@ fun VideoPlayerScreen(
         }
     }
 
-    // 生命周期管理：onResume 恢复播放，onPause 暂停
+    // 生命周期管理：离开或切到后台时暂停；回到页面/前台不自动续播，保持暂停由用户手动开始
     DisposableEffect(lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
                 when (event) {
-                    Lifecycle.Event.ON_RESUME -> {
-                        if (playerViewModel.uiState.value.playerState == PlayerState.Paused) {
-                            playerViewModel.togglePlayPause()
-                        }
-                    }
                     Lifecycle.Event.ON_PAUSE -> {
                         if (playerViewModel.uiState.value.playerState == PlayerState.Playing) {
                             playerViewModel.togglePlayPause()
