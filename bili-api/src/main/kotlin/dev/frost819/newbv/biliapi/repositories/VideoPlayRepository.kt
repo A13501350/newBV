@@ -21,6 +21,7 @@ import dev.frost819.newbv.biliapi.grpc.utils.handleGrpcException
 import dev.frost819.newbv.biliapi.http.BiliHttpApi
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuFilterRule
+import dev.frost819.newbv.biliapi.http.entity.danmaku.toDanmakuDataList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -335,11 +336,7 @@ class VideoPlayRepository(
                                 },
                             ) ?: throw IllegalStateException("Danmaku stub is not initialized")
                         }.onFailure { handleGrpcException(it) }.getOrThrow()
-                    val aiFlagScores =
-                        reply.aiFlag.dmFlagsList.associate { it.dmid to it.flag.toInt() }
-                    reply.elemsList.map {
-                        DanmakuData.fromDanmakuElem(it, aiFlagScores[it.id] ?: 0)
-                    }
+                    reply.toDanmakuDataList()
                 }
         }
 

@@ -9,6 +9,7 @@ import dev.frost819.newbv.app.ui.component.player.menu.component.StepLessMenuIte
 import dev.frost819.newbv.app.viewmodel.player.MenuFocusState
 import dev.frost819.newbv.app.viewmodel.player.VideoPlayerDanmakuFilterMenuItem
 import dev.frost819.newbv.app.viewmodel.player.VideoPlayerDanmakuMenuItem
+import dev.frost819.newbv.danmaku.config.DanmakuState
 import dev.frost819.newbv.data.datastore.DanmakuType
 import java.text.NumberFormat
 
@@ -34,7 +35,7 @@ import java.text.NumberFormat
  * @param onFocusStateChange 焦点状态变化回调
  */
 @Composable
-@Suppress("LongParameterList", "CyclomaticComplexMethod")
+@Suppress("CyclomaticComplexMethod")
 fun DanmakuMenuList(
     modifier: Modifier = Modifier,
     currentEnabledTypes: List<DanmakuType>,
@@ -145,9 +146,12 @@ fun DanmakuMenuList(
  * 弹幕屏蔽设置面板。
  *
  * 二级为屏蔽项列表，三级为各屏蔽项的开关/等级选择。
+ *
+ * @param visibleItems 可见的屏蔽项；直播弹幕无 weight/ai_flag、无 mode 7-9、不经合并，
+ *   直播侧只传实际生效的项（屏蔽彩色弹幕、账号屏蔽规则）
+ * @param userFilterRuleCount 已加载的账号云端屏蔽规则数，>0 时在对应项名称后展示
  */
 @Composable
-@Suppress("LongParameterList")
 fun DanmakuFilterMenuList(
     currentBlockColorful: Boolean = false,
     currentBlockRepeat: Boolean = false,
@@ -159,13 +163,21 @@ fun DanmakuFilterMenuList(
     onDanmakuBlockSpecialChange: (Boolean) -> Unit = {},
     onDanmakuBlockByUserFilterChange: (Boolean) -> Unit = {},
     onDanmakuAiCloudLevelChange: (Int) -> Unit = {},
+    visibleItems: List<VideoPlayerDanmakuFilterMenuItem> = VideoPlayerDanmakuFilterMenuItem.entries,
+    userFilterRuleCount: Int = 0,
     onFocusStateChange: (MenuFocusState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     PlayerThreeLevelMenu(
         modifier = modifier,
-        categories = VideoPlayerDanmakuFilterMenuItem.entries,
-        categoryLabel = { it.displayName },
+        categories = visibleItems,
+        categoryLabel = { item ->
+            if (item == VideoPlayerDanmakuFilterMenuItem.BlockByUserFilter && userFilterRuleCount > 0) {
+                "${item.displayName}（$userFilterRuleCount 条）"
+            } else {
+                item.displayName
+            }
+        },
         onFocusStateChange = onFocusStateChange,
     ) { selectedItem, itemModifier, backToMenu ->
         when (selectedItem) {
@@ -209,12 +221,22 @@ fun DanmakuFilterMenuList(
                 RadioMenuList(
                     modifier = itemModifier,
                     items = listOf("关闭", "弱", "中", "强", "极强"),
-                    selected = currentAiCloudLevel.coerceIn(0, 4),
-                    onSelectedChanged = { onDanmakuAiCloudLevelChange(it) },
+                    // 状态内存服务端 1-10 等级，五档仅为预设映射
+                    selected = aiLevelToPresetIndex(currentAiCloudLevel),
+                    onSelectedChanged = { onDanmakuAiCloudLevelChange(DanmakuState.AI_LEVEL_PRESETS[it]) },
                     onFocusBackToParent = backToMenu,
                 )
         }
     }
+}
+
+/**
+ * 将服务端 1-10 的 AI 云屏蔽等级映射回最近的五档序号（0-4），用于 UI 展示。
+ */
+private fun aiLevelToPresetIndex(level: Int): Int {
+    if (level <= 0) return 0
+    val presets = DanmakuState.AI_LEVEL_PRESETS
+    return presets.indices.drop(1).minBy { kotlin.math.abs(presets[it] - level) }
 }
 
 /**

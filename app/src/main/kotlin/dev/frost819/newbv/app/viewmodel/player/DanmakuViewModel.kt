@@ -28,6 +28,8 @@ import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.danmaku.config.DanmakuState
 import dev.frost819.newbv.data.datastore.Prefs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -38,6 +40,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.zip.CRC32
 import javax.inject.Inject
@@ -149,10 +152,13 @@ class DanmakuViewModel
          */
         private var loadGeneration = 0
 
-        /** 云端账号屏蔽规则是否已请求过（本次会话只请求一次）。 */
-        private var userFilterLoaded = false
+        /**
+         * 云端账号屏蔽规则已成功拉取的账号 mid；null 表示未拉取。
+         * 与 mid 绑定：换账号后重新拉取；拉取失败/超时置回 null 以允许重试。
+         */
+        private var userFilterLoadedMid: Long? = null
 
-        /** 云端账号屏蔽规则编译结果；分段过滤在 IO 协程读取，需跨线程可见。 */
+        /** 云端账号屏蔽规则编译结果；分段过滤在主线程读取，写发生在加载协程，需跨线程可见。 */
         @Volatile private var userFilter = CompiledUserFilter()
 
         /**
@@ -168,6 +174,14 @@ class DanmakuViewModel
 
         /** 分段加载监听 Job，[loadDanmaku] 拿到元数据后启动。 */
         private var segmentWatchJob: Job? = null
+
+        /**
+         * 分段过滤/合并使用的调度器。
+         *
+         * 默认 [Dispatchers.Default]（单段可达数千条 × N 条规则，属 CPU 密集操作，
+         * 放主线程会掉帧）；单元测试替换为测试调度器以配合 `advanceUntilIdle`。
+         */
+        internal var filterDispatcher: CoroutineDispatcher = Dispatchers.Default
 
         /** 初始化弹幕播放器。 */
         fun init() {
@@ -404,21 +418,27 @@ class DanmakuViewModel
         }
 
         /**
-         * 「合并重复弹幕」开启时重载当前分段。
+         * 「加载期过滤」开关变化时重载当前分段。
          *
-         * 合并（[mergeDuplicates]）发生在分段加载时：以关闭态加载的分段
-         * 全部是 NORMAL、没有合并版本可供 Filter 切换，开启后需清空引擎
-         * 数据并重新拉取当前段及预取段，使 ×N 合并立即可见。
-         * 已播放过的历史分段不重载（对当前观看无意义）。
+         * 合并（[mergeDuplicates]）与 blockSpecial/AI 云屏蔽/账号规则过滤都发生在
+         * 分段加载时：已加载分段不会随开关变化，因此切换后需清空引擎数据并重新
+         * 拉取当前段及预取段，使新规则立即可见。已播放过的历史分段不重载。
+         *
+         * 清空 [loadedSegments] 与 [loadingSegments] 并推进 [loadGeneration]：
+         * 在途请求返回后凭 generation 丢弃结果，避免旧规则数据写回已清空的引擎。
+         *
+         * @param reason 触发原因（开关名），仅用于日志
          */
-        private fun reloadSegmentsForMerge() {
+        private fun reloadCurrentSegments(reason: String) {
             val player = danmakuPlayer ?: return
             if (loadedSegments.isEmpty() && loadingSegments.isEmpty()) return
             val targetSeg = segmentIndexOf(currentTimeFlow.value)
             viewModelScope.launch {
+                loadGeneration++
                 player.clearData()
                 loadedSegments.clear()
-                logger.info { "Reload segments for blockRepeat merge: targetSeg=$targetSeg" }
+                loadingSegments.clear()
+                logger.info { "Reload segments for $reason: targetSeg=$targetSeg" }
                 ensureSegments(targetSeg)
             }
         }
@@ -431,6 +451,8 @@ class DanmakuViewModel
          * 其余 [CancellationException] 属外层取消（collectLatest 切段 / 切集），必须上抛。
          */
         private suspend fun fetchSegmentWithRetry(segmentIndex: Int) {
+            // 记录发起时的 generation：期间若有重载/切集，返回的旧规则数据直接丢弃
+            val generation = loadGeneration
             try {
                 repeat(SEGMENT_MAX_ATTEMPTS) { attempt ->
                     try {
@@ -443,20 +465,28 @@ class DanmakuViewModel
                                     preferApiType = if (Prefs.apiType == DataApiType.App) ApiType.App else ApiType.Web,
                                 )
                             }
-                        val filterStats = SegmentFilterStats()
-                        val filteredList = dataList.filterForDisplay(filterStats)
-                        val items =
-                            if (_danmakuState.value.blockRepeat) {
-                                filteredList.mergeDuplicates()
-                            } else {
-                                filteredList.map { it.toDanmakuItemData() }
+                        // 逐条过滤+合并是 CPU 密集操作（单段可达数千条 × N 条规则），
+                        // 放到 [filterDispatcher]，避免在 Main 上掉帧
+                        val blockRepeat = _danmakuState.value.blockRepeat
+                        val (items, filterStats, keptCount) =
+                            withContext(filterDispatcher) {
+                                val stats = SegmentFilterStats()
+                                val filteredList = dataList.filterForDisplay(stats)
+                                val result =
+                                    if (blockRepeat) {
+                                        filteredList.mergeDuplicates()
+                                    } else {
+                                        filteredList.map { it.toDanmakuItemData() }
+                                    }
+                                Triple(result, stats, filteredList.size)
                             }
+                        if (generation != loadGeneration) return
                         // akdanmaku 内部维护有序数据并懒排序，无需预先排序
                         danmakuPlayer?.updateData(items)
                         loadedSegments.add(segmentIndex)
                         logger.info {
                             "Load danmaku segment $segmentIndex: raw=${dataList.size}, " +
-                                "kept=${filteredList.size}, specialDropped=${filterStats.specialDropped}, " +
+                                "kept=$keptCount, specialDropped=${filterStats.specialDropped}, " +
                                 "reportDropped=${filterStats.reportDropped}, " +
                                 "userDropped=${filterStats.userDropped}, " +
                                 "aiDropped=${filterStats.aiDropped}, aiScored=${filterStats.aiScored}, " +
@@ -619,15 +649,10 @@ class DanmakuViewModel
         }
 
         /**
-         * AI 云屏蔽五档预设对应的评分阈值。
-         *
-         * 档位 0 表示关闭，1-4 对应阈值 1/5/7/10。服务端下发的 1-10 等级
-         * 由 [mapServerAiLevelToPreset] 取最近预设，不再直接 clamp 到 0-4。
-         */
-        private val aiScoreThresholds = intArrayOf(0, 1, 5, 7, 10)
-
-        /**
          * 判断弹幕是否应被 AI 云屏蔽丢弃。
+         *
+         * [aiLevel] 即服务端 1-10 等级，直接作为丢弃阈值（weight 低于该值则过滤），
+         * 与服务端语义一致，避免五档预设映射把低等级变成零效果。
          *
          * Web `seg.so` 通道实测不下发 ai_flag（[DanmakuData.aiFlagScore] 恒为 0），
          * 因此实际过滤依据是 [DanmakuData.level]（weight，实测 1-11）；
@@ -639,8 +664,7 @@ class DanmakuViewModel
                     .filter { it != 0 }
                     .maxOfOrNull { abs(it) }
                     ?: return false
-            val threshold = aiScoreThresholds.getOrElse(aiLevel) { 0 }
-            return score < threshold
+            return score < aiLevel
         }
 
         /**
@@ -755,27 +779,21 @@ class DanmakuViewModel
                         "colorful=${new.blockColorful}, repeat=${new.blockRepeat}, " +
                         "special=${new.blockSpecial}, aiCloudLevel=${new.aiCloudLevel}"
                 }
-                // 合并发生在分段加载时：关闭态加载的分段没有合并版本，开启后需重载当前段
-                if (new.blockRepeat && !old.blockRepeat) {
-                    reloadSegmentsForMerge()
+                // 合并发生在分段加载时：已加载分段没有合并版本，切换后需重载当前段
+                if (new.blockRepeat != old.blockRepeat) {
+                    reloadCurrentSegments("blockRepeat")
                 }
             } else {
-                // 账号屏蔽规则、高级弹幕、AI 云屏蔽均为分段加载前的本地过滤，
-                // 不经过引擎 Filter 链，切换后从下一分段起生效
+                // 账号屏蔽规则、高级弹幕、AI 云屏蔽均为分段加载期的本地过滤，
+                // 不经过引擎 Filter 链，切换后重载当前分段使其立即生效
                 if (new.blockByUserFilter != old.blockByUserFilter) {
-                    logger.info {
-                        "Danmaku user filter toggle: enabled=${new.blockByUserFilter}（从下一分段起生效）"
-                    }
+                    reloadCurrentSegments("blockByUserFilter")
                 }
                 if (new.blockSpecial != old.blockSpecial) {
-                    logger.info {
-                        "Danmaku blockSpecial toggle: enabled=${new.blockSpecial}（从下一分段起生效）"
-                    }
+                    reloadCurrentSegments("blockSpecial")
                 }
                 if (new.aiCloudLevel != old.aiCloudLevel) {
-                    logger.info {
-                        "Danmaku AI cloud level changed: level=${new.aiCloudLevel}（从下一分段起生效）"
-                    }
+                    reloadCurrentSegments("aiCloudLevel")
                 }
                 // 非 Filter 变更：仅更新对应配置项，避免全量重建
                 if (new.scale != old.scale) {
@@ -930,13 +948,14 @@ class DanmakuViewModel
         }
 
         /**
-         * 拉取账号云端屏蔽规则（本次会话仅一次）。
+         * 拉取账号云端屏蔽规则（同一账号本次会话仅一次）。
          *
-         * 未登录、接口异常或超时都只记录日志并降级为不使用云端规则。
+         * 未登录、接口异常或超时都只记录日志并降级为不使用云端规则；
+         * 失败/超时后 [userFilterLoadedMid] 置回 null，进入下一集或直播间时重试。
          */
         private suspend fun loadUserFilter() {
-            if (userFilterLoaded) return
-            userFilterLoaded = true
+            val mid = authRepository.mid ?: 0L
+            if (userFilterLoadedMid == mid) return
             try {
                 val rules =
                     withTimeout(USER_FILTER_TIMEOUT_MS) {
@@ -945,6 +964,10 @@ class DanmakuViewModel
                 val enabledRules = rules.filter { it.opened }
                 val compiled = compileUserFilter(enabledRules)
                 userFilter = compiled
+                userFilterLoadedMid = mid
+                _danmakuState.update {
+                    it.copy(userFilterRuleCount = enabledRules.size)
+                }
                 logger.info {
                     "Loaded danmaku user filter: total=${rules.size}, opened=${enabledRules.size}, " +
                         "keyword=${compiled.keywords.size}, regex=${compiled.regexes.size}, " +
@@ -956,8 +979,7 @@ class DanmakuViewModel
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // 允许下一集重试
-                userFilterLoaded = false
+                // 失败不置位 loaded，允许下一集或下次进直播间重试
                 logger.warn { "Load danmaku user filter failed: $e" }
             }
         }
@@ -969,7 +991,8 @@ class DanmakuViewModel
             var invalidRegex = 0
             for (rule in rules) {
                 val value = rule.filter.trim()
-                if (value.isEmpty()) continue
+                // 云端规则来自用户可编辑输入，超长文本（尤其回溯型正则）会卡死过滤线程
+                if (value.isEmpty() || value.length > USER_RULE_MAX_LENGTH) continue
                 when (rule.type) {
                     FILTER_TYPE_KEYWORD -> keywords += value
                     FILTER_TYPE_REGEX -> {
@@ -1038,12 +1061,11 @@ class DanmakuViewModel
                         if (config.hasPlayerConfig && !config.blockColor) true else current.blockColorful,
                     blockSpecial =
                         if (config.hasPlayerConfig && !config.blockSpecial) true else current.blockSpecial,
-                    // AI 云屏蔽：服务端等级为 1-10 尺度，映射到本地五档预设而非直接 clamp
+                    // AI 云屏蔽：服务端等级（1-10）直接作为本地阈值等级
                     aiCloudLevel =
                         if (config.aiSwitch && (config.aiLevel > 0 || config.aiLevelV2 > 0)) {
-                            mapServerAiLevelToPreset(
-                                config.aiLevel.takeIf { it > 0 } ?: config.aiLevelV2,
-                            )
+                            (config.aiLevel.takeIf { it > 0 } ?: config.aiLevelV2)
+                                .coerceIn(1, AI_LEVEL_MAX)
                         } else {
                             current.aiCloudLevel
                         },
@@ -1093,19 +1115,6 @@ class DanmakuViewModel
             return expanded.filterNot { it in blocked }
         }
 
-        /**
-         * 服务端 AI 云屏蔽等级（1-10）映射到本地五档预设。
-         *
-         * dm/view 的 `aiLevel` 与弹幕 `weight` 同为 1-10 尺度（实测出现 11），
-         * 而本地 [DanmakuState.aiCloudLevel] 只是 UI 五档，阈值表见 [aiScoreThresholds]。
-         * 直接 clamp 会把 5-10 级全部压成最高档，造成中低档显著过度屏蔽，故取最近预设。
-         */
-        private fun mapServerAiLevelToPreset(serverLevel: Int): Int {
-            if (serverLevel <= 0) return 0
-            val level = serverLevel.coerceAtMost(aiScoreThresholds.last())
-            return aiScoreThresholds.indices.drop(1).minBy { abs(aiScoreThresholds[it] - level) }
-        }
-
         /** 将 data 层 DanmakuType 映射为 danmaku 模块的 DanmakuType。 */
         private fun DataDanmakuType.toDanmakuEntity(): DanmakuEntityDanmakuType =
             DanmakuEntityDanmakuType.entries.getOrElse(this.ordinal) { DanmakuEntityDanmakuType.All }
@@ -1153,5 +1162,11 @@ class DanmakuViewModel
 
             /** 云端屏蔽规则拉取超时（毫秒），超时则本次会话不使用云端规则。 */
             private const val USER_FILTER_TIMEOUT_MS = 3_000L
+
+            /** AI 云屏蔽等级上限：weight 实测可达 11（proto 注释为 [1,10]，以实测为准）。 */
+            private const val AI_LEVEL_MAX = 11
+
+            /** 单条云端屏蔽规则文本长度上限，防止用户输入的超长/回溯型正则卡死过滤线程。 */
+            private const val USER_RULE_MAX_LENGTH = 200
         }
     }

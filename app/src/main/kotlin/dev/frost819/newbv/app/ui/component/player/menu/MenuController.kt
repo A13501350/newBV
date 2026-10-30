@@ -322,6 +322,7 @@ private fun MenuList(
                     currentBlockSpecial = uiState.danmakuState.blockSpecial,
                     currentBlockByUserFilter = uiState.danmakuState.blockByUserFilter,
                     currentAiCloudLevel = uiState.danmakuState.aiCloudLevel,
+                    userFilterRuleCount = uiState.danmakuState.userFilterRuleCount,
                     onDanmakuBlockColorfulChange = onDanmakuBlockColorfulChange,
                     onDanmakuBlockRepeatChange = onDanmakuBlockRepeatChange,
                     onDanmakuBlockSpecialChange = onDanmakuBlockSpecialChange,

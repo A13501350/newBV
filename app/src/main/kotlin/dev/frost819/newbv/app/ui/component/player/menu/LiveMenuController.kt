@@ -37,6 +37,7 @@ import dev.frost819.newbv.app.ui.component.player.menu.component.PlayerTwoLevelM
 import dev.frost819.newbv.app.viewmodel.player.LocalMenuFocusStateData
 import dev.frost819.newbv.app.viewmodel.player.MenuFocusState
 import dev.frost819.newbv.app.viewmodel.player.MenuFocusStateData
+import dev.frost819.newbv.app.viewmodel.player.VideoPlayerDanmakuFilterMenuItem
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
 import dev.frost819.newbv.biliapi.repositories.LiveQuality
 import dev.frost819.newbv.danmaku.config.DanmakuState
@@ -268,11 +269,18 @@ private fun LiveMenuList(
 
             LivePlayerMenuNavItem.DanmakuFilter ->
                 DanmakuFilterMenuList(
+                    // 直播弹幕无 weight/ai_flag、无 mode 7-9、不经合并：仅保留彩色与云端规则两项
+                    visibleItems =
+                        listOf(
+                            VideoPlayerDanmakuFilterMenuItem.BlockColorful,
+                            VideoPlayerDanmakuFilterMenuItem.BlockByUserFilter,
+                        ),
                     currentBlockColorful = danmakuState.blockColorful,
                     currentBlockRepeat = danmakuState.blockRepeat,
                     currentBlockSpecial = danmakuState.blockSpecial,
                     currentBlockByUserFilter = danmakuState.blockByUserFilter,
                     currentAiCloudLevel = danmakuState.aiCloudLevel,
+                    userFilterRuleCount = danmakuState.userFilterRuleCount,
                     onDanmakuBlockColorfulChange = {
                         onDanmakuSettingChange(DanmakuSettingAction.SetBlockColorful(it))
                     },

@@ -8,8 +8,8 @@ interface LiveEvent
  * @property content 弹幕文本
  * @property mid 发送者 UID
  * @property username 发送者用户名
- * @property mode 弹幕模式（WS `info[0][0]`：1-3 滚动、4 底部、5 顶部、6 逆向）
- * @property color 弹幕颜色（WS `info[0][2]`，十进制 RGB，如 0xFFFFFF 为白色；
+ * @property mode 弹幕模式（WS `info[0][1]`：1-3 滚动、4 底部、5 顶部、6 逆向）
+ * @property color 弹幕颜色（WS `info[0][3]`，十进制 RGB，如 0xFFFFFF 为白色；
  *   舰长/提督/总督等身份弹幕带自定义颜色）
  * @property medalName 发送者佩戴粉丝勋章名
  * @property medalLevel 发送者佩戴粉丝勋章等级

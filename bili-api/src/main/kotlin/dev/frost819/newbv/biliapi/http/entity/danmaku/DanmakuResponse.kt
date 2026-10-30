@@ -1,6 +1,19 @@
 package dev.frost819.newbv.biliapi.http.entity.danmaku
 
 import bilibili.community.service.dm.v1.DanmakuElem
+import bilibili.community.service.dm.v1.DmSegMobileReply
+
+/**
+ * 将 seg.so/gRPC 的 [DmSegMobileReply] 转为弹幕列表。
+ *
+ * 同时解析 `ai_flag`（dmid → AI 云屏蔽评分）；Web 通道实测恒不下发，评分均为 0。
+ * Web（[dev.frost819.newbv.biliapi.http.BiliHttpApi]）与 App gRPC
+ * （[dev.frost819.newbv.biliapi.repositories.VideoPlayRepository]）两条通道共用。
+ */
+internal fun DmSegMobileReply.toDanmakuDataList(): List<DanmakuData> {
+    val aiFlagScores = aiFlag.dmFlagsList.associate { it.dmid to it.flag }
+    return elemsList.map { DanmakuData.fromDanmakuElem(it, aiFlagScores[it.id] ?: 0) }
+}
 
 data class DanmakuResponse(
     val chatserver: String,

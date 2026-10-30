@@ -7,6 +7,7 @@ import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
 import dev.frost819.newbv.biliapi.entity.danmaku.BiliDanmakuFilterConfig
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
+import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuFilterRule
 import dev.frost819.newbv.biliapi.repositories.AuthRepository
 import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
 import dev.frost819.newbv.danmaku.entity.DanmakuType
@@ -89,9 +90,13 @@ class DanmakuViewModelTest {
         every { Prefs.apiType } returns DataApiType.Web
 
         videoPlayRepository = mockk()
+        // loadDanmaku/prepareForLive 都会拉取云端屏蔽规则；默认空规则，个案测试再覆盖
+        coEvery { videoPlayRepository.getDanmakuFilterRules() } returns emptyList()
         authRepository = AuthRepository()
         authRepository.mid = 12345L
         viewModel = DanmakuViewModel(videoPlayRepository, authRepository)
+        // 分段过滤/合并默认跑在 Dispatchers.Default，测试需换到测试调度器才能被 advanceUntilIdle 驱动
+        viewModel.filterDispatcher = testDispatcher
     }
 
     @AfterEach
@@ -284,6 +289,7 @@ class DanmakuViewModelTest {
             stubDanmakuLoading()
             coEvery { videoPlayRepository.getDanmakuMask(any(), any(), any()) } returns null
             val enabledViewModel = DanmakuViewModel(videoPlayRepository, authRepository)
+            enabledViewModel.filterDispatcher = testDispatcher
 
             enabledViewModel.loadDanmaku(aid = 1L, cid = 2L)
             enabledViewModel.loadDanmakuMask()
@@ -614,26 +620,25 @@ class DanmakuViewModelTest {
         verify(exactly = 0) { player.pause() }
     }
 
-    // === AI 云屏蔽阈值映射 ===
+    // === AI 云屏蔽阈值 ===
 
     @Test
-    fun `shouldDropByAi uses threshold table not raw level`() {
-        // 等级 1（弱）：阈值 1，score<1 即 score=0 才丢弃，实际无过滤
-        val data1 = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 1, "text")
-        assertThat(viewModel.run { data1.shouldDropByAi(1) }).isFalse()
+    fun `shouldDropByAi drops when score below raw server level`() {
+        // 服务端等级（1-10）直接作为阈值：weight 低于等级即丢弃
+        // 实测官方端"强"档 aiLevel=3 → 阈值 7，weight 6 丢弃、7 保留
+        val score1 = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 1, "text")
+        assertThat(viewModel.run { score1.shouldDropByAi(1) }).isFalse()
+        assertThat(viewModel.run { score1.shouldDropByAi(2) }).isTrue()
 
-        // 等级 2（中）：阈值 5，score<5 丢弃
-        assertThat(viewModel.run { data1.shouldDropByAi(2) }).isTrue()
+        val score6 = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 6, "text")
+        assertThat(viewModel.run { score6.shouldDropByAi(7) }).isTrue()
 
-        // 等级 3（强）：阈值 7，score<7 丢弃
-        assertThat(viewModel.run { data1.shouldDropByAi(3) }).isTrue()
+        val score7 = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 7, "text")
+        assertThat(viewModel.run { score7.shouldDropByAi(7) }).isFalse()
 
-        // 等级 4（极强）：阈值 10，score<10 丢弃
-        assertThat(viewModel.run { data1.shouldDropByAi(4) }).isTrue()
-
-        // score=10 的弹幕在等级 4 下保留
-        val data10 = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 10, "text")
-        assertThat(viewModel.run { data10.shouldDropByAi(4) }).isFalse()
+        // 实测 weight 可达 11，阈值 10 时保留
+        val score11 = DanmakuData(0f, 1, 25, 0xFFFFFF, 0, 0, "h", 1, 11, "text")
+        assertThat(viewModel.run { score11.shouldDropByAi(10) }).isFalse()
     }
 
     @Test
@@ -833,7 +838,7 @@ class DanmakuViewModelTest {
         }
 
     @Test
-    fun `applyBiliFilterConfig maps server ai level to nearest preset`() =
+    fun `applyBiliFilterConfig stores raw server ai level as threshold`() =
         runTest(testDispatcher) {
             val config =
                 BiliDanmakuFilterConfig(
@@ -851,7 +856,79 @@ class DanmakuViewModelTest {
             viewModel.loadDanmaku(aid = 1, cid = 2)
             advanceUntilIdle()
 
-            // 3 与预设 1/5 等距，取较小档（阈值 1），避免中低档过度屏蔽
-            assertThat(viewModel.danmakuState.value.aiCloudLevel).isEqualTo(1)
+            // 服务端等级直接作为丢弃阈值，不再映射五档预设（避免弱档映射后零效果）
+            assertThat(viewModel.danmakuState.value.aiCloudLevel).isEqualTo(3)
+        }
+
+    // === 直播云端屏蔽规则链路 ===
+
+    @Test
+    fun `prepareForLive loads cloud rules and drops live danmaku by keyword`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getDanmakuFilterRules() } returns
+                listOf(
+                    DanmakuFilterRule(id = 1, mid = 12345L, type = 0, filter = "广告", opened = true),
+                    DanmakuFilterRule(id = 2, mid = 12345L, type = 0, filter = "已停用", opened = false),
+                )
+
+            viewModel.prepareForLive()
+            advanceUntilIdle()
+
+            assertThat(viewModel.shouldDropLiveDanmaku("这是一条广告弹幕", mid = 1L)).isTrue()
+            assertThat(viewModel.shouldDropLiveDanmaku("正常弹幕", mid = 1L)).isFalse()
+            // 停用规则不生效
+            assertThat(viewModel.shouldDropLiveDanmaku("已停用词", mid = 1L)).isFalse()
+            // 仅启用规则计入菜单展示条数
+            assertThat(viewModel.danmakuState.value.userFilterRuleCount).isEqualTo(1)
+        }
+
+    @Test
+    fun `prepareForLive drops live danmaku by blocked user uid`() =
+        runTest(testDispatcher) {
+            // 用户规则（type=2）下发原始 UID 时按 crc32 归一化，与 WS mid 现算哈希匹配
+            coEvery { videoPlayRepository.getDanmakuFilterRules() } returns
+                listOf(DanmakuFilterRule(id = 3, mid = 12345L, type = 2, filter = "54321", opened = true))
+
+            viewModel.prepareForLive()
+            advanceUntilIdle()
+
+            assertThat(viewModel.shouldDropLiveDanmaku("任意内容", mid = 54321L)).isTrue()
+            assertThat(viewModel.shouldDropLiveDanmaku("任意内容", mid = 99999L)).isFalse()
+        }
+
+    @Test
+    fun `user filter load failure degrades and retries on next entry`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getDanmakuFilterRules() } throws IOException("network down")
+
+            viewModel.prepareForLive()
+            advanceUntilIdle()
+
+            // 失败降级：不过滤，也不置位 loaded
+            assertThat(viewModel.shouldDropLiveDanmaku("广告", mid = 1L)).isFalse()
+
+            coEvery { videoPlayRepository.getDanmakuFilterRules() } returns
+                listOf(DanmakuFilterRule(id = 4, mid = 12345L, type = 0, filter = "广告", opened = true))
+
+            // 再次进入直播间时重试成功
+            viewModel.prepareForLive()
+            advanceUntilIdle()
+
+            assertThat(viewModel.shouldDropLiveDanmaku("这是广告", mid = 1L)).isTrue()
+            coVerify(exactly = 2) { videoPlayRepository.getDanmakuFilterRules() }
+        }
+
+    @Test
+    fun `blockByUserFilter off skips live filtering`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getDanmakuFilterRules() } returns
+                listOf(DanmakuFilterRule(id = 5, mid = 12345L, type = 0, filter = "广告", opened = true))
+            viewModel.prepareForLive()
+            advanceUntilIdle()
+
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetBlockByUserFilter(false))
+            advanceUntilIdle()
+
+            assertThat(viewModel.shouldDropLiveDanmaku("这是广告", mid = 1L)).isFalse()
         }
 }
