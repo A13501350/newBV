@@ -714,6 +714,7 @@ class DanmakuViewModelTest {
                     aiSwitch = true,
                     aiLevel = 3,
                     hasValidConfig = true,
+                    hasPlayerConfig = true,
                 )
 
             coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
@@ -775,5 +776,82 @@ class DanmakuViewModelTest {
 
             // mid 变化，重新同步
             verify { Prefs.danmakuBiliFilterSyncedMid = 12345L }
+        }
+
+    @Test
+    fun `applyBiliFilterConfig keeps all types when server block flags are true`() =
+        runTest(testDispatcher) {
+            // 真机实测：官方端未开启屏蔽时服务端仍下发 block*=true，此时不应清空类型
+            val config =
+                BiliDanmakuFilterConfig(
+                    blockTop = true,
+                    blockScroll = true,
+                    blockBottom = true,
+                    blockColor = true,
+                    blockSpecial = true,
+                    hasValidConfig = true,
+                    hasPlayerConfig = true,
+                )
+
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+                DanmakuMeta(360_000, 3, false, 100, config)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(fakeDanmakuData(1, 0f))
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            val state = viewModel.danmakuState.value
+            assertThat(state.enabledTypes).isNotEmpty()
+            assertThat(state.blockColorful).isFalse()
+            assertThat(state.blockSpecial).isFalse()
+        }
+
+    @Test
+    fun `applyBiliFilterConfig removes type only when server block flag is false`() =
+        runTest(testDispatcher) {
+            val config =
+                BiliDanmakuFilterConfig(
+                    blockTop = true,
+                    blockScroll = false,
+                    blockBottom = true,
+                    hasValidConfig = true,
+                    hasPlayerConfig = true,
+                )
+
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+                DanmakuMeta(360_000, 3, false, 100, config)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(fakeDanmakuData(1, 0f))
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            val state = viewModel.danmakuState.value
+            assertThat(state.enabledTypes).doesNotContain(DanmakuType.Rolling)
+            assertThat(state.enabledTypes).contains(DanmakuType.Top)
+        }
+
+    @Test
+    fun `applyBiliFilterConfig maps server ai level to nearest preset`() =
+        runTest(testDispatcher) {
+            val config =
+                BiliDanmakuFilterConfig(
+                    aiSwitch = true,
+                    aiLevel = 3,
+                    hasValidConfig = true,
+                    hasPlayerConfig = true,
+                )
+
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns
+                DanmakuMeta(360_000, 3, false, 100, config)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(fakeDanmakuData(1, 0f))
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            // 3 与预设 1/5 等距，取较小档（阈值 1），避免中低档过度屏蔽
+            assertThat(viewModel.danmakuState.value.aiCloudLevel).isEqualTo(1)
         }
 }

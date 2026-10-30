@@ -628,13 +628,20 @@ class DanmakuViewModel
         }
 
         /**
-         * AI 云屏蔽等级 → 评分阈值映射。
+         * AI 云屏蔽五档预设对应的评分阈值。
          *
-         * 等级 1-4 对应评分阈值 1/5/7/10，与 B 站官方行为一致。
-         * 评分区间 1-10（weight/aiFlagScore），等级 0 表示关闭。
+         * 档位 0 表示关闭，1-4 对应阈值 1/5/7/10。服务端下发的 1-10 等级
+         * 由 [mapServerAiLevelToPreset] 取最近预设，不再直接 clamp 到 0-4。
          */
         private val aiScoreThresholds = intArrayOf(0, 1, 5, 7, 10)
 
+        /**
+         * 判断弹幕是否应被 AI 云屏蔽丢弃。
+         *
+         * Web `seg.so` 通道实测不下发 ai_flag（[DanmakuData.aiFlagScore] 恒为 0），
+         * 因此实际过滤依据是 [DanmakuData.level]（weight，实测 1-11）；
+         * aiFlagScore 仅在非 0 时参与，两者取绝对值较大者为评分。
+         */
         internal fun DanmakuData.shouldDropByAi(aiLevel: Int): Boolean {
             val score =
                 sequenceOf(level, aiFlagScore)
@@ -1021,8 +1028,13 @@ class DanmakuViewModel
         /**
          * 将 B 站 dm/view 返回的用户过滤配置合并到本地状态并重建引擎 Filter 链。
          *
-         * B 站配置作为本次会话的初始值：仅在首次加载元数据时应用一次，
-         * 之后用户在本应用内的调整不会被后续切集的元数据覆盖。
+         * 同步只发生一次并写入 [Prefs.danmakuBiliFilterSynced]（与账号 mid 绑定），
+         * 因此是**跨启动持久生效**，而非"本次会话"；换账号后才会重新同步。
+         * 同步之后用户在本应用内的调整不会被后续切集的元数据覆盖。
+         *
+         * block* 语义经真机实测确认：官方端未开启任何屏蔽时服务端仍下发 `true`，
+         * 即 `true` 表示该类型**未被屏蔽**，`false` 才表示屏蔽（见 [mergeBiliDanmakuTypes]）。
+         * playerConfig 缺失时（仅 flag 存在）不触碰本地弹幕类型与屏蔽开关，避免误判。
          */
         private fun applyBiliFilterConfig(config: BiliDanmakuFilterConfig) {
             // 未登录时 dm/view 不返回 playerConfig/flag，得到的是全默认值的兜底对象，
@@ -1036,18 +1048,27 @@ class DanmakuViewModel
             Prefs.danmakuBiliFilterSyncedMid = currentMid
 
             val current = _danmakuState.value
-            // blocktop/blockscroll/blockbottom 与 B 站 playerConfig 同步
-            val mergedTypes = mergeBiliDanmakuTypes(current.enabledTypes, config)
+            val mergedTypes =
+                if (config.hasPlayerConfig) {
+                    mergeBiliDanmakuTypes(current.enabledTypes, config)
+                } else {
+                    current.enabledTypes
+                }
             val mergedState =
                 current.copy(
                     enabledTypes = mergedTypes,
-                    // 彩色/高级弹幕屏蔽：以 B 站账号设置为准作为初始值（单向 OR，只增不减）
-                    blockColorful = if (config.blockColor) true else current.blockColorful,
-                    blockSpecial = if (config.blockSpecial) true else current.blockSpecial,
-                    // AI 云屏蔽：B 站开启且等级>0 时同步，否则保留本地设置
+                    // 彩色/高级弹幕屏蔽：blockColor/blockSpecial 为 true 表示未屏蔽，
+                    // 仅当服务端明确屏蔽（false）时启用本地屏蔽；用户本地已开的屏蔽保留
+                    blockColorful =
+                        if (config.hasPlayerConfig && !config.blockColor) true else current.blockColorful,
+                    blockSpecial =
+                        if (config.hasPlayerConfig && !config.blockSpecial) true else current.blockSpecial,
+                    // AI 云屏蔽：服务端等级为 1-10 尺度，映射到本地五档预设而非直接 clamp
                     aiCloudLevel =
                         if (config.aiSwitch && (config.aiLevel > 0 || config.aiLevelV2 > 0)) {
-                            (config.aiLevelV2.takeIf { it > 0 } ?: config.aiLevel).coerceIn(0, 4)
+                            mapServerAiLevelToPreset(
+                                config.aiLevel.takeIf { it > 0 } ?: config.aiLevelV2,
+                            )
                         } else {
                             current.aiCloudLevel
                         },
@@ -1067,35 +1088,47 @@ class DanmakuViewModel
         }
 
         /**
-         * 将 B 站 playerConfig 的 blockTop/Scroll/Bottom 合并到 enabledTypes。
+         * 将 B 站 playerConfig 的 blockTop/blockScroll/blockBottom 合并到 enabledTypes。
          *
-         * B 站 block 语义 = 屏蔽该类型 → 我们需要把被屏蔽的类型从 enabledTypes 中移除。
+         * 真机实测语义：官方端三个屏蔽开关均未开启时，服务端仍下发全 `true`。
+         * 因此 `true` = 该类型未被屏蔽，`false` = 屏蔽；只移除值为 `false` 的类型。
          */
         private fun mergeBiliDanmakuTypes(
             current: List<DanmakuEntityDanmakuType>,
             config: BiliDanmakuFilterConfig,
         ): List<DanmakuEntityDanmakuType> {
-            if (config.blockTop && config.blockScroll && config.blockBottom) {
-                return emptyList()
-            }
-            if (config.blockTop || config.blockScroll || config.blockBottom) {
-                // 展开 All 为具体类型再移除，否则 remove(Top/Rolling/Bottom) 不命中
-                val expanded =
-                    if (current.contains(DanmakuEntityDanmakuType.All)) {
-                        mutableListOf(
-                            DanmakuEntityDanmakuType.Rolling,
-                            DanmakuEntityDanmakuType.Top,
-                            DanmakuEntityDanmakuType.Bottom,
-                        )
-                    } else {
-                        current.toMutableList()
-                    }
-                if (config.blockTop) expanded.remove(DanmakuEntityDanmakuType.Top)
-                if (config.blockScroll) expanded.remove(DanmakuEntityDanmakuType.Rolling)
-                if (config.blockBottom) expanded.remove(DanmakuEntityDanmakuType.Bottom)
-                return expanded
-            }
-            return current
+            val blocked =
+                buildSet {
+                    if (!config.blockTop) add(DanmakuEntityDanmakuType.Top)
+                    if (!config.blockScroll) add(DanmakuEntityDanmakuType.Rolling)
+                    if (!config.blockBottom) add(DanmakuEntityDanmakuType.Bottom)
+                }
+            if (blocked.isEmpty()) return current
+            // 展开 All 为具体类型再过滤，否则移除 Top/Rolling/Bottom 不命中
+            val expanded =
+                if (current.contains(DanmakuEntityDanmakuType.All)) {
+                    listOf(
+                        DanmakuEntityDanmakuType.Rolling,
+                        DanmakuEntityDanmakuType.Top,
+                        DanmakuEntityDanmakuType.Bottom,
+                    )
+                } else {
+                    current
+                }
+            return expanded.filterNot { it in blocked }
+        }
+
+        /**
+         * 服务端 AI 云屏蔽等级（1-10）映射到本地五档预设。
+         *
+         * dm/view 的 `aiLevel` 与弹幕 `weight` 同为 1-10 尺度（实测出现 11），
+         * 而本地 [DanmakuState.aiCloudLevel] 只是 UI 五档，阈值表见 [aiScoreThresholds]。
+         * 直接 clamp 会把 5-10 级全部压成最高档，造成中低档显著过度屏蔽，故取最近预设。
+         */
+        private fun mapServerAiLevelToPreset(serverLevel: Int): Int {
+            if (serverLevel <= 0) return 0
+            val level = serverLevel.coerceAtMost(aiScoreThresholds.last())
+            return aiScoreThresholds.indices.drop(1).minBy { abs(aiScoreThresholds[it] - level) }
         }
 
         /** 将 data 层 DanmakuType 映射为 danmaku 模块的 DanmakuType。 */

@@ -21,10 +21,10 @@ data class DanmakuData(
     val pool: Int,
     val midHash: String,
     val dmid: Long,
-    /** 弹幕权重，区间 [1, 10]，用于 AI 云屏蔽等级过滤 */
+    /** 弹幕权重，名义区间 [1, 10]（真机实测存在 11），是 AI 云屏蔽的实际过滤依据 */
     val level: Int,
     val text: String,
-    /** AI 云屏蔽评分（来自 seg 响应的 ai_flag，0 表示服务端未下发评分） */
+    /** AI 云屏蔽评分（来自 seg 响应的 ai_flag）；Web 通道实测恒为 0，0 表示未下发评分 */
     val aiFlagScore: Int = 0,
 ) {
     companion object {
