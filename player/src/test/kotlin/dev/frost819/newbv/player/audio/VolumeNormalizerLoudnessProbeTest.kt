@@ -52,13 +52,13 @@ class VolumeNormalizerLoudnessProbeTest {
                 // Then：健康约束
                 val finalGainDb = normalizer.snapshot().gainDb
                 assertTrue(maxOutputPeak <= LIMITER_CEILING + PEAK_TOLERANCE) {
-                    "[probe] ${scene.name}/${level}: output peak $maxOutputPeak exceeds limiter"
+                    "[probe] ${scene.name}/$level: output peak $maxOutputPeak exceeds limiter"
                 }
                 assertTrue(finalGainDb in MIN_SANE_GAIN_DB..MAX_SANE_GAIN_DB) {
-                    "[probe] ${scene.name}/${level}: final gain $finalGainDb dB out of sane range"
+                    "[probe] ${scene.name}/$level: final gain $finalGainDb dB out of sane range"
                 }
                 assertTrue(maxGainStepDb <= MAX_GAIN_STEP_DB) {
-                    "[probe] ${scene.name}/${level}: gain jumped $maxGainStepDb dB in one block (pumping)"
+                    "[probe] ${scene.name}/$level: gain jumped $maxGainStepDb dB in one block (pumping)"
                 }
 
                 report.appendLine(
@@ -158,8 +158,7 @@ class VolumeNormalizerLoudnessProbeTest {
                     override fun generate(
                         blockIndex: Int,
                         frames: Int,
-                    ): ShortArray =
-                        if (blockIndex % 12 < 8) sine(frames, -15.0) else silence(frames)
+                    ): ShortArray = if (blockIndex % 12 < 8) sine(frames, -15.0) else silence(frames)
                 },
             )
     }
