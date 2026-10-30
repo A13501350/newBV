@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.VideoPlayerOptions
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
 
@@ -47,6 +48,7 @@ class PlayerFactoryTest {
         override fun setOptions() {}
 
         override var speed: Float = 1.0f
+        override var volumeBalanceLevel: AudioBalanceLevel = AudioBalanceLevel.OFF
         override val tcpSpeed: Long = 0L
         override val debugInfo: String = "dummy"
         override val videoWidth: Int = 1920

@@ -133,11 +133,11 @@ class VolumeBalanceAudioProcessorTest {
 
     @Test
     fun `flush resets calibration`() {
-        // Given：已校准的处理器
+        // Given：已校准的处理器（校准窗 2s ≈ 94 块 @1024 帧/块，喂 150 块确保完成）
         val processor = VolumeBalanceAudioProcessor()
         processor.level = AudioBalanceLevel.MEDIUM
         processor.configure(pcm16Format())
-        repeat(10) {
+        repeat(150) {
             queueAndDrain(processor, shortsToBytes(sine16(BLOCK_FRAMES, amplitudeForRms(-15.0))))
         }
         assertTrue(processor.snapshotStats().calibrated)

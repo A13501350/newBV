@@ -1,6 +1,7 @@
 package dev.frost819.newbv.player
 
 import com.google.common.truth.Truth.assertThat
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 import org.junit.jupiter.api.Test
 
 /**
@@ -55,6 +56,7 @@ class AbstractVideoPlayerTest {
         override fun setOptions() {}
 
         override var speed: Float = 1.0f
+        override var volumeBalanceLevel: AudioBalanceLevel = AudioBalanceLevel.OFF
         override val tcpSpeed: Long = 0L
         override val debugInfo: String = "test"
         override val videoWidth: Int = 0
@@ -227,6 +229,8 @@ class AbstractVideoPlayerTest {
                 lastSpeed = value
                 calls.add("speed=$value")
             }
+
+        override var volumeBalanceLevel: AudioBalanceLevel = AudioBalanceLevel.OFF
         override val tcpSpeed: Long = 0L
         override val debugInfo: String = "spy-debug"
         override val videoWidth: Int get() = _videoWidth
