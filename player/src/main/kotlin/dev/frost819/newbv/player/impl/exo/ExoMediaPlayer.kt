@@ -72,6 +72,13 @@ class ExoMediaPlayer(
     var mPlayer: ExoPlayer? = null
         private set
 
+    /**
+     * 是否在 [debugInfo] 中附加音量均衡状态（调试分支专用）。
+     *
+     * 由上层依据调试构建参数与用户开关传入，默认关闭。
+     */
+    var showVolumeBalanceDebugInfo: Boolean = false
+
     /** 当前 MediaSource，在 [playUrl] 中创建 */
     protected var mMediaSource: MediaSource? = null
 
@@ -321,7 +328,8 @@ class ExoMediaPlayer(
 
     override val debugInfo: String
         get() {
-            return """
+            val base =
+                """
                 player: ${androidx.media3.common.MediaLibraryInfo.VERSION_SLASHY}
                 time: ${currentPosition.formatMinSec()} / ${duration.formatMinSec()}
                 speed: ${speed}x
@@ -331,6 +339,14 @@ class ExoMediaPlayer(
                 video codec: ${mPlayer?.videoFormat?.sampleMimeType ?: "null"}
                 audio codec: ${mPlayer?.audioFormat?.sampleMimeType ?: "null"} ($audioRendererName)
                 """.trimIndent()
+            if (!showVolumeBalanceDebugInfo) return base
+            val stats = volumeBalanceProcessor.snapshotStats()
+            val programRms = stats.programRmsDb?.let { "%.1f".format(it) } ?: "-"
+            return base +
+                "\nvol-balance: level=${stats.level.displayName}" +
+                " gain=${"%.2f".format(stats.gainDb)}dB" +
+                " programRms=${programRms}dBFS" +
+                " calibrated=${stats.calibrated}"
         }
 
     /** 当前活跃的音频渲染器名称（如 "OMX.google.aac.decoder"）。 */

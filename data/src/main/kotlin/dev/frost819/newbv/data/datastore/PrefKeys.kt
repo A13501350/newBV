@@ -50,6 +50,7 @@ internal object PrefKeys {
     // ===== 播放器 - 音频 =====
     val defaultAudio = intPreferencesKey("da")
     val audioBalanceLevel = stringPreferencesKey("audio_balance_level")
+    val debugVolumeBalanceStats = booleanPreferencesKey("debug_vb_stats")
 
     // ===== 播放器 - 弹幕 =====
     val defaultDanmakuTypes = stringPreferencesKey("ddts")

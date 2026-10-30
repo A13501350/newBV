@@ -66,12 +66,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // 音量均衡调试设施仅在 debug 构建启用（调试分支专用参数）
+            buildConfigField("boolean", "VOLUME_BALANCE_DEBUG", "false")
             if (signingPropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
         debug {
             isMinifyEnabled = false
+            // 音量均衡调试设施：诊断日志级别、调试信息开关入口
+            buildConfigField("boolean", "VOLUME_BALANCE_DEBUG", "true")
             applicationIdSuffix = ".debug"
         }
     }

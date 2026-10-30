@@ -24,6 +24,7 @@ import dev.frost819.newbv.app.ui.component.settings.SettingListItem
 import dev.frost819.newbv.app.ui.component.settings.SettingSwitchListItem
 import dev.frost819.newbv.app.ui.component.settings.displayName
 import dev.frost819.newbv.app.ui.screen.settings.SettingsMenuNavItem
+import dev.frost819.newbv.BuildConfig
 import dev.frost819.newbv.data.datastore.ActionAfterPlay
 import dev.frost819.newbv.data.datastore.Audio
 import dev.frost819.newbv.data.datastore.PlaySpeed
@@ -60,6 +61,7 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
     var enableSoftwareVideoDecoder by remember { mutableStateOf(Prefs.enableSoftwareVideoDecoder) }
     var showPlayerDebugInfo by remember { mutableStateOf(Prefs.showPlayerDebugInfo) }
     var autoSelectCdn by remember { mutableStateOf(Prefs.autoSelectCdn) }
+    var debugVolumeBalanceStats by remember { mutableStateOf(Prefs.debugVolumeBalanceStats) }
 
     Column(
         modifier =
@@ -95,6 +97,17 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
             supportText = "自适应响度归一，压平不同视频/直播间的音量差异；当前：${selectedAudioBalance.displayName}",
             onClick = { showAudioBalanceDialog = true },
         )
+        if (BuildConfig.VOLUME_BALANCE_DEBUG) {
+            SettingSwitchListItem(
+                title = "音量均衡调试信息（仅调试构建）",
+                supportText = "在播放器调试信息中附加均衡档位、增益、节目响度与校准状态",
+                checked = debugVolumeBalanceStats,
+                onCheckedChange = {
+                    debugVolumeBalanceStats = it
+                    Prefs.debugVolumeBalanceStats = it
+                },
+            )
+        }
         SettingListItem(
             title = "默认播放速度",
             supportText = "当前：${selectedPlaySpeed.displayName}",

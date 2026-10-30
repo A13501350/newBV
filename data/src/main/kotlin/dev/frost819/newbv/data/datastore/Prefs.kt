@@ -299,6 +299,9 @@ object Prefs {
      */
     var audioBalanceLevel by pref(PrefKeys.audioBalanceLevel, "OFF")
 
+    /** 音量均衡调试信息开关（仅调试构建可见，配合播放器调试信息显示增益/节目响度）。 */
+    var debugVolumeBalanceStats by pref(PrefKeys.debugVolumeBalanceStats, false)
+
     // --- 播放器 - 弹幕（PRD 7.3） ---
 
     /** 默认弹幕类型（多选，逗号分隔的序号字符串）。 */

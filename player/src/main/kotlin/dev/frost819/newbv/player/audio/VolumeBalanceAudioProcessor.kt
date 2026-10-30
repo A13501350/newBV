@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
+import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.player.entity.AudioBalanceLevel
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -22,7 +23,14 @@ import java.nio.ByteOrder
  */
 @OptIn(UnstableApi::class)
 class VolumeBalanceAudioProcessor : BaseAudioProcessor() {
+    private val logger = Loggers.get("VolumeBalance")
     private val normalizer = VolumeNormalizer(AudioBalanceLevel.OFF)
+
+    /** 已处理的音频块计数（用于周期性采样日志）。 */
+    private var blockCount = 0L
+
+    /** 校准完成检测（上一次快照的 calibrated 值）。 */
+    private var wasCalibrated = false
 
     /**
      * 自行跟踪的已配置格式。
@@ -36,6 +44,9 @@ class VolumeBalanceAudioProcessor : BaseAudioProcessor() {
     var level: AudioBalanceLevel
         get() = normalizer.level
         set(value) {
+            if (normalizer.level != value) {
+                logger.info { "level change: ${normalizer.level} -> $value" }
+            }
             normalizer.level = value
         }
 
@@ -54,6 +65,10 @@ class VolumeBalanceAudioProcessor : BaseAudioProcessor() {
                     sampleRateHz = inputAudioFormat.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE_HZ,
                     channelCount = inputAudioFormat.channelCount.takeIf { it > 0 } ?: DEFAULT_CHANNEL_COUNT,
                 )
+                logger.info {
+                    "configured: encoding=${inputAudioFormat.encoding} " +
+                        "sampleRate=${inputAudioFormat.sampleRate} channels=${inputAudioFormat.channelCount}"
+                }
                 inputAudioFormat
             }
 
@@ -101,14 +116,45 @@ class VolumeBalanceAudioProcessor : BaseAudioProcessor() {
         }
         inputBuffer.position(inputBuffer.limit())
         out.flip()
+        logProgress()
+    }
+
+    /**
+     * 周期性状态采样日志 + 校准完成检测（调试分支专用）。
+     *
+     * 每 [LOG_SAMPLE_BLOCKS] 块输出一条增益/节目响度摘要；
+     * 校准从未完成到完成时输出一条结果日志。
+     */
+    private fun logProgress() {
+        blockCount++
+        val stats = normalizer.snapshot()
+        if (!wasCalibrated && stats.calibrated) {
+            wasCalibrated = true
+            logger.info {
+                val program = stats.programRmsDb?.let { "%.1f".format(it) } ?: "-"
+                "calibrated: programRms=${program}dBFS gain=${"%.2f".format(stats.gainDb)}dB"
+            }
+        }
+        if (blockCount % LOG_SAMPLE_BLOCKS == 0L) {
+            val program = stats.programRmsDb?.let { "%.1f".format(it) } ?: "-"
+            logger.info {
+                "stats: block=$blockCount level=${stats.level} " +
+                    "gain=${"%.2f".format(stats.gainDb)}dB programRms=${program}dBFS calibrated=${stats.calibrated}"
+            }
+        }
     }
 
     override fun onFlush() {
         // flush 表示流切换/seek 到新流，节目响度需重新校准
+        logger.info { "flush: reset adaptive state" }
+        blockCount = 0L
+        wasCalibrated = false
         normalizer.reset()
     }
 
     override fun onReset() {
+        blockCount = 0L
+        wasCalibrated = false
         normalizer.reset()
     }
 
@@ -117,5 +163,8 @@ class VolumeBalanceAudioProcessor : BaseAudioProcessor() {
         const val DEFAULT_CHANNEL_COUNT = 2
         const val SHORT_BYTES_PER_SAMPLE = 2
         const val FLOAT_BYTES_PER_SAMPLE = 4
+
+        /** 周期采样日志间隔（块数）。1024 帧/块 ≈ 21ms，512 块 ≈ 11s。 */
+        const val LOG_SAMPLE_BLOCKS = 512L
     }
 }

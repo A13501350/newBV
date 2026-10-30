@@ -453,6 +453,8 @@ class PlayerViewModel
 
             val newPlayer = exoPlayerFactory.create(context.applicationContext, options)
             newPlayer.setPlayerEventListener(videoPlayerListener)
+            // 调试分支：音量均衡调试开关（仅调试构建的设置页可见）
+            newPlayer.showVolumeBalanceDebugInfo = Prefs.debugVolumeBalanceStats
             videoPlayer = newPlayer
 
             val initialSpeed = Prefs.defaultPlaySpeed.speed

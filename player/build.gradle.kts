@@ -50,6 +50,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core"))
     implementation(project(":bili-api"))
 
     implementation(platform(libs.androidx.compose.bom))
