@@ -23,7 +23,6 @@ import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.danmaku.config.DanmakuState
 import dev.frost819.newbv.data.datastore.Prefs
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -144,6 +143,7 @@ class DanmakuViewModel
 
         /** 初始化弹幕播放器。 */
         fun init() {
+            if (danmakuPlayer != null) return
             danmakuPlayer = DanmakuPlayer(SimpleRenderer())
             initDanmakuConfig()
         }
@@ -159,6 +159,11 @@ class DanmakuViewModel
             _danmakuMask.update { null }
         }
 
+        override fun onCleared() {
+            release()
+            super.onCleared()
+        }
+
         /**
          * 切换视频时清空弹幕数据。
          *
@@ -171,6 +176,8 @@ class DanmakuViewModel
             segmentWatchJob?.cancel()
             segmentWatchJob = null
             loadGeneration++
+            currentAid = 0L
+            currentCid = 0L
             loadedSegments.clear()
             loadingSegments.clear()
             danmakuClosed = false
@@ -402,18 +409,27 @@ class DanmakuViewModel
             )
 
         /**
-         * 加载弹幕防遮挡蒙版。
+         * 加载当前视频的弹幕防遮挡蒙版。
          *
-         * @param aid 视频 AV 号
-         * @param cid 视频 CID
+         * 视频标识复用 [loadDanmaku] 记录的 [currentAid] / [currentCid]，需在其之后调用。
+         * 防遮挡默认关闭且蒙版只在开启时需要渲染，因此关闭状态下直接跳过请求，
+         * 待用户打开开关时由 [updateDanmakuState] 补加载。
          */
-        fun loadDanmakuMask(
-            aid: Long,
-            cid: Long,
-        ) {
+        fun loadDanmakuMask() {
             maskFetchJob?.cancel()
+            maskFetchJob = null
+            val aid = currentAid
+            val cid = currentCid
+            if (cid <= 0L) {
+                logger.info { "No current video, skip loading danmaku mask" }
+                return
+            }
+            if (!_danmakuState.value.maskEnabled) {
+                logger.info { "Danmaku mask disabled, skip loading (aid=$aid, cid=$cid)" }
+                return
+            }
             maskFetchJob =
-                viewModelScope.launch(Dispatchers.IO) {
+                viewModelScope.launch {
                     try {
                         val mask =
                             withTimeout(LOAD_TIMEOUT_MS) {
@@ -506,6 +522,10 @@ class DanmakuViewModel
             }
             if (new.maskEnabled != old.maskEnabled) {
                 Prefs.defaultDanmakuMask = new.maskEnabled
+                // 蒙版只在开启时请求：关闭期间不下载，打开后若当前视频尚未加载则补加载
+                if (new.maskEnabled && _danmakuMask.value == null && currentCid > 0L) {
+                    loadDanmakuMask()
+                }
             }
         }
 

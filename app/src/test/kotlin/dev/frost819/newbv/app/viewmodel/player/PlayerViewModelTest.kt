@@ -13,7 +13,9 @@ import dev.frost819.newbv.app.ui.state.player.MediaProfileState
 import dev.frost819.newbv.app.ui.state.player.PlayerState
 import dev.frost819.newbv.app.ui.state.player.PlayerUiEffect
 import dev.frost819.newbv.app.ui.state.player.PlayerUiState
+import dev.frost819.newbv.app.util.PlaybackCandidate
 import dev.frost819.newbv.app.util.VideoCapabilityProvider
+import dev.frost819.newbv.biliapi.entity.DashAudio
 import dev.frost819.newbv.biliapi.entity.DashVideo
 import dev.frost819.newbv.biliapi.entity.PlayData
 import dev.frost819.newbv.biliapi.entity.user.Author
@@ -56,6 +58,9 @@ import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import kotlin.coroutines.suspendCoroutine
 import dev.frost819.newbv.data.datastore.ApiType as DataApiType
 
 /**
@@ -109,7 +114,6 @@ class PlayerViewModelTest {
         every { Prefs.incognitoMode } returns true
         every { Prefs.actionAfterPlay } returns ActionAfterPlay.Pause
         every { Prefs.defaultPlaySpeed } returns PlaySpeed.X1
-        every { Prefs.enableFfmpegAudioRenderer } returns false
         every { Prefs.enableSoftwareVideoDecoder } returns false
         every { Prefs.autoSelectCdn } returns false
 
@@ -117,6 +121,7 @@ class PlayerViewModelTest {
 
         every { videoInfoRepository.videoList } returns MutableStateFlow(emptyList())
         every { videoInfoRepository.relatedVideos } returns MutableStateFlow(emptyList())
+        every { videoInfoRepository.videoDetail } returns MutableStateFlow(null)
         every { videoInfoRepository.videoSharedState } returns MutableStateFlow(null)
 
         viewModel =
@@ -354,6 +359,75 @@ class PlayerViewModelTest {
             verify { mockPlayer.pause() }
         }
 
+    @Test
+    fun `playNewVideo applies author from list item immediately`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+
+            viewModel.playNewVideo(
+                VideoListItem(
+                    aid = 10,
+                    cid = 20,
+                    title = "New",
+                    authorMid = 555L,
+                    authorName = "卡片UP",
+                ),
+            )
+
+            val state = viewModel.uiState.value
+            assertThat(state.authorMid).isEqualTo(555L)
+            assertThat(state.authorName).isEqualTo("卡片UP")
+        }
+
+    @Test
+    fun `playNewVideo overrides author with loaded detail`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+            val detail = mockk<VideoDetail>()
+            every { detail.aid } returns 10L
+            every { detail.author } returns Author(mid = 777L, name = "详情UP", face = "")
+            every { videoInfoRepository.videoDetail } returns MutableStateFlow(detail)
+
+            viewModel.playNewVideo(
+                VideoListItem(
+                    aid = 10,
+                    cid = 20,
+                    title = "New",
+                    authorMid = 555L,
+                    authorName = "卡片UP",
+                ),
+            )
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertThat(state.authorMid).isEqualTo(777L)
+            assertThat(state.authorName).isEqualTo("详情UP")
+        }
+
+    @Test
+    fun `playNewVideo clears stale author when list item has none`() =
+        runTest(testDispatcher) {
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+            initSession(aid = 1, cid = 2)
+
+            viewModel.playNewVideo(VideoListItem(aid = 10, cid = 20, title = "New"))
+
+            // 详情返回前不能沿用上一个视频的 UP 主，否则“UP 主页”会跳错人
+            val state = viewModel.uiState.value
+            assertThat(state.authorMid).isEqualTo(0L)
+            assertThat(state.authorName).isEmpty()
+            viewModel.viewModelScope.cancel()
+        }
+
     // ── online watching polling tests ────────────────────────
 
     /**
@@ -568,7 +642,7 @@ class PlayerViewModelTest {
     // ── Listener callback tests ──────────────────────────────
 
     @Test
-    fun `onError sets PlayerState Error and clears isBuffering`() =
+    fun `onError sets PlayerState Error with user facing message`() =
         runTest(testDispatcher) {
             val listener = getVideoPlayerListener()
             updateUiState { it.copy(isBuffering = true) }
@@ -577,20 +651,50 @@ class PlayerViewModelTest {
 
             val state = viewModel.uiState.value
             assertThat(state.playerState).isInstanceOf(PlayerState.Error::class.java)
-            assertThat((state.playerState as PlayerState.Error).message).isEqualTo("test error")
+            // 面向用户的提示不再透传原始英文异常信息
+            assertThat((state.playerState as PlayerState.Error).message).isEqualTo("播放失败，请稍后重试")
             assertThat(state.isBuffering).isFalse()
         }
 
     @Test
-    fun `onError with null message uses default`() =
+    fun `onError for audio sink failure asks user to switch track`() =
         runTest(testDispatcher) {
             val listener = getVideoPlayerListener()
+            val audioError =
+                RuntimeException(
+                    "Unexpected runtime error",
+                    IllegalArgumentException("Buffer too small").apply {
+                        stackTrace =
+                            arrayOf(
+                                StackTraceElement(
+                                    "androidx.media3.exoplayer.audio.DefaultAudioSink",
+                                    "handleBuffer",
+                                    "DefaultAudioSink.java",
+                                    954,
+                                ),
+                            )
+                    },
+                )
 
-            listener.onError(RuntimeException())
+            listener.onError(audioError)
 
             val state = viewModel.uiState.value
-            assertThat(state.playerState).isInstanceOf(PlayerState.Error::class.java)
-            assertThat((state.playerState as PlayerState.Error).message).isEqualTo("Unknown error")
+            assertThat((state.playerState as PlayerState.Error).message)
+                .isEqualTo("音频解码失败，请尝试切换音轨")
+        }
+
+    @Test
+    fun `onPause after error keeps error state`() =
+        runTest(testDispatcher) {
+            // Given: 出错后 ExoPlayer 会立刻回调 isPlaying=false
+            val listener = getVideoPlayerListener()
+            listener.onError(RuntimeException("boom"))
+
+            // When
+            listener.onPause()
+
+            // Then: 错误提示不能被暂停态覆盖
+            assertThat(viewModel.uiState.value.playerState).isInstanceOf(PlayerState.Error::class.java)
         }
 
     @Test
@@ -828,6 +932,46 @@ class PlayerViewModelTest {
             verify { mockPlayer.pause() }
         }
 
+    @Test
+    fun `updateMediaProfile replays at current position after resolving`() =
+        runTest(testDispatcher) {
+            setVideoPlayer(mockPlayer)
+            every { mockPlayer.currentPosition } returns 42_000L
+            setPlayData(
+                PlayData(
+                    dashVideos = listOf(dashVideo(120, 7, "avc1.640034", 2160, 3840)),
+                    dashAudios = listOf(dashAudio(30280)),
+                ),
+            )
+
+            viewModel.updateMediaProfile(MediaProfileSettingAction.SetQuality(120))
+            advanceUntilIdle()
+
+            // 解析成功后从当前位置续播，并进入缓冲态
+            verify { mockPlayer.playUrl(any(), any()) }
+            verify { mockPlayer.seekTo(42_000L) }
+            assertThat(viewModel.uiState.value.isBuffering).isTrue()
+        }
+
+    @Test
+    fun `updateMediaProfile reports failure when media urls cannot be resolved`() =
+        runTest(testDispatcher) {
+            // Given: playData 为空（首次加载失败 / 未加载），解析必然返回 null
+            setVideoPlayer(mockPlayer)
+            updateUiState { it.copy(playerState = PlayerState.Playing, isBuffering = false) }
+
+            // When
+            viewModel.updateMediaProfile(MediaProfileSettingAction.SetQuality(116))
+            advanceUntilIdle()
+
+            // Then: 不再静默无操作，而是给出可见错误
+            val state = viewModel.uiState.value
+            assertThat(state.playerState).isInstanceOf(PlayerState.Error::class.java)
+            assertThat((state.playerState as PlayerState.Error).message)
+                .isEqualTo("视频源解析失败，请稍后重试")
+            assertThat(state.isBuffering).isFalse()
+        }
+
     // ── detachPlayer test ─────────────────────────────────────
 
     @Test
@@ -847,6 +991,18 @@ class PlayerViewModelTest {
             viewModel.detachPlayer()
 
             assertThat(viewModel.videoPlayer).isNull()
+        }
+
+    // ── session flag test ─────────────────────────────────────
+
+    @Test
+    fun `markSessionStarted flips isSessionStarted from false to true`() =
+        runTest(testDispatcher) {
+            assertThat(viewModel.isSessionStarted).isFalse()
+
+            viewModel.markSessionStarted()
+
+            assertThat(viewModel.isSessionStarted).isTrue()
         }
 
     // ── trySendHeartbeat test ─────────────────────────────────
@@ -906,7 +1062,9 @@ class PlayerViewModelTest {
             verify { mockPlayer.prepare() }
             verify { mockPlayer.seekTo(5000L) }
             verify { mockPlayer.start() }
+            // 重播统一由 replayMedia 进入缓冲态
             assertThat(viewModel.uiState.value.playerState).isNotInstanceOf(PlayerState.Error::class.java)
+            assertThat(viewModel.uiState.value.isBuffering).isTrue()
         }
 
     @Test
@@ -940,6 +1098,29 @@ class PlayerViewModelTest {
             assertThat(viewModel.uiState.value.playerState).isInstanceOf(PlayerState.Error::class.java)
         }
 
+    @Test
+    fun `onError CDN fallback toasts the line switch`() =
+        runTest(testDispatcher) {
+            setVideoPlayer(mockPlayer)
+            every { Prefs.autoSelectCdn } returns true
+            every { mockPlayer.currentPosition } returns 5000L
+            setCdnCandidates(
+                video = listOf("https://cdn1.example/v.m4s", "https://cdn2.example/v.m4s"),
+                audio = listOf("https://cdn1.example/a.m4s"),
+            )
+
+            viewModel.uiEffect.test {
+                getVideoPlayerListener().onError(RuntimeException("source error"))
+                advanceUntilIdle()
+
+                val effect = awaitItem()
+                assertThat(effect).isInstanceOf(PlayerUiEffect.ShowToast::class.java)
+                assertThat((effect as PlayerUiEffect.ShowToast).message).contains("备用线路")
+            }
+
+            verify { mockPlayer.playUrl("https://cdn2.example/v.m4s", "https://cdn1.example/a.m4s") }
+        }
+
     private fun dashVideo(
         quality: Int,
         codecId: Int,
@@ -957,6 +1138,15 @@ class PlayerViewModelTest {
         backUrl = emptyList(),
         codecs = codecs,
     )
+
+    /** 构造音轨（codecId 对应 B 站音频 ID，如 30280 = 192K）。 */
+    private fun dashAudio(codecId: Int) =
+        DashAudio(
+            baseUrl = "https://example.com/audio-$codecId.m4s",
+            bandwidth = 192_000,
+            codecId = codecId,
+            backUrl = emptyList(),
+        )
 
     @Test
     fun `onVideoDecodeUnsupported falls back to next decodable codec and toasts`() =
@@ -1159,6 +1349,266 @@ class PlayerViewModelTest {
             advanceUntilIdle()
 
             assertThat(viewModel.uiState.value.playerState).isInstanceOf(PlayerState.Error::class.java)
+        }
+
+    // ── 音频解码回退 ─────────────────────────────────────────
+
+    @Test
+    fun `onAudioDecodeUnsupported falls back to AAC track and toasts`() =
+        runTest(testDispatcher) {
+            setVideoPlayer(mockPlayer)
+            every { mockPlayer.currentPosition } returns 30_000L
+            setPlayData(
+                PlayData(
+                    dashVideos = listOf(dashVideo(80, 7, "avc1.640028")),
+                    dashAudios = listOf(dashAudio(30280), dashAudio(30232)),
+                    dolby = dashAudio(30250),
+                ),
+            )
+            updateUiState {
+                it.copy(
+                    mediaProfileState =
+                        MediaProfileState(qualityId = 80, videoCodec = VideoCodec.AVC, audio = Audio.ADolbyAtoms),
+                    availableAudio = listOf(Audio.A192K, Audio.A132K, Audio.ADolbyAtoms),
+                )
+            }
+
+            viewModel.uiEffect.test {
+                getVideoPlayerListener().onAudioDecodeUnsupported()
+                advanceUntilIdle()
+
+                val effect = awaitItem()
+                assertThat(effect).isInstanceOf(PlayerUiEffect.ShowToast::class.java)
+                assertThat((effect as PlayerUiEffect.ShowToast).message).contains("192K")
+            }
+
+            // 音轨状态同步到最低可用 AAC 档，并从出错位置续播
+            assertThat(viewModel.uiState.value.mediaProfileState.audio).isEqualTo(Audio.A192K)
+            assertThat(viewModel.uiState.value.isBuffering).isTrue()
+            verify { mockPlayer.playUrl(any(), any()) }
+            verify { mockPlayer.seekTo(30_000L) }
+        }
+
+    @Test
+    fun `onAudioDecodeUnsupported skips already tried tracks`() =
+        runTest(testDispatcher) {
+            setVideoPlayer(mockPlayer)
+            every { mockPlayer.currentPosition } returns 0L
+            setPlayData(
+                PlayData(
+                    dashVideos = listOf(dashVideo(80, 7, "avc1.640028")),
+                    dashAudios = listOf(dashAudio(30280), dashAudio(30232)),
+                    dolby = dashAudio(30250),
+                ),
+            )
+            updateUiState {
+                it.copy(
+                    mediaProfileState =
+                        MediaProfileState(qualityId = 80, videoCodec = VideoCodec.AVC, audio = Audio.ADolbyAtoms),
+                    availableAudio = listOf(Audio.A192K, Audio.A132K, Audio.ADolbyAtoms),
+                )
+            }
+
+            // 第一次回退到 192K，第二次应继续降到 132K（不重复尝试 192K）
+            getVideoPlayerListener().onAudioDecodeUnsupported()
+            advanceUntilIdle()
+            getVideoPlayerListener().onAudioDecodeUnsupported()
+            advanceUntilIdle()
+
+            assertThat(viewModel.uiState.value.mediaProfileState.audio).isEqualTo(Audio.A132K)
+        }
+
+    @Test
+    fun `onAudioDecodeUnsupported fails when no other audio available`() =
+        runTest(testDispatcher) {
+            setVideoPlayer(mockPlayer)
+            setPlayData(
+                PlayData(
+                    dashVideos = listOf(dashVideo(80, 7, "avc1.640028")),
+                    dashAudios = listOf(dashAudio(30280)),
+                ),
+            )
+            updateUiState {
+                it.copy(
+                    mediaProfileState =
+                        MediaProfileState(qualityId = 80, videoCodec = VideoCodec.AVC, audio = Audio.A192K),
+                    availableAudio = listOf(Audio.A192K),
+                )
+            }
+
+            getVideoPlayerListener().onAudioDecodeUnsupported()
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertThat(state.playerState).isInstanceOf(PlayerState.Error::class.java)
+            assertThat((state.playerState as PlayerState.Error).message)
+                .isEqualTo("音频解码失败，请在播放器菜单中切换音轨")
+        }
+
+    // ── 起播自动降档提示 ─────────────────────────────────────
+
+    /**
+     * 反射调用私有 suspend 方法 `loadPlaybackConfig`。
+     *
+     * Kotlin 的 suspend 方法编译后末尾多一个 [Continuation] 参数，这里手动补齐后
+     * 把调用方协程的续体交进去，避免依赖额外反射库。
+     */
+    private suspend fun loadPlaybackConfigForTest(
+        aid: Long,
+        cid: Long,
+    ) {
+        suspendCoroutine<Any?> { continuation ->
+            val method =
+                PlayerViewModel::class.java.getDeclaredMethod(
+                    "loadPlaybackConfig",
+                    java.lang.Long.TYPE,
+                    java.lang.Long.TYPE,
+                    java.lang.Integer.TYPE,
+                    Continuation::class.java,
+                )
+            method.isAccessible = true
+            try {
+                val result = method.invoke(viewModel, aid, cid, 0, continuation)
+                // 未发生挂起时（如 mock 直接返回）不会回调续体，这里手动恢复，避免测试永久挂住
+                if (result !== COROUTINE_SUSPENDED) continuation.resumeWith(Result.success(result))
+            } catch (e: Throwable) {
+                continuation.resumeWith(Result.failure(e))
+            }
+        }
+    }
+
+    @Test
+    fun `decodeFallbackNotice reports quality downgrade only`() {
+        val notice =
+            decodeFallbackNotice(
+                requestedQualityId = Resolution.R4K.code,
+                selected = PlaybackCandidate(Resolution.R1080P.code, VideoCodec.AVC),
+                preferredCodec = VideoCodec.AVC,
+                targetQualityCodecs = listOf(VideoCodec.AVC),
+            )
+
+        assertThat(notice).isEqualTo("当前设备不支持 4K，已切换到 1080P")
+    }
+
+    @Test
+    fun `decodeFallbackNotice reports codec downgrade only`() {
+        val notice =
+            decodeFallbackNotice(
+                requestedQualityId = Resolution.R1080P.code,
+                selected = PlaybackCandidate(Resolution.R1080P.code, VideoCodec.HEVC),
+                preferredCodec = VideoCodec.AVC,
+                targetQualityCodecs = listOf(VideoCodec.AVC, VideoCodec.HEVC),
+            )
+
+        assertThat(notice).isEqualTo("当前设备不支持 AVC/H.264，已切换到 HEVC/H.265")
+    }
+
+    @Test
+    fun `decodeFallbackNotice reports both quality and codec downgrade`() {
+        val notice =
+            decodeFallbackNotice(
+                requestedQualityId = Resolution.R4K.code,
+                selected = PlaybackCandidate(Resolution.R1080P.code, VideoCodec.AVC),
+                preferredCodec = VideoCodec.HEVC,
+                targetQualityCodecs = listOf(VideoCodec.AVC, VideoCodec.HEVC),
+            )
+
+        assertThat(notice).isEqualTo("当前设备不支持 4K · HEVC/H.265，已切换到 1080P · AVC/H.264")
+    }
+
+    @Test
+    fun `decodeFallbackNotice stays silent when preferred codec absent on server`() {
+        // 偏好 HEVC 但该画质只有 AVC：服务端缺档，不算设备限制
+        val notice =
+            decodeFallbackNotice(
+                requestedQualityId = Resolution.R1080P.code,
+                selected = PlaybackCandidate(Resolution.R1080P.code, VideoCodec.AVC),
+                preferredCodec = VideoCodec.HEVC,
+                targetQualityCodecs = listOf(VideoCodec.AVC),
+            )
+
+        assertThat(notice).isNull()
+    }
+
+    @Test
+    fun `decodeFallbackNotice stays silent when quality upgraded instead of lowered`() {
+        // 目标 720P 但服务端只有更高画质：属于服务端缺档，不提示
+        val notice =
+            decodeFallbackNotice(
+                requestedQualityId = Resolution.R720P.code,
+                selected = PlaybackCandidate(Resolution.R1080P.code, VideoCodec.AVC),
+                preferredCodec = VideoCodec.AVC,
+                targetQualityCodecs = listOf(VideoCodec.AVC),
+            )
+
+        assertThat(notice).isNull()
+    }
+
+    @Test
+    fun `decodeFallbackNotice stays silent when capability rejects every profile`() {
+        // selected == null 表示能力判定无可用组合，交由运行时回退提示
+        val notice =
+            decodeFallbackNotice(
+                requestedQualityId = Resolution.R4K.code,
+                selected = null,
+                preferredCodec = VideoCodec.AVC,
+                targetQualityCodecs = listOf(VideoCodec.AVC),
+            )
+
+        assertThat(notice).isNull()
+    }
+
+    @Test
+    fun `loadPlaybackConfig toasts when device cannot decode requested quality`() =
+        runTest(testDispatcher) {
+            every { Prefs.defaultQuality } returns Resolution.R4K
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } returns
+                PlayData(
+                    dashVideos =
+                        listOf(
+                            dashVideo(Resolution.R4K.code, 7, "avc1.640034", 2160, 3840),
+                            dashVideo(Resolution.R1080P.code, 7, "avc1.640028"),
+                        ),
+                    dashAudios = emptyList(),
+                )
+            // 本机只能解到 1080P
+            every { videoCapabilityProvider.isDecodable(match { it.height > 1080 }) } returns false
+
+            viewModel.uiEffect.test {
+                loadPlaybackConfigForTest(aid = 1L, cid = 2L)
+                advanceUntilIdle()
+
+                val effect = awaitItem()
+                assertThat(effect).isInstanceOf(PlayerUiEffect.ShowToast::class.java)
+                assertThat((effect as PlayerUiEffect.ShowToast).message)
+                    .isEqualTo("当前设备不支持 4K，已切换到 1080P")
+            }
+
+            assertThat(viewModel.uiState.value.mediaProfileState.qualityId)
+                .isEqualTo(Resolution.R1080P.code)
+        }
+
+    @Test
+    fun `loadPlaybackConfig does not toast when server lacks requested quality and codec`() =
+        runTest(testDispatcher) {
+            every { Prefs.defaultQuality } returns Resolution.R4K
+            every { Prefs.defaultVideoCodec } returns VideoCodec.HEVC
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } returns
+                PlayData(
+                    dashVideos = listOf(dashVideo(Resolution.R1080P.code, 7, "avc1.640028")),
+                    dashAudios = emptyList(),
+                )
+
+            viewModel.uiEffect.test {
+                loadPlaybackConfigForTest(aid = 1L, cid = 2L)
+                advanceUntilIdle()
+
+                expectNoEvents()
+            }
+
+            assertThat(viewModel.uiState.value.mediaProfileState.qualityId)
+                .isEqualTo(Resolution.R1080P.code)
+            assertThat(viewModel.uiState.value.mediaProfileState.videoCodec).isEqualTo(VideoCodec.AVC)
         }
 
     // ── loadVideoDetail cid tests ────────────────────────────

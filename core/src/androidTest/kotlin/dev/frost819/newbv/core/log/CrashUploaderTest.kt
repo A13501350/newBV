@@ -21,6 +21,7 @@ class CrashUploaderTest {
     private lateinit var context: Context
     private lateinit var logDir: File
     private lateinit var uploader: CrashUploader
+    private var uploadEnabled = true
 
     @Before
     fun setup() {
@@ -29,7 +30,8 @@ class CrashUploaderTest {
         logDir.deleteRecursively()
         logDir.mkdirs()
 
-        uploader = CrashUploader(context, authToken = "test-token")
+        uploadEnabled = true
+        uploader = CrashUploader(context, authToken = "test-token") { uploadEnabled }
     }
 
     @After
@@ -39,27 +41,35 @@ class CrashUploaderTest {
 
     @Test
     fun canUpload_returns_false_when_disabled() {
-        uploader.enabled = false
+        uploadEnabled = false
         assertThat(uploader.canUpload()).isFalse()
     }
 
     @Test
     fun canUpload_returns_false_when_token_blank() {
-        uploader.enabled = true
-        val blankTokenUploader = CrashUploader(context, authToken = "")
-        blankTokenUploader.enabled = true
+        uploadEnabled = true
+        val blankTokenUploader = CrashUploader(context, authToken = "") { uploadEnabled }
         assertThat(blankTokenUploader.canUpload()).isFalse()
     }
 
     @Test
     fun canUpload_returns_true_when_enabled_and_token_present() {
-        uploader.enabled = true
+        uploadEnabled = true
+        assertThat(uploader.canUpload()).isTrue()
+    }
+
+    @Test
+    fun canUpload_reflects_latest_enabled_state() {
+        uploadEnabled = false
+        assertThat(uploader.canUpload()).isFalse()
+
+        uploadEnabled = true
         assertThat(uploader.canUpload()).isTrue()
     }
 
     @Test
     fun uploadCrash_is_noop_when_disabled() {
-        uploader.enabled = false
+        uploadEnabled = false
         val deviceInfo =
             DeviceInfo(
                 appVersion = "1.0",
@@ -79,7 +89,7 @@ class CrashUploaderTest {
 
     @Test
     fun uploadCrash_saves_json_file_when_enabled() {
-        uploader.enabled = true
+        uploadEnabled = true
         val deviceInfo =
             DeviceInfo(
                 appVersion = "1.0",
@@ -115,7 +125,7 @@ class CrashUploaderTest {
 
     @Test
     fun uploadPendingCrashLogs_is_noop_when_disabled() {
-        uploader.enabled = false
+        uploadEnabled = false
 
         val jsonFile = File(logDir, "logs_crash_2024-01-01_00:00:00.json")
         jsonFile.writeText("""{"id":"test","versionCode":1}""")
@@ -126,8 +136,19 @@ class CrashUploaderTest {
     }
 
     @Test
+    fun uploadPendingCrashLogs_drops_file_after_max_attempts() {
+        uploadEnabled = true
+        val crashJson = File(logDir, "logs_crash_2024-01-01_00:00:00.json")
+        crashJson.writeText("""{"id":"test","versionCode":1,"_uploadAttempts":3}""")
+
+        uploader.uploadPendingCrashLogs()
+
+        assertThat(crashJson.exists()).isFalse()
+    }
+
+    @Test
     fun uploadPendingCrashLogs_finds_json_files_with_correct_prefix() {
-        uploader.enabled = true
+        uploadEnabled = true
 
         val crashJson = File(logDir, "logs_crash_2024-01-01_00:00:00.json")
         crashJson.writeText("""{"id":"test","versionCode":1}""")

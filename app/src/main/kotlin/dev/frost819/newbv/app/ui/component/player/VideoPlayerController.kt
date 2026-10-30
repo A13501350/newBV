@@ -43,6 +43,7 @@ import dev.frost819.newbv.app.ui.component.player.menu.MenuController
 import dev.frost819.newbv.app.ui.state.player.PlayerState
 import dev.frost819.newbv.app.ui.state.player.PlayerUiState
 import dev.frost819.newbv.app.ui.state.player.SeekerState
+import dev.frost819.newbv.app.ui.state.player.errorMessage
 import dev.frost819.newbv.app.util.VideoShotImageCache
 import dev.frost819.newbv.biliapi.entity.video.Subtitle
 import dev.frost819.newbv.core.theme.BVTheme
@@ -526,8 +527,7 @@ fun VideoPlayerController(
             PlayStateTips(
                 isPlaying = uiState.playerState == PlayerState.Playing,
                 isBuffering = uiState.isBuffering,
-                isError = uiState.playerState is PlayerState.Error,
-                errorMessage = (uiState.playerState as? PlayerState.Error)?.message,
+                errorMessage = uiState.playerState.errorMessage,
             )
 
             // 手势提示（亮度/音量/倍速反馈）
@@ -540,7 +540,12 @@ fun VideoPlayerController(
             RelatedVideosController(
                 show = showRelatedVideosController,
                 relatedVideos = uiState.relatedVideos,
-                onVideoClicked = onRelatedVideoClicked,
+                onVideoClicked = { video ->
+                    // 选中即收起浮层；否则切视频后浮层仍停留在屏幕上，
+                    // 焦点与旧列表会残留在新视频画面上
+                    showRelatedVideosController = false
+                    onRelatedVideoClicked(video)
+                },
             )
 
             // 信息栏 + 进度条 + 按钮
@@ -574,14 +579,12 @@ fun VideoPlayerController(
             )
 
             // 分集列表
+            // 切换视频后保持列表展开，方便连续选集；按返回键收起
             VideoListController(
                 show = showListController,
                 currentCid = uiState.cid,
                 videoList = uiState.videoList,
-                onPlayNewVideo = { item ->
-                    onPlayNewVideo(item)
-                    showListController = false
-                },
+                onPlayNewVideo = onPlayNewVideo,
             )
 
             // 设置菜单

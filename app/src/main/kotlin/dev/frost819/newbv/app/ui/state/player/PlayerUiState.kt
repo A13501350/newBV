@@ -142,3 +142,7 @@ sealed class PlayerState {
         val message: String,
     ) : PlayerState()
 }
+
+/** 当前状态的错误文案；非错误态为 null。 */
+val PlayerState.errorMessage: String?
+    get() = (this as? PlayerState.Error)?.message

@@ -3,13 +3,19 @@ package dev.frost819.newbv.app.viewmodel.live
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.viewModelScope
 import com.google.common.truth.Truth.assertThat
+import dev.frost819.newbv.app.ui.state.live.LivePlayerState
+import dev.frost819.newbv.app.ui.state.live.LivePlayerUiState
+import dev.frost819.newbv.app.util.VideoCapabilityProvider
 import dev.frost819.newbv.biliapi.repositories.LivePlayInfo
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
+import dev.frost819.newbv.biliapi.repositories.LiveQuality
 import dev.frost819.newbv.biliapi.repositories.LiveRepository
 import dev.frost819.newbv.player.AbstractVideoPlayer
+import dev.frost819.newbv.player.VideoPlayerListener
 import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +42,7 @@ class LivePlayerViewModelTest {
 
     private lateinit var liveRepository: LiveRepository
     private lateinit var exoPlayerFactory: ExoPlayerFactory
+    private lateinit var videoCapabilityProvider: VideoCapabilityProvider
     private lateinit var viewModel: LivePlayerViewModel
     private lateinit var mockPlayer: AbstractVideoPlayer
 
@@ -44,8 +51,9 @@ class LivePlayerViewModelTest {
         Dispatchers.setMain(testDispatcher)
         liveRepository = mockk(relaxed = true)
         exoPlayerFactory = mockk(relaxed = true)
+        videoCapabilityProvider = mockk(relaxed = true)
         mockPlayer = mockk(relaxed = true)
-        viewModel = LivePlayerViewModel(liveRepository, exoPlayerFactory)
+        viewModel = LivePlayerViewModel(liveRepository, exoPlayerFactory, videoCapabilityProvider)
         setVideoPlayer(mockPlayer)
     }
 
@@ -63,7 +71,7 @@ class LivePlayerViewModelTest {
             coEvery { liveRepository.getLivePlayInfo(123, 10000) } returns
                 LivePlayInfo(
                     currentQn = 10000,
-                    qualities = listOf(10000 to "原画"),
+                    qualities = listOf(LiveQuality(10000, "原画")),
                     lines = listOf(LivePlayLine(1, "url-1"), LivePlayLine(2, "url-2")),
                 )
 
@@ -101,21 +109,21 @@ class LivePlayerViewModelTest {
     @Test
     fun `changeQuality resets line to first and reloads`() =
         runTest(testDispatcher) {
-            // Given
-            updateUiState { it.copy(realRoomId = 123, currentQuality = 10000, currentLine = 3) }
-            coEvery { liveRepository.getLivePlayInfo(123, 400) } returns
+            // Given（画质以档位标识传递：qn * 100，蓝光 400 → 40000）
+            updateUiState { it.copy(realRoomId = 123, currentQuality = 1000000, currentLine = 3) }
+            coEvery { liveRepository.getLivePlayInfo(123, 40000) } returns
                 LivePlayInfo(
                     currentQn = 400,
-                    qualities = listOf(400 to "蓝光"),
+                    qualities = listOf(LiveQuality(400, "蓝光")),
                     lines = listOf(LivePlayLine(1, "url-1"), LivePlayLine(2, "url-2")),
                 )
 
             // When
-            viewModel.changeQuality(400)
+            viewModel.changeQuality(40000)
             advanceUntilIdle()
 
             // Then
-            assertThat(viewModel.uiState.value.currentQuality).isEqualTo(400)
+            assertThat(viewModel.uiState.value.currentQuality).isEqualTo(40000)
             assertThat(viewModel.uiState.value.currentLine).isEqualTo(1)
         }
 
@@ -131,8 +139,9 @@ class LivePlayerViewModelTest {
             advanceUntilIdle()
 
             // Then
-            assertThat(viewModel.uiState.value.playerState).isEqualTo(LivePlayerState.Error)
-            assertThat(viewModel.uiState.value.errorMessage).isEqualTo("boom")
+            val state = viewModel.uiState.value.playerState
+            assertThat(state).isInstanceOf(LivePlayerState.Error::class.java)
+            assertThat((state as LivePlayerState.Error).message).isEqualTo("视频源加载失败，请稍后重试")
         }
 
     @Test
@@ -146,7 +155,167 @@ class LivePlayerViewModelTest {
             coVerify(exactly = 0) { liveRepository.getLivePlayInfo(any(), any()) }
         }
 
+    @Test
+    fun `reload filters out HDR quality that is not decodable`() =
+        runTest(testDispatcher) {
+            // Given
+            updateUiState { it.copy(realRoomId = 123, currentQuality = 10000) }
+            every { videoCapabilityProvider.isDecodable(any()) } returns false
+            coEvery { liveRepository.getLivePlayInfo(123, 10000) } returns
+                LivePlayInfo(
+                    currentQn = 10000,
+                    qualities =
+                        listOf(
+                            LiveQuality(
+                                qn = 30000,
+                                desc = "4K",
+                                hdrType = 1,
+                                hdrDesc = "HDR",
+                                codecName = "hevc",
+                                codecs = "hvc1.1.6.L120",
+                                width = 3840,
+                                height = 2160,
+                            ),
+                            LiveQuality(qn = 10000, desc = "原画"),
+                        ),
+                    lines = listOf(LivePlayLine(1, "url-1")),
+                )
+
+            // When
+            viewModel.changeLine(1)
+            advanceUntilIdle()
+
+            // Then：不可解的 HDR 档从菜单中隐藏，SDR 档保留
+            val qualities = viewModel.uiState.value.availableQualities
+            assertThat(qualities.map { it.qn }).containsExactly(10000)
+        }
+
+    @Test
+    fun `reload keeps HDR quality when decodable`() =
+        runTest(testDispatcher) {
+            // Given
+            updateUiState { it.copy(realRoomId = 123, currentQuality = 10000) }
+            every { videoCapabilityProvider.isDecodable(any()) } returns true
+            coEvery { liveRepository.getLivePlayInfo(123, 10000) } returns
+                LivePlayInfo(
+                    currentQn = 10000,
+                    qualities =
+                        listOf(
+                            LiveQuality(
+                                qn = 30000,
+                                desc = "4K",
+                                hdrType = 1,
+                                hdrDesc = "HDR",
+                                codecName = "hevc",
+                                codecs = "hvc1.1.6.L120",
+                                width = 3840,
+                                height = 2160,
+                            ),
+                            LiveQuality(qn = 10000, desc = "原画"),
+                        ),
+                    lines = listOf(LivePlayLine(1, "url-1")),
+                )
+
+            // When
+            viewModel.changeLine(1)
+            advanceUntilIdle()
+
+            // Then
+            val qualities = viewModel.uiState.value.availableQualities
+            assertThat(qualities.map { it.qn }).containsExactly(30000, 10000)
+        }
+
+    @Test
+    fun `changeLine leaves error state while reloading`() =
+        runTest(testDispatcher) {
+            // Given: 上一次播放失败后用户手动换线路
+            updateUiState {
+                it.copy(
+                    realRoomId = 123,
+                    currentQuality = 10000,
+                    playerState = LivePlayerState.Error("播放失败，请稍后重试"),
+                    isBuffering = false,
+                )
+            }
+            coEvery { liveRepository.getLivePlayInfo(123, 10000) } returns
+                LivePlayInfo(
+                    currentQn = 10000,
+                    qualities = listOf(LiveQuality(10000, "原画")),
+                    lines = listOf(LivePlayLine(1, "url-1"), LivePlayLine(2, "url-2")),
+                )
+
+            // When
+            viewModel.changeLine(2)
+            advanceUntilIdle()
+
+            // Then: 错误态（连同文案）随状态切换消失，进入加载态
+            val state = viewModel.uiState.value
+            assertThat(state.playerState).isNotInstanceOf(LivePlayerState.Error::class.java)
+            assertThat(state.playerState).isEqualTo(LivePlayerState.Loading)
+        }
+
+    // ── 播放器回调 ───────────────────────────────────────────
+
+    @Test
+    fun `onError sets error state with user facing message`() =
+        runTest(testDispatcher) {
+            // When
+            getVideoPlayerListener().onError(RuntimeException("boom"))
+
+            // Then
+            val state = viewModel.uiState.value
+            assertThat(state.playerState)
+                .isEqualTo(LivePlayerState.Error("播放失败，请稍后重试"))
+            assertThat(state.isBuffering).isFalse()
+        }
+
+    @Test
+    fun `onPause after error keeps error state`() =
+        runTest(testDispatcher) {
+            // Given: 出错后 ExoPlayer 会立刻回调 isPlaying=false
+            val listener = getVideoPlayerListener()
+            listener.onError(RuntimeException("boom"))
+
+            // When
+            listener.onPause()
+
+            // Then: 错误提示不能被暂停态覆盖
+            assertThat(viewModel.uiState.value.playerState).isInstanceOf(LivePlayerState.Error::class.java)
+        }
+
+    @Test
+    fun `onVideoDecodeUnsupported sets actionable error`() =
+        runTest(testDispatcher) {
+            // When
+            getVideoPlayerListener().onVideoDecodeUnsupported()
+
+            // Then
+            val state = viewModel.uiState.value
+            assertThat(state.playerState)
+                .isEqualTo(LivePlayerState.Error("解码失败，请尝试切换画质或线路"))
+            assertThat(state.isBuffering).isFalse()
+        }
+
+    @Test
+    fun `onAudioDecodeUnsupported sets actionable error`() =
+        runTest(testDispatcher) {
+            // When
+            getVideoPlayerListener().onAudioDecodeUnsupported()
+
+            // Then
+            val state = viewModel.uiState.value
+            assertThat(state.playerState)
+                .isEqualTo(LivePlayerState.Error("音频解码失败，请尝试切换线路"))
+        }
+
     // ── Helpers ──────────────────────────────────────────────
+
+    /** 读取 `videoPlayerListener` 字段（播放器事件匿名对象）。 */
+    private fun getVideoPlayerListener(): VideoPlayerListener {
+        val field = LivePlayerViewModel::class.java.getDeclaredField("videoPlayerListener")
+        field.isAccessible = true
+        return field.get(viewModel) as VideoPlayerListener
+    }
 
     private fun setVideoPlayer(player: AbstractVideoPlayer?) {
         val field = LivePlayerViewModel::class.java.getDeclaredField("videoPlayer${'$'}delegate")

@@ -27,6 +27,8 @@ import androidx.media3.exoplayer.upstream.ParsingLoadable
 import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.VideoPlayerOptions
 import dev.frost819.newbv.player.formatMinSec
+import dev.frost819.newbv.player.isAudioRenderError
+import dev.frost819.newbv.player.isVideoDecodeError
 import okhttp3.OkHttpClient
 import java.io.ByteArrayInputStream
 import java.io.InputStream
@@ -39,7 +41,6 @@ import java.util.Locale
  * - DASH 视频流（视频+音频分离，使用 [MergingMediaSource] 合并）
  * - HLS / FLV 直播流（使用 [ProgressiveMediaSource]）
  * - 软件解码 / 硬件解码切换
- * - FFmpeg 音频渲染器（需配合 ffmpegDecoder 库）
  *
  * @param context Android Context
  * @param options 播放器配置
@@ -93,12 +94,6 @@ class ExoMediaPlayer(
     override fun initPlayer() {
         val renderersFactory =
             DefaultRenderersFactory(context).apply {
-                setExtensionRendererMode(
-                    when (options.enableFfmpegAudioRenderer) {
-                        true -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-                        false -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
-                    },
-                )
                 if (options.enableSoftwareVideoDecoder) {
                     // 强制软件解码：只选择 OMX.google.* / c2.android.* 开头的解码器
                     setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
@@ -123,6 +118,8 @@ class ExoMediaPlayer(
             ExoPlayer
                 .Builder(context)
                 .setRenderersFactory(renderersFactory)
+                // 限制缓冲时长与字节数：默认 50 秒窗在 4K 高码率流上会占满低内存电视的堆
+                .setLoadControl(PlayerLoadControl.create())
                 .setSeekForwardIncrementMs(1000 * 10)
                 .setSeekBackIncrementMs(1000 * 5)
                 .build()
@@ -318,12 +315,12 @@ class ExoMediaPlayer(
             tryRecoverBehindLiveWindow(error)
             return
         }
-        // 解码器无法处理当前格式：上报专用信号，交由上层尝试回退编码/画质
-        if (isVideoDecodeError(error.errorCode)) {
-            mPlayerEventListener?.onVideoDecodeUnsupported()
-            return
+        // 解码 / 音轨故障交由上层回退后重试，其余错误进入错误态
+        when {
+            error.isVideoDecodeError() -> mPlayerEventListener?.onVideoDecodeUnsupported()
+            error.isAudioRenderError() -> mPlayerEventListener?.onAudioDecodeUnsupported()
+            else -> mPlayerEventListener?.onError(error)
         }
-        mPlayerEventListener?.onError(error)
     }
 
     /**
@@ -433,21 +430,3 @@ private class ExtXStartStrippingParser(
         return delegate.parse(uri, ByteArrayInputStream(filtered.toByteArray(Charsets.UTF_8)))
     }
 }
-
-/**
- * 是否为视频解码能力相关错误（可尝试换编码 / 降画质重试）。
- *
- * 覆盖解码器初始化失败、查询失败、解码失败、格式超出能力、格式不支持；
- * 其余错误（网络、解析容器等）交由普通 [VideoPlayerListener.onError] 处理。
- */
-internal fun isVideoDecodeError(errorCode: Int): Boolean =
-    when (errorCode) {
-        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-        -> true
-
-        else -> false
-    }

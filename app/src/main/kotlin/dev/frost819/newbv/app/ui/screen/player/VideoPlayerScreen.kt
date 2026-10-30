@@ -137,6 +137,11 @@ fun VideoPlayerScreen(
         }
     }
 
+    // 相关视频归属随当前播放视频切换（播放器内切视频不会更新导航路由参数）
+    LaunchedEffect(uiState.aid) {
+        videoListViewModel.setCurrentAid(uiState.aid)
+    }
+
     // 切换视频事件：协调弹幕/字幕/蒙版重载
     LaunchedEffect(Unit) {
         playerViewModel.videoSwitchEvent.collect { event ->
@@ -148,7 +153,7 @@ fun VideoPlayerScreen(
                 cid = event.cid,
                 initialPositionMs = uiState.lastPlayed.toLong() * 1000,
             )
-            danmakuViewModel.loadDanmakuMask(event.aid, event.cid)
+            danmakuViewModel.loadDanmakuMask()
             subtitleViewModel.clearSubtitle()
             subtitleViewModel.loadSubtitleList(event.aid, event.cid)
         }
@@ -213,16 +218,11 @@ fun VideoPlayerScreen(
         }
     }
 
-    // 生命周期管理：onResume 恢复播放，onPause 暂停
+    // 生命周期管理：离开或切到后台时暂停；回到页面/前台不自动续播，保持暂停由用户手动开始
     DisposableEffect(lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
                 when (event) {
-                    Lifecycle.Event.ON_RESUME -> {
-                        if (playerViewModel.uiState.value.playerState == PlayerState.Paused) {
-                            playerViewModel.togglePlayPause()
-                        }
-                    }
                     Lifecycle.Event.ON_PAUSE -> {
                         if (playerViewModel.uiState.value.playerState == PlayerState.Playing) {
                             playerViewModel.togglePlayPause()
@@ -326,6 +326,8 @@ fun VideoPlayerScreen(
                         aid = video.avid,
                         cid = video.cid ?: 0,
                         title = video.title,
+                        authorMid = video.upMid,
+                        authorName = video.upName,
                     ),
                 )
             }

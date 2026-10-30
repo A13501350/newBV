@@ -1,4 +1,4 @@
-package dev.frost819.newbv.player.impl.exo
+package dev.frost819.newbv.player
 
 import androidx.media3.common.PlaybackException
 import com.google.common.truth.Truth.assertThat

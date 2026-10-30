@@ -32,6 +32,7 @@ import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
 import dev.frost819.newbv.core.interaction.InteractionTracker
 import dev.frost819.newbv.core.log.CrashHandler
 import dev.frost819.newbv.core.log.CrashUploader
+import dev.frost819.newbv.data.datastore.Prefs
 import dev.frost819.newbv.data.db.dao.UserDao
 import dev.frost819.newbv.data.repository.AccountRepository
 import dev.frost819.newbv.data.repository.SearchHistoryRepository
@@ -55,14 +56,21 @@ object NetworkModule {
     /**
      * 提供 [CrashUploader] 单例。
      *
-     * 使用 [BuildConfig.CRASH_REPORT_TOKEN]（从 `local.properties` 的 `crashReport.token` 注入）。
-     * token 为空时上传功能不可用，但实例仍会创建（调用时静默跳过）。
+     * 使用 [BuildConfig.CRASH_REPORT_TOKEN]（从 `local.properties` 的 `crashReport.token` 注入，
+     * 发布构建由 CI 写入）。该 token 对应 Worker 的 `CRASH_REPORT_TOKEN`，只允许上传崩溃日志；
+     * token 为空时上传功能不可用（调用时静默跳过）。
+     * 开关状态通过 [Prefs.crashReportEnabled] 实时读取，设置页切换后立即生效。
      */
     @Provides
     @Singleton
     fun provideCrashUploader(
         @ApplicationContext context: Context,
-    ): CrashUploader = CrashUploader(context, BuildConfig.CRASH_REPORT_TOKEN)
+    ): CrashUploader =
+        CrashUploader(
+            context = context,
+            authToken = BuildConfig.CRASH_REPORT_TOKEN,
+            isEnabled = { Prefs.crashReportEnabled },
+        )
 
     /**
      * 提供 [CrashHandler] 单例。

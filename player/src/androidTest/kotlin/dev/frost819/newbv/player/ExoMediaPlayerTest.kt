@@ -52,7 +52,6 @@ class ExoMediaPlayerTest {
                         VideoPlayerOptions(
                             userAgent = "test-agent",
                             referer = "https://www.bilibili.com",
-                            enableFfmpegAudioRenderer = false,
                             enableSoftwareVideoDecoder = false,
                         ),
                     httpClient = httpClient,
@@ -190,7 +189,6 @@ class ExoMediaPlayerTest {
                     context = context,
                     options =
                         VideoPlayerOptions(
-                            enableFfmpegAudioRenderer = true,
                             enableSoftwareVideoDecoder = true,
                         ),
                     httpClient = httpClient,
