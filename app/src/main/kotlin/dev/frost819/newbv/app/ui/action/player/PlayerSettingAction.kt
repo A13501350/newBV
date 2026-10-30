@@ -34,22 +34,51 @@ sealed interface DanmakuSettingAction {
         val types: List<DanmakuType>,
     ) : DanmakuSettingAction
 
+    /**
+     * 设置是否屏蔽彩色弹幕（非白色弹幕）。
+     *
+     * @property enabled true 表示屏蔽彩色弹幕
+     */
     data class SetBlockColorful(
         val enabled: Boolean,
     ) : DanmakuSettingAction
 
+    /**
+     * 设置是否合并重复弹幕。
+     *
+     * 开启后相同内容的弹幕合并为一条并显示 ×N 计数。
+     *
+     * @property enabled true 表示合并重复弹幕
+     */
     data class SetBlockRepeat(
         val enabled: Boolean,
     ) : DanmakuSettingAction
 
+    /**
+     * 设置是否屏蔽高级弹幕（mode 7/8/9）。
+     *
+     * @property enabled true 表示屏蔽高级弹幕
+     */
     data class SetBlockSpecial(
         val enabled: Boolean,
     ) : DanmakuSettingAction
 
+    /**
+     * 设置是否启用账号云端屏蔽规则。
+     *
+     * 规则来自 B 站 `/x/dm/filter/user` 接口，包含关键词、正则与用户屏蔽。
+     *
+     * @property enabled true 表示启用云端屏蔽规则
+     */
     data class SetBlockByUserFilter(
         val enabled: Boolean,
     ) : DanmakuSettingAction
 
+    /**
+     * 设置 AI 云屏蔽阈值。
+     *
+     * @property level 丢弃阈值：0 表示关闭，大于 0 时丢弃 weight 小于该值的弹幕
+     */
     data class SetAiCloudLevel(
         val level: Int,
     ) : DanmakuSettingAction
