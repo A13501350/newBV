@@ -60,8 +60,8 @@ class VolumeNormalizer(
     /** 节目平均功率；null 表示仍在校准窗口内。 */
     private var programMeanSquare: Double? = null
 
-    /** 当前线性增益。 */
-    private var currentGain = 1.0f
+    /** 当前线性增益（构造时即处于起播档位增益，而非单位增益）。 */
+    private var currentGain: Float = if (activeLevel == AudioBalanceLevel.OFF) 1.0f else params.startupGainLinear
 
     /**
      * 应用音频格式并重置自适应状态。

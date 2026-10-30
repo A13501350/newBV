@@ -84,4 +84,9 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // CI 上直接输出失败断言的期望值/实际值，便于定位
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
