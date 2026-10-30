@@ -11,12 +11,13 @@ import dev.frost819.newbv.app.viewmodel.player.VideoPlayerPictureMenuItem
 import dev.frost819.newbv.data.datastore.Audio
 import dev.frost819.newbv.data.datastore.Resolution
 import dev.frost819.newbv.data.datastore.VideoCodec
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 
 /**
  * 画质设置面板。
  *
  * 双列布局：左侧为选项值列表（[RadioMenuList]），右侧为子项列表。
- * 子项包括：分辨率、编码、宽高比、音轨。
+ * 子项包括：分辨率、编码、宽高比、音轨、音量均衡。
  *
  * @param modifier 修饰符
  * @param availableQualityIds 可用画质 ID 列表
@@ -26,10 +27,12 @@ import dev.frost819.newbv.data.datastore.VideoCodec
  * @param currentVideoCodec 当前编码
  * @param currentVideoAspectRatio 当前宽高比
  * @param currentAudio 当前音轨
+ * @param currentAudioBalance 当前音量均衡档位
  * @param onResolutionChange 画质变化回调
  * @param onCodecChange 编码变化回调
  * @param onAspectRatioChange 宽高比变化回调
  * @param onAudioChange 音轨变化回调
+ * @param onVolumeBalanceChange 音量均衡档位变化回调
  * @param onFocusStateChange 焦点状态变化回调
  */
 @Composable
@@ -42,10 +45,12 @@ fun PictureMenuList(
     currentVideoCodec: VideoCodec,
     currentVideoAspectRatio: VideoAspectRatio,
     currentAudio: Audio,
+    currentAudioBalance: AudioBalanceLevel,
     onResolutionChange: (Int) -> Unit,
     onCodecChange: (VideoCodec) -> Unit,
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
     onAudioChange: (Audio) -> Unit,
+    onVolumeBalanceChange: (AudioBalanceLevel) -> Unit,
     onFocusStateChange: (MenuFocusState) -> Unit,
 ) {
     val qualityIdList =
@@ -97,6 +102,15 @@ fun PictureMenuList(
                     items = audioList.map { it.displayName },
                     selected = audioList.indexOf(currentAudio),
                     onSelectedChanged = { onAudioChange(audioList[it]) },
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerPictureMenuItem.VolumeBalance ->
+                RadioMenuList(
+                    modifier = itemModifier,
+                    items = AudioBalanceLevel.entries.map { it.displayName },
+                    selected = AudioBalanceLevel.entries.indexOf(currentAudioBalance),
+                    onSelectedChanged = { onVolumeBalanceChange(AudioBalanceLevel.entries[it]) },
                     onFocusBackToParent = backToMenu,
                 )
         }

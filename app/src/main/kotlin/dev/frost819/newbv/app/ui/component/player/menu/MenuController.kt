@@ -41,6 +41,7 @@ import dev.frost819.newbv.biliapi.entity.video.SubtitleType
 import dev.frost819.newbv.data.datastore.Audio
 import dev.frost819.newbv.data.datastore.DanmakuType
 import dev.frost819.newbv.data.datastore.VideoCodec
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 
 /**
  * 设置菜单控制器。
@@ -56,6 +57,7 @@ import dev.frost819.newbv.data.datastore.VideoCodec
  * @param onAspectRatioChange 宽高比变化回调
  * @param onPlaySpeedChange 倍速变化回调
  * @param onAudioChange 音轨变化回调
+ * @param onVolumeBalanceChange 音量均衡档位变化回调
  * @param onDanmakuSwitchChange 弹幕类型变化回调
  * @param onDanmakuSizeChange 弹幕大小变化回调
  * @param onDanmakuOpacityChange 弹幕透明度变化回调
@@ -78,6 +80,7 @@ fun MenuController(
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
     onPlaySpeedChange: (Float) -> Unit = {},
     onAudioChange: (Audio) -> Unit,
+    onVolumeBalanceChange: (AudioBalanceLevel) -> Unit = {},
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
@@ -117,6 +120,7 @@ fun MenuController(
                 onAspectRatioChange = onAspectRatioChange,
                 onPlaySpeedChange = onPlaySpeedChange,
                 onAudioChange = onAudioChange,
+                onVolumeBalanceChange = onVolumeBalanceChange,
                 onDanmakuSwitchChange = onDanmakuSwitchChange,
                 onDanmakuSizeChange = onDanmakuSizeChange,
                 onDanmakuOpacityChange = onDanmakuOpacityChange,
@@ -144,6 +148,7 @@ private fun MenuControllerContent(
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
     onPlaySpeedChange: (Float) -> Unit,
     onAudioChange: (Audio) -> Unit,
+    onVolumeBalanceChange: (AudioBalanceLevel) -> Unit,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
@@ -180,6 +185,7 @@ private fun MenuControllerContent(
                     onPlaySpeedChange = onPlaySpeedChange,
                     onAspectRatioChange = onAspectRatioChange,
                     onAudioChange = onAudioChange,
+                    onVolumeBalanceChange = onVolumeBalanceChange,
                     onDanmakuSwitchChange = onDanmakuSwitchChange,
                     onDanmakuSizeChange = onDanmakuSizeChange,
                     onDanmakuOpacityChange = onDanmakuOpacityChange,
@@ -229,6 +235,7 @@ private fun MenuList(
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
     onPlaySpeedChange: (Float) -> Unit,
     onAudioChange: (Audio) -> Unit,
+    onVolumeBalanceChange: (AudioBalanceLevel) -> Unit,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
@@ -252,10 +259,12 @@ private fun MenuList(
                     currentVideoCodec = uiState.mediaProfileState.videoCodec,
                     currentVideoAspectRatio = uiState.aspectRatio,
                     currentAudio = uiState.mediaProfileState.audio,
+                    currentAudioBalance = uiState.audioBalanceLevel,
                     onResolutionChange = onResolutionChange,
                     onCodecChange = onCodecChange,
                     onAspectRatioChange = onAspectRatioChange,
                     onAudioChange = onAudioChange,
+                    onVolumeBalanceChange = onVolumeBalanceChange,
                     onFocusStateChange = onFocusStateChange,
                 )
 

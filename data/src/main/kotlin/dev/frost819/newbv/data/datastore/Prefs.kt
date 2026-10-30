@@ -291,6 +291,14 @@ object Prefs {
         restore = { Audio.fromCode(it) },
     )
 
+    /**
+     * 音量均衡档位（存储为枚举名）。
+     *
+     * 枚举类型定义在 player 模块（`dev.frost819.newbv.player.entity.AudioBalanceLevel`），
+     * data 模块不依赖 player，由 app 层用 `AudioBalanceLevel.fromName` 映射。
+     */
+    var audioBalanceLevel by pref(PrefKeys.audioBalanceLevel, "OFF")
+
     // --- 播放器 - 弹幕（PRD 7.3） ---
 
     /** 默认弹幕类型（多选，逗号分隔的序号字符串）。 */

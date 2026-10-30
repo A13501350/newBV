@@ -49,6 +49,7 @@ import dev.frost819.newbv.biliapi.entity.video.Subtitle
 import dev.frost819.newbv.core.theme.BVTheme
 import dev.frost819.newbv.core.theme.ThemeMode
 import dev.frost819.newbv.data.datastore.Prefs
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -96,6 +97,7 @@ fun VideoPlayerController(
     onMediaProfileSettingChange: (MediaProfileSettingAction) -> Unit,
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
     onPlaySpeedChange: (Float) -> Unit,
+    onVolumeBalanceChange: (AudioBalanceLevel) -> Unit,
     onDanmakuSettingChange: (DanmakuSettingAction) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSettingChange: (SubtitleSettingAction) -> Unit,
@@ -596,6 +598,7 @@ fun VideoPlayerController(
                 onAspectRatioChange = onAspectRatioChange,
                 onPlaySpeedChange = onPlaySpeedChange,
                 onAudioChange = { onMediaProfileSettingChange(MediaProfileSettingAction.SetAudio(it)) },
+                onVolumeBalanceChange = onVolumeBalanceChange,
                 onDanmakuSwitchChange = { types ->
                     // data DanmakuType → danmaku entity DanmakuType
                     val entityTypes =

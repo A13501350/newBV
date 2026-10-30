@@ -10,6 +10,7 @@ import dev.frost819.newbv.bilisubtitle.entity.SubtitleItem
 import dev.frost819.newbv.danmaku.config.DanmakuState
 import dev.frost819.newbv.data.datastore.Audio
 import dev.frost819.newbv.data.datastore.VideoCodec
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 
 /**
  * 播放器主 UI 状态（低频更新）。
@@ -53,6 +54,7 @@ data class PlayerUiState(
     val mediaProfileState: MediaProfileState = MediaProfileState(),
     val playSpeed: Float = 1f,
     val aspectRatio: VideoAspectRatio = VideoAspectRatio.Default,
+    val audioBalanceLevel: AudioBalanceLevel = AudioBalanceLevel.OFF,
     val isLooping: Boolean = false,
     // 弹幕
     val danmakuState: DanmakuState = DanmakuState(),

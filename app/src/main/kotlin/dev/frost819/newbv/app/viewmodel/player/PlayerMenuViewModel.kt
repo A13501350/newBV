@@ -94,6 +94,7 @@ enum class VideoPlayerPictureMenuItem(
     Codec("编码"),
     AspectRatio("宽高比"),
     Audio("音轨"),
+    VolumeBalance("音量均衡"),
 }
 
 /** 弹幕设置子项。 */

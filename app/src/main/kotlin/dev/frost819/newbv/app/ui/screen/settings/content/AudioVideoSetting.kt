@@ -30,11 +30,12 @@ import dev.frost819.newbv.data.datastore.PlaySpeed
 import dev.frost819.newbv.data.datastore.Prefs
 import dev.frost819.newbv.data.datastore.Resolution
 import dev.frost819.newbv.data.datastore.VideoCodec
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 
 /**
  * 音视频设置页。
  *
- * 画质/编码/音轨/倍速/播放结束动作/快捷键/软解。
+ * 画质/编码/音轨/音量均衡/倍速/播放结束动作/快捷键/软解。
  */
 @Composable
 fun AudioVideoSetting(modifier: Modifier = Modifier) {
@@ -46,10 +47,12 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
     var showPlaySpeedDialog by remember { mutableStateOf(false) }
     var showActionAfterPlayDialog by remember { mutableStateOf(false) }
     var showPlayerCustomShortcutsDialog by remember { mutableStateOf(false) }
+    var showAudioBalanceDialog by remember { mutableStateOf(false) }
 
     var selectedResolution by remember { mutableStateOf(Prefs.defaultQuality) }
     var selectedVideoCodec by remember { mutableStateOf(Prefs.defaultVideoCodec) }
     var selectedAudioCodec by remember { mutableStateOf(Prefs.defaultAudio) }
+    var selectedAudioBalance by remember { mutableStateOf(AudioBalanceLevel.fromName(Prefs.audioBalanceLevel)) }
     var selectedPlaySpeed by remember { mutableStateOf(Prefs.defaultPlaySpeed) }
     var selectedActionAfterPlay by remember { mutableStateOf(Prefs.actionAfterPlay) }
     var playerCustomShortcuts by remember { mutableStateOf(PlayerCustomShortcutsStore.get()) }
@@ -86,6 +89,11 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
             title = "默认音频编码",
             supportText = "当前：${selectedAudioCodec.displayName}",
             onClick = { showAudioCodecDialog = true },
+        )
+        SettingListItem(
+            title = "音量均衡",
+            supportText = "自适应响度归一，压平不同视频/直播间的音量差异；当前：${selectedAudioBalance.displayName}",
+            onClick = { showAudioBalanceDialog = true },
         )
         SettingListItem(
             title = "默认播放速度",
@@ -165,6 +173,19 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
             onSelect = {
                 Prefs.defaultAudio = it
                 selectedAudioCodec = it
+            },
+            getDisplayName = { it.displayName },
+        )
+    }
+
+    if (showAudioBalanceDialog) {
+        OptionDialog(
+            options = AudioBalanceLevel.entries.toTypedArray(),
+            selectedOption = selectedAudioBalance,
+            onDismiss = { showAudioBalanceDialog = false },
+            onSelect = {
+                Prefs.audioBalanceLevel = it.name
+                selectedAudioBalance = it
             },
             getDisplayName = { it.displayName },
         )

@@ -47,6 +47,7 @@ import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.CdnSelector
 import dev.frost819.newbv.player.VideoPlayerListener
 import dev.frost819.newbv.player.VideoPlayerOptions
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
 import dev.frost819.newbv.player.toPlaybackErrorMessage
 import kotlinx.coroutines.CancellationException
@@ -447,6 +448,7 @@ class PlayerViewModel
                             if (apiType == DataApiType.App) ApiType.App else ApiType.Web,
                         ),
                     enableSoftwareVideoDecoder = Prefs.enableSoftwareVideoDecoder,
+                    audioBalanceLevel = AudioBalanceLevel.fromName(Prefs.audioBalanceLevel),
                 )
 
             val newPlayer = exoPlayerFactory.create(context.applicationContext, options)
@@ -454,7 +456,8 @@ class PlayerViewModel
             videoPlayer = newPlayer
 
             val initialSpeed = Prefs.defaultPlaySpeed.speed
-            _uiState.update { it.copy(playSpeed = initialSpeed) }
+            val initialAudioBalance = AudioBalanceLevel.fromName(Prefs.audioBalanceLevel)
+            _uiState.update { it.copy(playSpeed = initialSpeed, audioBalanceLevel = initialAudioBalance) }
             newPlayer.speed = initialSpeed
         }
 
@@ -847,6 +850,20 @@ class PlayerViewModel
         /** 更新宽高比。 */
         fun updateVideoAspectRatio(ratio: VideoAspectRatio) {
             _uiState.update { it.copy(aspectRatio = ratio) }
+        }
+
+        /**
+         * 更新音量均衡档位。
+         *
+         * 写回偏好持久化，并对当前播放器即时生效（无需重建播放/音频管线）。
+         *
+         * @param level 目标档位
+         */
+        fun updateAudioBalanceLevel(level: AudioBalanceLevel) {
+            if (_uiState.value.audioBalanceLevel == level) return
+            Prefs.audioBalanceLevel = level.name
+            _uiState.update { it.copy(audioBalanceLevel = level) }
+            videoPlayer?.volumeBalanceLevel = level
         }
 
         /** 切换循环播放。 */

@@ -29,6 +29,7 @@ import dev.frost819.newbv.data.datastore.VideoCodec
 import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.VideoPlayerListener
 import dev.frost819.newbv.player.VideoPlayerOptions
+import dev.frost819.newbv.player.entity.AudioBalanceLevel
 import dev.frost819.newbv.player.impl.exo.ExoMediaPlayer
 import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
 import dev.frost819.newbv.player.toPlaybackErrorMessage
@@ -160,6 +161,7 @@ class LivePlayerViewModel
                 VideoPlayerOptions(
                     userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
                     referer = "https://live.bilibili.com",
+                    audioBalanceLevel = AudioBalanceLevel.fromName(Prefs.audioBalanceLevel),
                 )
             videoPlayer = exoPlayerFactory.create(context, options)
             videoPlayer?.setPlayerEventListener(videoPlayerListener)
