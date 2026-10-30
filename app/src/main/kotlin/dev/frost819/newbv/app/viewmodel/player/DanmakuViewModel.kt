@@ -3,8 +3,6 @@ package dev.frost819.newbv.app.viewmodel.player
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.DanmakuConfig
@@ -279,16 +277,13 @@ class DanmakuViewModel
                     return@launch
                 }
 
-                // 从 dm/view 响应中应用 B 站账号同步来的弹幕过滤配置
                 applyBiliFilterConfig(meta.filterConfig)
-                // 举报屏蔽词随每次元数据刷新（cid 维度，服务端强制内容）
                 reportFilterKeywords = meta.filterConfig.reportFilterContent
 
                 logger.info {
                     "Danmaku meta: segmentSizeMs=$segmentSizeMs, segTotal=$segmentTotal, count=${meta.count}"
                 }
 
-                // 账号云端屏蔽词/正则/用户规则：本次会话只拉取一次，失败不影响播放
                 loadUserFilter()
 
                 startSegmentWatcher()
@@ -297,20 +292,13 @@ class DanmakuViewModel
             }
         }
 
-        /**
-         * 直播弹幕过滤准备：进入直播间时拉取账号云端屏蔽规则。
-         *
-         * 与点播共用会话内一次的拉取门控；未登录/失败仅记日志并降级。
-         */
+        /** 进入直播间时拉取账号云端规则（与点播共用会话内一次的门控）。 */
         fun prepareForLive() {
             viewModelScope.launch { loadUserFilter() }
         }
 
         /**
-         * 直播弹幕单条过滤：账号云端规则（屏蔽词/正则/用户 midHash）。
-         *
-         * 直播 WS 弹幕无 weight/ai_flag（AI 云屏蔽无数据源）、无 mode 7/8/9
-         * 高级弹幕，因此仅应用账号屏蔽规则；midHash 由 WS mid 现算 crc32。
+         * 直播弹幕单条过滤：仅账号云端规则。直播弹幕无 weight/ai_flag、无 mode 7-9。
          *
          * @return true 表示该弹幕应被丢弃
          */
@@ -322,7 +310,9 @@ class DanmakuViewModel
             if (!state.blockByUserFilter) return false
             val rules = userFilter
             if (rules.isEmpty) return false
-            return rules.matches(midHash = crc32Hex(mid.toString()), content = content)
+            // WS 回调在主线程：无用户规则时不计算 midHash，避免每条弹幕都做 CRC32
+            val midHash = if (rules.blockedUserHashes.isEmpty()) "" else crc32Hex(mid.toString())
+            return rules.matches(midHash = midHash, content = content)
         }
 
         /**
@@ -417,18 +407,7 @@ class DanmakuViewModel
             return true
         }
 
-        /**
-         * 「加载期过滤」开关变化时重载当前分段。
-         *
-         * 合并（[mergeDuplicates]）与 blockSpecial/AI 云屏蔽/账号规则过滤都发生在
-         * 分段加载时：已加载分段不会随开关变化，因此切换后需清空引擎数据并重新
-         * 拉取当前段及预取段，使新规则立即可见。已播放过的历史分段不重载。
-         *
-         * 清空 [loadedSegments] 与 [loadingSegments] 并推进 [loadGeneration]：
-         * 在途请求返回后凭 generation 丢弃结果，避免旧规则数据写回已清空的引擎。
-         *
-         * @param reason 触发原因（开关名），仅用于日志
-         */
+        /** 加载期过滤开关变化后重载当前段：已加载分段不会随开关变化。 */
         private fun reloadCurrentSegments(reason: String) {
             val player = danmakuPlayer ?: return
             if (loadedSegments.isEmpty() && loadingSegments.isEmpty()) return
@@ -451,7 +430,7 @@ class DanmakuViewModel
          * 其余 [CancellationException] 属外层取消（collectLatest 切段 / 切集），必须上抛。
          */
         private suspend fun fetchSegmentWithRetry(segmentIndex: Int) {
-            // 记录发起时的 generation：期间若有重载/切集，返回的旧规则数据直接丢弃
+            // 发起时的 generation：重载/切集后凭此丢弃在途结果
             val generation = loadGeneration
             try {
                 repeat(SEGMENT_MAX_ATTEMPTS) { attempt ->
@@ -465,19 +444,12 @@ class DanmakuViewModel
                                     preferApiType = if (Prefs.apiType == DataApiType.App) ApiType.App else ApiType.Web,
                                 )
                             }
-                        // 逐条过滤+合并是 CPU 密集操作（单段可达数千条 × N 条规则），
-                        // 放到 [filterDispatcher]，避免在 Main 上掉帧
-                        val blockRepeat = _danmakuState.value.blockRepeat
                         val (items, filterStats, keptCount) =
                             withContext(filterDispatcher) {
                                 val stats = SegmentFilterStats()
                                 val filteredList = dataList.filterForDisplay(stats)
-                                val result =
-                                    if (blockRepeat) {
-                                        filteredList.mergeDuplicates()
-                                    } else {
-                                        filteredList.map { it.toDanmakuItemData() }
-                                    }
+                                // 合并项与原件成对生成，DuplicateMergedFilter 热切换，切换 blockRepeat 无需重载
+                                val result = filteredList.mergeDuplicates()
                                 Triple(result, stats, filteredList.size)
                             }
                         if (generation != loadGeneration) return
@@ -518,17 +490,11 @@ class DanmakuViewModel
                     }
                 }
             } finally {
-                // 取消/失败/成功都要移除标记：失败段允许后续触发重试
-                loadingSegments.remove(segmentIndex)
+                // generation 已变说明重载/切集，同段标记属于新请求，不能误删
+                if (generation == loadGeneration) loadingSegments.remove(segmentIndex)
             }
         }
 
-        /**
-         * 将接口层弹幕数据转换为 akdanmaku 渲染数据。
-         *
-         * @param mergedType 合并弹幕类型，默认普通弹幕
-         * @param mergedCount 重复条数，>1 时在文本后追加 " ×N"
-         */
         private fun DanmakuData.toDanmakuItemData(
             mergedType: Int = DanmakuItemData.MERGED_TYPE_NORMAL,
             mergedCount: Int = 0,
@@ -544,20 +510,15 @@ class DanmakuViewModel
                         else -> DanmakuItemData.DANMAKU_MODE_ROLLING
                     },
                 textSize = size,
-                textColor = Color(color).toArgb(),
+                textColor = color,
                 mergedType = mergedType,
             )
 
         /**
-         * 按内容合并重复弹幕。
+         * 按文本合并 [MERGE_WINDOW_SECONDS] 时间窗内的重复弹幕。
          *
-         * 相同文本的弹幕在 [MERGE_WINDOW_SECONDS] 时间窗内合并为一组：
-         * - 组内首条标为 [DanmakuItemData.MERGED_TYPE_MERGED]，文本追加 " ×N"
-         * - 组内其余标为 [DanmakuItemData.MERGED_TYPE_ORIGINAL]
-         * - 无重复的弹幕保持 [DanmakuItemData.MERGED_TYPE_NORMAL]
-         *
-         * 合并弹幕与原件均送入引擎，由 [DuplicateMergedFilter] 根据 `blockRepeat` 开关
-         * 决定展示哪一种（开启展示合并弹幕，关闭展示原件）。
+         * 组内首条为合并项（文本追加 " ×N"），其余为原件；由 [DuplicateMergedFilter]
+         * 按 `blockRepeat` 决定展示哪一种。
          */
         internal fun List<DanmakuData>.mergeDuplicates(): List<DanmakuItemData> {
             if (isEmpty()) return emptyList()
@@ -606,14 +567,7 @@ class DanmakuViewModel
             var maxWeight: Int = Int.MIN_VALUE
         }
 
-        /**
-         * 按当前弹幕设置过滤分段数据。
-         *
-         * - 高级/代码/BAS 弹幕（mode 7/8/9）引擎无法渲染，开启屏蔽时直接丢弃
-         * - 举报屏蔽词（`reportFilterContent`，cid 维度）：服务端强制内容，无条件生效
-         * - 账号云端规则：屏蔽词、正则、用户（midHash）
-         * - AI 云屏蔽按等级丢弃低分弹幕：评分取 weight 与服务端 ai_flag 的较大值
-         */
+        /** 按当前设置过滤分段数据，并累计 [stats] 供运行日志核对。 */
         private fun List<DanmakuData>.filterForDisplay(stats: SegmentFilterStats): List<DanmakuData> {
             val state = _danmakuState.value
             val rules = userFilter
@@ -649,14 +603,10 @@ class DanmakuViewModel
         }
 
         /**
-         * 判断弹幕是否应被 AI 云屏蔽丢弃。
+         * [aiLevel] 直接作为丢弃阈值（评分低于该值即过滤）。
          *
-         * [aiLevel] 即服务端 1-10 等级，直接作为丢弃阈值（weight 低于该值则过滤），
-         * 与服务端语义一致，避免五档预设映射把低等级变成零效果。
-         *
-         * Web `seg.so` 通道实测不下发 ai_flag（[DanmakuData.aiFlagScore] 恒为 0），
-         * 因此实际过滤依据是 [DanmakuData.level]（weight，实测 1-11）；
-         * aiFlagScore 仅在非 0 时参与，两者取绝对值较大者为评分。
+         * Web `seg.so` 实测不下发 ai_flag（[DanmakuData.aiFlagScore] 恒为 0），
+         * 实际依据是 weight（[DanmakuData.level] 实测 1-11）；两者非 0 时取绝对值较大者。
          */
         internal fun DanmakuData.shouldDropByAi(aiLevel: Int): Boolean {
             val score =
@@ -667,13 +617,7 @@ class DanmakuViewModel
             return score < aiLevel
         }
 
-        /**
-         * 加载当前视频的弹幕防遮挡蒙版。
-         *
-         * 视频标识复用 [loadDanmaku] 记录的 [currentAid] / [currentCid]，需在其之后调用。
-         * 防遮挡默认关闭且蒙版只在开启时需要渲染，因此关闭状态下直接跳过请求，
-         * 待用户打开开关时由 [updateDanmakuState] 补加载。
-         */
+        /** 加载当前视频的防遮挡蒙版；关闭状态下不请求，开关打开后由 [updateDanmakuState] 补加载。 */
         fun loadDanmakuMask() {
             maskFetchJob?.cancel()
             maskFetchJob = null
@@ -779,13 +723,8 @@ class DanmakuViewModel
                         "colorful=${new.blockColorful}, repeat=${new.blockRepeat}, " +
                         "special=${new.blockSpecial}, aiCloudLevel=${new.aiCloudLevel}"
                 }
-                // 合并发生在分段加载时：已加载分段没有合并版本，切换后需重载当前段
-                if (new.blockRepeat != old.blockRepeat) {
-                    reloadCurrentSegments("blockRepeat")
-                }
+                // blockRepeat 只改 DuplicateMergedFilter.enable（热切换），无需重载分段
             } else {
-                // 账号屏蔽规则、高级弹幕、AI 云屏蔽均为分段加载期的本地过滤，
-                // 不经过引擎 Filter 链，切换后重载当前分段使其立即生效
                 if (new.blockByUserFilter != old.blockByUserFilter) {
                     reloadCurrentSegments("blockByUserFilter")
                 }
@@ -795,7 +734,6 @@ class DanmakuViewModel
                 if (new.aiCloudLevel != old.aiCloudLevel) {
                     reloadCurrentSegments("aiCloudLevel")
                 }
-                // 非 Filter 变更：仅更新对应配置项，避免全量重建
                 if (new.scale != old.scale) {
                     danmakuConfig = danmakuConfig.copy(textSizeScale = new.scale)
                     danmakuPlayer?.updateConfig(danmakuConfig)
@@ -809,7 +747,6 @@ class DanmakuViewModel
                 }
             }
 
-            // 持久化
             if (new.enabledTypes != old.enabledTypes) {
                 Prefs.defaultDanmakuTypes = new.enabledTypes.map { it.toDataDanmakuType() }
             }
@@ -830,7 +767,6 @@ class DanmakuViewModel
             }
             if (new.maskEnabled != old.maskEnabled) {
                 Prefs.defaultDanmakuMask = new.maskEnabled
-                // 蒙版只在开启时请求：关闭期间不下载，打开后若当前视频尚未加载则补加载
                 if (new.maskEnabled && _danmakuMask.value == null && currentCid > 0L) {
                     loadDanmakuMask()
                 }
@@ -851,7 +787,6 @@ class DanmakuViewModel
             val scale = state.scale
             val factor = state.speedFactor
 
-            // 类型过滤：屏蔽不在 enabledTypes 中的弹幕类型
             danmakuTypeFilter.clear()
             if (!types.contains(DanmakuEntityDanmakuType.All)) {
                 val allTypes = DanmakuEntityDanmakuType.entries.toMutableList()
@@ -868,7 +803,6 @@ class DanmakuViewModel
                     }.forEach { danmakuTypeFilter.addFilterItem(it) }
             }
 
-            // 彩色弹幕过滤：仅允许白色 (0xFFFFFF) 通过
             danmakuTextColorFilter.filterColor.clear()
             if (state.blockColorful) {
                 danmakuTextColorFilter.filterColor.add(0xFFFFFF)
@@ -878,9 +812,7 @@ class DanmakuViewModel
                 buildList {
                     add(danmakuTypeFilter)
                     if (state.blockColorful) add(danmakuTextColorFilter)
-                    // DuplicateMergedFilter 始终挂载：
-                    // - blockRepeat=true: enable=true，过滤原件(MERGED_TYPE_ORIGINAL)，展示合并弹幕(带 ×N)
-                    // - blockRepeat=false: enable=false，过滤合并弹幕(MERGED_TYPE_MERGED)，展示原件
+                    // blockRepeat 由 enable 热切换：true 过滤原件（展示 ×N 合并项），false 反之
                     danmakuDuplicateFilter.enable = state.blockRepeat
                     add(danmakuDuplicateFilter)
                 }
@@ -915,19 +847,14 @@ class DanmakuViewModel
             danmakuPlayer?.updateConfig(danmakuConfig)
         }
 
-        /**
-         * 云端账号屏蔽规则（关键词 / 正则 / 用户）的编译结果。
-         *
-         * 用户规则为 type=2，接口下发的是 UID 的 crc32 hex（部分版本为原始 UID，
-         * 编译时统一归一化为小写 midHash），与分段数据里的 [DanmakuData.midHash] 比对。
-         */
+        /** 云端账号屏蔽规则（关键词 / 正则 / 用户）的编译结果；用户规则归一化为小写 midHash。 */
         private class CompiledUserFilter(
             val keywords: List<String> = emptyList(),
             val regexes: List<Regex> = emptyList(),
             val blockedUserHashes: Set<String> = emptySet(),
             val invalidRegexCount: Int = 0,
         ) {
-            /** 是否无任何可用规则（关键词/正则/用户均空），用于快速跳过过滤。 */
+            /** 无任何可用规则时快速跳过过滤。 */
             val isEmpty: Boolean
                 get() = keywords.isEmpty() && regexes.isEmpty() && blockedUserHashes.isEmpty()
 
@@ -947,14 +874,9 @@ class DanmakuViewModel
             }
         }
 
-        /**
-         * 拉取账号云端屏蔽规则（同一账号本次会话仅一次）。
-         *
-         * 未登录、接口异常或超时都只记录日志并降级为不使用云端规则；
-         * 失败/超时后 [userFilterLoadedMid] 置回 null，进入下一集或直播间时重试。
-         */
+        /** 拉取账号云端屏蔽规则：同一账号本次会话仅一次，失败/超时允许下次重试。 */
         private suspend fun loadUserFilter() {
-            val mid = authRepository.mid ?: 0L
+            val mid = authRepository.mid ?: return
             if (userFilterLoadedMid == mid) return
             try {
                 val rules =
@@ -979,7 +901,6 @@ class DanmakuViewModel
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // 失败不置位 loaded，允许下一集或下次进直播间重试
                 logger.warn { "Load danmaku user filter failed: $e" }
             }
         }
@@ -991,7 +912,6 @@ class DanmakuViewModel
             var invalidRegex = 0
             for (rule in rules) {
                 val value = rule.filter.trim()
-                // 云端规则来自用户可编辑输入，超长文本（尤其回溯型正则）会卡死过滤线程
                 if (value.isEmpty() || value.length > USER_RULE_MAX_LENGTH) continue
                 when (rule.type) {
                     FILTER_TYPE_KEYWORD -> keywords += value
@@ -1026,20 +946,17 @@ class DanmakuViewModel
         /**
          * 将 B 站 dm/view 返回的用户过滤配置合并到本地状态并重建引擎 Filter 链。
          *
-         * 同步只发生一次并写入 [Prefs.danmakuBiliFilterSynced]（与账号 mid 绑定），
-         * 因此是**跨启动持久生效**，而非"本次会话"；换账号后才会重新同步。
-         * 同步之后用户在本应用内的调整不会被后续切集的元数据覆盖。
+         * 同步标记与账号 mid 绑定并持久化，因此跨启动生效；换账号后重新同步，
+         * 之后用户在本应用内的调整不会被切集元数据覆盖。
          *
-         * block* 语义经真机实测确认：官方端未开启任何屏蔽时服务端仍下发 `true`，
-         * 即 `true` 表示该类型**未被屏蔽**，`false` 才表示屏蔽（见 [mergeBiliDanmakuTypes]）。
-         * playerConfig 缺失时（仅 flag 存在）不触碰本地弹幕类型与屏蔽开关，避免误判。
+         * block* 语义经真机实测确认：`true` 表示该类型**未被屏蔽**，`false` 才表示屏蔽
+         * （见 [mergeBiliDanmakuTypes]）。playerConfig 缺失时（仅 flag 存在）不触碰
+         * 本地弹幕类型与屏蔽开关，避免误判。
          */
         private fun applyBiliFilterConfig(config: BiliDanmakuFilterConfig) {
-            // 未登录时 dm/view 不返回 playerConfig/flag，得到的是全默认值的兜底对象，
-            // 不应置位 synced，否则登录后永远不再同步
+            // 未登录时得到的是全默认值兜底对象，置位 synced 会导致登录后永不同步
             if (!config.hasValidConfig) return
 
-            // 同步标记与当前账号 mid 绑定：换账号后重新同步
             val currentMid = authRepository.mid ?: 0L
             if (Prefs.danmakuBiliFilterSynced && Prefs.danmakuBiliFilterSyncedMid == currentMid) return
             Prefs.danmakuBiliFilterSynced = true
@@ -1055,13 +972,11 @@ class DanmakuViewModel
             val mergedState =
                 current.copy(
                     enabledTypes = mergedTypes,
-                    // 彩色/高级弹幕屏蔽：blockColor/blockSpecial 为 true 表示未屏蔽，
                     // 仅当服务端明确屏蔽（false）时启用本地屏蔽；用户本地已开的屏蔽保留
                     blockColorful =
                         if (config.hasPlayerConfig && !config.blockColor) true else current.blockColorful,
                     blockSpecial =
                         if (config.hasPlayerConfig && !config.blockSpecial) true else current.blockSpecial,
-                    // AI 云屏蔽：服务端等级（1-10）直接作为本地阈值等级
                     aiCloudLevel =
                         if (config.aiSwitch && (config.aiLevel > 0 || config.aiLevelV2 > 0)) {
                             (config.aiLevel.takeIf { it > 0 } ?: config.aiLevelV2)
@@ -1075,7 +990,6 @@ class DanmakuViewModel
                 return
             }
             _danmakuState.update { mergedState }
-            // 持久化 B 站同步的初始值，避免下次启动被重复覆盖
             Prefs.defaultDanmakuTypes = mergedState.enabledTypes.map { it.toDataDanmakuType() }
             Prefs.defaultDanmakuBlockColorful = mergedState.blockColorful
             Prefs.defaultDanmakuBlockSpecial = mergedState.blockSpecial
@@ -1084,12 +998,7 @@ class DanmakuViewModel
             logger.info { "Applied Bili danmaku filter config: $config" }
         }
 
-        /**
-         * 将 B 站 playerConfig 的 blockTop/blockScroll/blockBottom 合并到 enabledTypes。
-         *
-         * 真机实测语义：官方端三个屏蔽开关均未开启时，服务端仍下发全 `true`。
-         * 因此 `true` = 该类型未被屏蔽，`false` = 屏蔽；只移除值为 `false` 的类型。
-         */
+        /** 将 playerConfig 的三个 block* 开关合并进 enabledTypes（`true` 表示未屏蔽）。 */
         private fun mergeBiliDanmakuTypes(
             current: List<DanmakuEntityDanmakuType>,
             config: BiliDanmakuFilterConfig,

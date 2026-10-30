@@ -269,7 +269,6 @@ private fun LiveMenuList(
 
             LivePlayerMenuNavItem.DanmakuFilter ->
                 DanmakuFilterMenuList(
-                    // 直播弹幕无 weight/ai_flag、无 mode 7-9、不经合并：仅保留彩色与云端规则两项
                     visibleItems =
                         listOf(
                             VideoPlayerDanmakuFilterMenuItem.BlockColorful,

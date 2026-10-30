@@ -42,11 +42,11 @@ data class DanmakuMeta(
  * `flag`（DanmakuFlagConfig）与 `reportFilterContent` 三个字段，
  * 统一封装后供本地引擎 Filter 链消费。
  *
- * @property blockTop 顶部弹幕开关（真机实测：true 表示未屏蔽，官方端未开启屏蔽时服务端也下发 true）
- * @property blockScroll 滚动弹幕开关（同上，true 表示未屏蔽）
- * @property blockBottom 底端弹幕开关（同上，true 表示未屏蔽）
- * @property blockColor 彩色弹幕开关（同上，true 表示未屏蔽）
- * @property blockSpecial 特殊弹幕开关（同上，true 表示未屏蔽）
+ * @property blockTop 顶部弹幕开关（实测 true 表示未屏蔽，官方端未开屏蔽时服务端也下发 true）
+ * @property blockScroll 滚动弹幕开关（同上）
+ * @property blockBottom 底端弹幕开关（同上）
+ * @property blockColor 彩色弹幕开关（同上）
+ * @property blockSpecial 特殊弹幕开关（同上）
  * @property aiSwitch 是否开启 AI 智能云屏蔽
  * @property aiLevel AI 云屏蔽等级（服务端 1-10 尺度，与弹幕 weight 同源；0 表示未设置）
  * @property aiLevelV2 AI 云屏蔽 V2 等级（尺度未验证，仅作 aiLevel 缺失时的兜底）

@@ -143,13 +143,11 @@ fun DanmakuMenuList(
 }
 
 /**
- * 弹幕屏蔽设置面板。
+ * 弹幕屏蔽设置面板：二级为屏蔽项列表，三级为各项的开关/等级选择。
  *
- * 二级为屏蔽项列表，三级为各屏蔽项的开关/等级选择。
- *
- * @param visibleItems 可见的屏蔽项；直播弹幕无 weight/ai_flag、无 mode 7-9、不经合并，
- *   直播侧只传实际生效的项（屏蔽彩色弹幕、账号屏蔽规则）
- * @param userFilterRuleCount 已加载的账号云端屏蔽规则数，>0 时在对应项名称后展示
+ * @param visibleItems 可见的屏蔽项；直播侧无 weight/ai_flag、无 mode 7-9、不经合并，
+ *   只传实际生效的项（屏蔽彩色弹幕、账号屏蔽规则）
+ * @param userFilterRuleCount 已加载的账号云端屏蔽规则数，>0 时在项名称后展示
  */
 @Composable
 fun DanmakuFilterMenuList(
@@ -221,7 +219,6 @@ fun DanmakuFilterMenuList(
                 RadioMenuList(
                     modifier = itemModifier,
                     items = listOf("关闭", "弱", "中", "强", "极强"),
-                    // 状态内存服务端 1-10 等级，五档仅为预设映射
                     selected = aiLevelToPresetIndex(currentAiCloudLevel),
                     onSelectedChanged = { onDanmakuAiCloudLevelChange(DanmakuState.AI_LEVEL_PRESETS[it]) },
                     onFocusBackToParent = backToMenu,

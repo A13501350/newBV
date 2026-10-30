@@ -4,8 +4,6 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.data.DanmakuItemData
@@ -85,11 +83,7 @@ class LivePlayerViewModel
         /** 调试信息，仅在 [Prefs.showPlayerDebugInfo] 开启时更新。 */
         val debugInfo: StateFlow<String> = _debugInfo.asStateFlow()
 
-        /**
-         * 播放器事件回调。
-         *
-         * 提成字段（而非内联匿名对象）便于单测直接驱动各回调；错误态统一由 [failPlayback] 写入。
-         */
+        /** 提成字段便于单测直接驱动回调；错误态统一由 [failPlayback] 写入。 */
         private val videoPlayerListener =
             object : VideoPlayerListener {
                 override fun onError(error: Exception) {
@@ -177,8 +171,7 @@ class LivePlayerViewModel
          *
          * @param roomId 房间号
          * @param danmakuPlayer 弹幕播放器实例（由 DanmakuViewModel 提供）
-         * @param danmakuFilter 直播弹幕单条过滤函数（由 DanmakuViewModel 提供，
-         *   账号云端屏蔽规则）；返回 true 表示丢弃该条弹幕，null 表示不过滤
+         * @param danmakuFilter 直播弹幕单条过滤函数，返回 true 表示丢弃
          */
         fun loadLive(
             roomId: Long,
@@ -257,14 +250,7 @@ class LivePlayerViewModel
             }
         }
 
-        /**
-         * 置错误态。
-         *
-         * 同时清掉缓冲标记：错误浮层优先级高于转圈，残留的 `isBuffering` 还会让
-         * 后续重连误判为仍在加载。
-         *
-         * @param message 面向用户的错误文案
-         */
+        /** 置错误态并清掉缓冲标记（错误浮层优先于转圈，残留缓冲会让重连误判）。 */
         private fun failPlayback(message: String) {
             _uiState.update {
                 it.copy(
@@ -365,13 +351,7 @@ class LivePlayerViewModel
             }
         }
 
-        /**
-         * 发送直播弹幕到引擎。
-         *
-         * 先套用账号云端屏蔽规则（屏蔽词/正则/用户），命中直接丢弃；
-         * mode/color 由 WS 协议透传（身份弹幕带颜色，4/5 为底部/顶部），
-         * 仅 1-6 为引擎可渲染的普通模式，7+（高级弹幕变体）折叠为滚动。
-         */
+        /** 将直播弹幕送入引擎，先套用账号云端屏蔽规则；mode 7+ 折叠为滚动。 */
         private fun sendDanmaku(
             content: String,
             mid: Long,
@@ -392,7 +372,7 @@ class LivePlayerViewModel
                             else -> DanmakuItemData.DANMAKU_MODE_ROLLING
                         },
                     textSize = 25,
-                    textColor = Color(textColor).toArgb(),
+                    textColor = textColor,
                     score = 0,
                     danmakuStyle = 0,
                     rank = 0,
@@ -484,12 +464,7 @@ class LivePlayerViewModel
             }
         }
 
-        /**
-         * 过滤掉本机无法解码的 HDR 画质档位。
-         *
-         * SDR 档始终保留（维持既有行为）；HDR 档按携带它的编码（通常为 HEVC/AV1/杜比视界）
-         * 查询本机解码能力，不可解则从画质菜单中隐藏，避免用户选中后播放失败。
-         */
+        /** 隐藏本机无法解码的 HDR 档（SDR 始终保留），避免选中后播放失败。 */
         private fun filterDecodableQualities(qualities: List<LiveQuality>): List<LiveQuality> =
             qualities.filter { quality ->
                 if (!quality.isHdr) return@filter true
@@ -500,12 +475,7 @@ class LivePlayerViewModel
                 decodable
             }
 
-        /**
-         * 将当前档位标识重映射到过滤后的画质列表内。
-         *
-         * 若 [currentKey] 对应的档位被能力过滤移除（或服务端降级后不存在），
-         * 回退到列表首项（最高可用档），保证菜单选中态与续播请求的 key 有效。
-         */
+        /** 档位被能力过滤或服务端降级移除时回退到首项，保证选中态与请求 key 有效。 */
         private fun resolveCurrentKey(
             qualities: List<LiveQuality>,
             currentKey: Int,
@@ -515,13 +485,7 @@ class LivePlayerViewModel
                 ?: qualities.firstOrNull()?.key
                 ?: fallbackKey
 
-        /**
-         * 从 HDR 档位携带的解码提示构造 [VideoDecodeProfile]。
-         *
-         * 编码判定：RFC 6381 串以 dvh1/dvhe 开头为杜比视界，否则按编码名（hevc/av1）识别。
-         * 调用方已保证 codecName/codecs 至少其一非空（无提示的 HDR 档已提前放行），
-         * 此处 else 仅兜住 codecName 无法识别的罕见情形。
-         */
+        /** 从 HDR 档的解码提示构造 [VideoDecodeProfile]；dvh1/dvhe 为杜比视界。 */
         private fun LiveQuality.toDecodeProfile(): VideoDecodeProfile {
             val codec =
                 when {

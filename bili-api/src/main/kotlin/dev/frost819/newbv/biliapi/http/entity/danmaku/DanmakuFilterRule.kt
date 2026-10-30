@@ -5,11 +5,8 @@ import kotlinx.serialization.Serializable
 /**
  * 用户云端弹幕屏蔽规则（GET /x/dm/filter/user）。
  *
- * @property id 规则 id
- * @property mid 规则所属用户 mid
  * @property type 规则类型：0=关键词 1=正则 2=用户
  * @property filter 规则内容；type=2 时为 UID 的 crc32 hex（部分版本返回原始 UID）
- * @property comment 备注
  * @property opened 是否启用
  */
 @Serializable

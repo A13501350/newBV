@@ -48,8 +48,15 @@ data class DanmakuState(
     val userFilterRuleCount: Int = 0,
 ) {
     companion object {
-        /** AI 云屏蔽 UI 五档对应的服务端等级预设；状态内存的是真实等级而非档位序号。 */
-        val AI_LEVEL_PRESETS = intArrayOf(0, 1, 5, 7, 10)
+        /**
+         * AI 云屏蔽 UI 五档（关闭/弱/中/强/极强）对应的阈值预设；状态内存的是阈值而非档位序号。
+         *
+         * 弱档取 2 而非 1：实测 weight 最小为 1，阈值 1 时 `weight < 1` 永不成立，
+         * 会出现「弱档等同关闭」的零过滤问题。
+         * 中档取 4 而非 5：真机实测阈值 5 在高弹幕密度视频会丢弃 97%，
+         * 下调一级使中档落在弱与强之间。
+         */
+        val AI_LEVEL_PRESETS = intArrayOf(0, 2, 4, 7, 10)
     }
 
     /**

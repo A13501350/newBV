@@ -340,11 +340,7 @@ class VideoPlayRepository(
                 }
         }
 
-    /**
-     * 获取用户云端弹幕屏蔽规则（关键词 / 正则 / 用户）。
-     *
-     * 未登录或接口不可用时由调用方降级处理，不影响播放。
-     */
+    /** 获取用户云端弹幕屏蔽规则（关键词 / 正则 / 用户）；失败由调用方降级处理。 */
     suspend fun getDanmakuFilterRules(): List<DanmakuFilterRule> = BiliHttpApi.getDanmakuFilterRules()
 
     suspend fun getDanmakuMask(
