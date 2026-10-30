@@ -57,7 +57,7 @@ object NetworkModule {
      * 提供 [CrashUploader] 单例。
      *
      * 使用 [BuildConfig.CRASH_REPORT_TOKEN]（从 `local.properties` 的 `crashReport.token` 注入，
-     * 发布构建由 CI 写入）。该 token 对应 Worker 的 `CRASH_TOKEN`，只允许上传崩溃日志；
+     * 发布构建由 CI 写入）。该 token 对应 Worker 的 `CRASH_REPORT_TOKEN`，只允许上传崩溃日志；
      * token 为空时上传功能不可用（调用时静默跳过）。
      * 开关状态通过 [Prefs.crashReportEnabled] 实时读取，设置页切换后立即生效。
      */

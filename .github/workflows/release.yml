@@ -58,7 +58,7 @@ jobs:
           echo "$SIGNING_PROPERTIES" | base64 -d > signing.properties
           echo "$SIGN_KEY" | base64 -d > key.jks
 
-      - name: Configure crash report token
+      - name: Configure app crash token
         env:
           CRASH_REPORT_TOKEN: ${{ secrets.CRASH_REPORT_TOKEN }}
         run: |
@@ -81,17 +81,17 @@ jobs:
           echo "versionCode=$(jq -r '.elements[0].versionCode' "$META")" >> "$GITHUB_ENV"
           echo "versionName=$(jq -r '.elements[0].versionName' "$META")" >> "$GITHUB_ENV"
 
-      # CRASH_UPLOAD_TOKEN 为 Worker 管理端 AUTH_TOKEN；APK 内使用的是 CRASH_REPORT_TOKEN
+      # WORKER_ADMIN_TOKEN 为 Worker 管理端 ADMIN_TOKEN；APK 内使用的是 CRASH_REPORT_TOKEN
       - name: Upload mapping to crash backend
         env:
-          CRASH_UPLOAD_TOKEN: ${{ secrets.CRASH_UPLOAD_TOKEN }}
+          WORKER_ADMIN_TOKEN: ${{ secrets.WORKER_ADMIN_TOKEN }}
         run: |
           MAPPING=app/build/outputs/mapping/release/mapping.txt
           SIZE=$(stat -c%s "$MAPPING")
           gzip -9 -c "$MAPPING" > mapping.txt.gz
           curl -sfS -X POST \
             "https://crash-log.frost819.site/api/mapping/upload?versionCode=${versionCode}&gzip=1&size=${SIZE}" \
-            -H "Authorization: Bearer ${CRASH_UPLOAD_TOKEN}" \
+            -H "Authorization: Bearer ${WORKER_ADMIN_TOKEN}" \
             -H "Content-Type: application/octet-stream" \
             --data-binary @mapping.txt.gz
 
