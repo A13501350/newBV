@@ -15,6 +15,7 @@ import com.kuaishou.akdanmaku.ecs.component.filter.TypeFilter
 import com.kuaishou.akdanmaku.render.SimpleRenderer
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.frost819.newbv.BuildConfig
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
 import dev.frost819.newbv.biliapi.entity.ApiType
 import dev.frost819.newbv.biliapi.entity.danmaku.BiliDanmakuFilterConfig
@@ -173,6 +174,8 @@ class DanmakuViewModel
         fun init() {
             if (danmakuPlayer != null) return
             danmakuPlayer = DanmakuPlayer(SimpleRenderer())
+            // 仅 debug 包开启引擎侧过滤统计，用于核对各过滤器是否真正生效
+            danmakuPlayer?.debugFilterStats = BuildConfig.DEBUG
             initDanmakuConfig()
         }
 
@@ -308,7 +311,11 @@ class DanmakuViewModel
             if (!state.blockByUserFilter) return false
             val rules = userFilter
             if (rules.isEmpty) return false
-            return rules.matches(midHash = crc32Hex(mid.toString()), content = content)
+            val dropped = rules.matches(midHash = crc32Hex(mid.toString()), content = content)
+            if (dropped && BuildConfig.DEBUG) {
+                logger.debug { "Live danmaku dropped by user filter: mid=$mid, text=\"$content\"" }
+            }
+            return dropped
         }
 
         /**

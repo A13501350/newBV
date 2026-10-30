@@ -305,6 +305,18 @@ class DanmakuPlayer(
         dataSystem?.updateItem(item)
     }
 
+    /**
+     * 引擎侧过滤调试统计开关，仅 debug 构建打开。
+     *
+     * 开启后 [com.kuaishou.akdanmaku.ecs.component.filter.DanmakuFilters] 会为每个
+     * 数据过滤器记录命中数量与样例，便于确认类型/颜色/合并等过滤是否真正生效。
+     */
+    var debugFilterStats: Boolean
+        get() = engine.context.filter.debugFilterStats
+        set(value) {
+            engine.context.filter.debugFilterStats = value
+        }
+
     fun updateConfig(danmakuConfig: DanmakuConfig?) {
         val oldConfig = config
         config = danmakuConfig
