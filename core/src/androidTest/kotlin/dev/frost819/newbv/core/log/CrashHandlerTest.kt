@@ -15,8 +15,7 @@ import java.io.File
 /**
  * [CrashHandler] 的插桩测试。
  *
- * 在真实 Android 环境中验证崩溃日志文件创建、手动日志生成、
- * 日志列表与清理逻辑。
+ * 在真实 Android 环境中验证崩溃日志文件创建、手动日志生成与日志列表逻辑。
  */
 @RunWith(AndroidJUnit4::class)
 class CrashHandlerTest {
@@ -31,11 +30,7 @@ class CrashHandlerTest {
         logDir.deleteRecursively()
         logDir.mkdirs()
 
-        crashHandler =
-            CrashHandler(
-                context = context,
-                maxLogCount = 3,
-            )
+        crashHandler = CrashHandler(context = context)
     }
 
     @After
@@ -77,28 +72,25 @@ class CrashHandlerTest {
     }
 
     @Test
+    fun listCrashLogs_excludes_pending_upload_json() {
+        val logFile = File(logDir, "${CrashHandler.CRASH_LOG_PREFIX}_2024-01-01_10:00:00.log")
+        val jsonFile = File(logDir, "${CrashHandler.CRASH_LOG_PREFIX}_2024-01-01_10:00:01.json")
+        logFile.writeText("fake crash log")
+        jsonFile.writeText("""{"id":"pending-upload"}""")
+
+        val logs = crashHandler.listCrashLogs()
+
+        assertThat(logs).contains(logFile)
+        assertThat(logs).doesNotContain(jsonFile)
+    }
+
+    @Test
     fun listManualLogs_returns_created_manual_logs() {
         crashHandler.createManualLog()
         // 文件名以时间戳命名，同秒内可能覆盖，确保至少 1 个
         val logs = crashHandler.listManualLogs()
         assertThat(logs).isNotEmpty()
         assertThat(logs.first().name).startsWith(CrashHandler.MANUAL_LOG_PREFIX)
-    }
-
-    @Test
-    fun cleanupOldLogFiles_removes_files_exceeding_maxLogCount() {
-        // 创建 5 个崩溃日志文件（超过 maxLogCount=3）
-        repeat(5) { index ->
-            val file = File(logDir, "${CrashHandler.CRASH_LOG_PREFIX}_2024-01-0${index}_10:00:00.log")
-            file.writeText("fake crash log $index")
-            // 设置不同的修改时间以确保排序
-            file.setLastModified(System.currentTimeMillis() - (5 - index) * 1000L)
-        }
-
-        crashHandler.cleanupOldLogFiles()
-
-        val remaining = crashHandler.listCrashLogs()
-        assertThat(remaining).hasSize(3)
     }
 
     @Test

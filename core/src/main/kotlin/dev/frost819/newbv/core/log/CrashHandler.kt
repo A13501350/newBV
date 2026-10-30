@@ -23,12 +23,12 @@ import java.util.Locale
  * 文件命名：`logs_crash_YYYY-MM-dd_HH:mm:ss.log`
  * 日志目录：`filesDir/crash_logs`
  *
+ * 不自动清理日志文件；用户可在设置的存储管理中手动清理。
+ *
  * @param context 应用 Context（用于获取文件目录和包信息）。
- * @param maxLogCount 崩溃日志最大保留数量，超出删除最旧的。
  */
 class CrashHandler(
     private val context: Context,
-    private val maxLogCount: Int = 10,
 ) {
     private val logger = Loggers.get("CrashHandler")
 
@@ -66,8 +66,6 @@ class CrashHandler(
             handleCrash(thread, exception)
             originalHandler?.uncaughtException(thread, exception)
         }
-
-        cleanupOldLogFiles()
     }
 
     /**
@@ -110,11 +108,13 @@ class CrashHandler(
         }.getOrNull()
 
     /**
-     * 列出所有崩溃日志文件。
+     * 列出所有崩溃日志文本文件。
+     *
+     * 只返回 `.log`，不包含 `.json` 上传队列文件。
      */
     fun listCrashLogs(): List<File> =
         File(context.filesDir, LOG_DIR)
-            .listFiles { it.name.startsWith(CRASH_LOG_PREFIX) }
+            .listFiles { it.name.startsWith(CRASH_LOG_PREFIX) && it.name.endsWith(".log") }
             ?.sortedByDescending { it.lastModified() }
             ?: emptyList()
 
@@ -126,20 +126,6 @@ class CrashHandler(
             .listFiles { it.name.startsWith(MANUAL_LOG_PREFIX) }
             ?.sortedByDescending { it.lastModified() }
             ?: emptyList()
-
-    /**
-     * 刷新日志文件列表并清理超出 [maxLogCount] 的旧文件。
-     */
-    fun cleanupOldLogFiles() {
-        val crashFiles = listCrashLogs()
-        if (crashFiles.size > maxLogCount) {
-            crashFiles.takeLast(crashFiles.size - maxLogCount).forEach { it.delete() }
-        }
-        val manualFiles = listManualLogs()
-        if (manualFiles.size > maxLogCount) {
-            manualFiles.takeLast(manualFiles.size - maxLogCount).forEach { it.delete() }
-        }
-    }
 
     private fun handleCrash(
         thread: Thread,
