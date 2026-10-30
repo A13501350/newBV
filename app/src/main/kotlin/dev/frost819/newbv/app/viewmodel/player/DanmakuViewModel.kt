@@ -262,6 +262,7 @@ class DanmakuViewModel
 
                 if (meta.segmentSizeMs > 0) segmentSizeMs = meta.segmentSizeMs
                 segmentTotal = meta.segTotal
+                logDmViewFilterConfig(meta.filterConfig)
                 if (meta.closed) {
                     danmakuClosed = true
                     logger.info { "Danmaku closed for cid=$cid, skip segment loading" }
@@ -450,6 +451,7 @@ class DanmakuViewModel
                                     preferApiType = if (Prefs.apiType == DataApiType.App) ApiType.App else ApiType.Web,
                                 )
                             }
+                        logSegmentAiFlagStats(segmentIndex, dataList)
                         val filterStats = SegmentFilterStats()
                         val filteredList = dataList.filterForDisplay(filterStats)
                         val items =
@@ -986,6 +988,34 @@ class DanmakuViewModel
             val crc = CRC32()
             crc.update(value.toByteArray(Charsets.US_ASCII))
             return crc.value.toString(16).padStart(8, '0')
+        }
+
+        /** [临时调试] 打印 dm/view 下发的原始过滤配置，用于核对 AI 等级尺度与 block* 语义。 */
+        private fun logDmViewFilterConfig(config: BiliDanmakuFilterConfig) {
+            logger.info {
+                "dmView config: valid=${config.hasValidConfig} aiSwitch=${config.aiSwitch} " +
+                    "aiLevel=${config.aiLevel} aiLevelV2=${config.aiLevelV2} " +
+                    "blockTop=${config.blockTop} blockScroll=${config.blockScroll} " +
+                    "blockBottom=${config.blockBottom} blockColor=${config.blockColor} " +
+                    "blockSpecial=${config.blockSpecial} " +
+                    "reportWords=${config.reportFilterContent.size}"
+            }
+        }
+
+        /** [临时调试] 打印分段的 ai_flag 评分与 weight 分布，用于核对负值编码与权重区间。 */
+        private fun logSegmentAiFlagStats(
+            segmentIndex: Int,
+            dataList: List<DanmakuData>,
+        ) {
+            val scored = dataList.map { it.aiFlagScore }.filter { it != 0 }
+            val weights = dataList.map { it.level }
+            logger.info {
+                "seg#$segmentIndex aiFlag: scored=${scored.size}/${dataList.size} " +
+                    "min=${scored.minOrNull()} max=${scored.maxOrNull()} " +
+                    "neg=${scored.count { it < 0 }} " +
+                    "weight=${weights.minOrNull()}..${weights.maxOrNull()} " +
+                    "weightNeg=${weights.count { it < 0 }}"
+            }
         }
 
         /**
