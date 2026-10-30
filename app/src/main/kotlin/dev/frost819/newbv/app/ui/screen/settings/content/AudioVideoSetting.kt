@@ -18,13 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.frost819.newbv.BuildConfig
 import dev.frost819.newbv.app.entity.player.shortcut.PlayerCustomShortcutsStore
 import dev.frost819.newbv.app.ui.component.settings.OptionDialog
 import dev.frost819.newbv.app.ui.component.settings.SettingListItem
 import dev.frost819.newbv.app.ui.component.settings.SettingSwitchListItem
 import dev.frost819.newbv.app.ui.component.settings.displayName
 import dev.frost819.newbv.app.ui.screen.settings.SettingsMenuNavItem
-import dev.frost819.newbv.BuildConfig
 import dev.frost819.newbv.data.datastore.ActionAfterPlay
 import dev.frost819.newbv.data.datastore.Audio
 import dev.frost819.newbv.data.datastore.PlaySpeed
