@@ -880,6 +880,16 @@ class DanmakuViewModel
             }
         }
 
+        private fun updateDanmakuArea(area: Float) {
+            danmakuConfig = danmakuConfig.copy(screenPart = area)
+            danmakuPlayer?.updateConfig(danmakuConfig)
+        }
+
+        private fun updateDanmakuScale(scale: Float) {
+            danmakuConfig = danmakuConfig.copy(textSizeScale = scale)
+            danmakuPlayer?.updateConfig(danmakuConfig)
+        }
+
         /**
          * 云端账号屏蔽规则（关键词 / 正则 / 用户）的编译结果。
          *
