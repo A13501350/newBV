@@ -309,6 +309,9 @@ class PlayerViewModel
                     subType = subType,
                     authorMid = authorMid,
                     authorName = authorName,
+                    // 复用 ViewModel 再次进入播放页时，不得残留上一次会话的结束面板状态
+                    showPlaybackEndPanel = false,
+                    playbackEndCountdownSeconds = 0,
                     // 按用户偏好重置媒体格式，避免沿用上一个视频的画质/编码
                     mediaProfileState =
                         MediaProfileState(
@@ -650,10 +653,56 @@ class PlayerViewModel
                 }
         }
 
-        /** 取消自动播放下一集。 */
+        /**
+         * 取消自动播放下一集。
+         *
+         * 播放已结束时改为打开播放结束面板（保留在末帧，供用户重播或选片）；
+         * 播放中（上下集切换入口复用此函数清提示）仅清除提示，不弹面板。
+         */
         fun cancelPlayNext() {
             playNextCountdownJob?.cancel()
-            _uiState.update { it.copy(showSkipToNextEp = false) }
+            // 面板只在"已播完"语境下有意义；播放中调用方仅需要清掉跳下集提示
+            val ended = _uiState.value.playerState is PlayerState.Ended
+            _uiState.update {
+                it.copy(
+                    showSkipToNextEp = false,
+                    showPlaybackEndPanel = ended,
+                    playbackEndCountdownSeconds = 0,
+                )
+            }
+        }
+
+        /**
+         * 关闭播放结束面板（保留在末帧）。
+         *
+         * 同时取消连播倒计时：面板是播放结束态的主界面，用户主动关闭即视为
+         * 接管控制，不再在后台静默续播下一集。
+         */
+        fun closePlaybackEndPanel() {
+            playNextCountdownJob?.cancel()
+            _uiState.update {
+                it.copy(
+                    showPlaybackEndPanel = false,
+                    playbackEndCountdownSeconds = 0,
+                    showSkipToNextEp = false,
+                )
+            }
+        }
+
+        /** 从播放结束面板重播：取消连播倒计时，回到开头并立即恢复播放。 */
+        fun replayFromPlaybackEnd() {
+            playNextCountdownJob?.cancel()
+            backToStartCountdownJob?.cancel()
+            _uiState.update {
+                it.copy(
+                    showPlaybackEndPanel = false,
+                    playbackEndCountdownSeconds = 0,
+                    showBackToStart = false,
+                )
+            }
+            videoPlayer?.seekTo(0)
+            // 结束态下播放器不会自行续播，需显式 start
+            videoPlayer?.start()
         }
 
         /**
@@ -724,6 +773,9 @@ class PlayerViewModel
 
             // 清空旧视频状态，防止新视频加载失败时残留旧数据
             playData = null
+            // 新视频开播必须终止未决的连播倒计时：否则用户在倒计时期间
+            // 手动选片（如结束面板/相关视频浮层点选）后，倒计时仍会自动续播下一集
+            playNextCountdownJob?.cancel()
             stopSeekerUpdater()
             stopDebugInfoUpdater()
 
@@ -753,6 +805,8 @@ class PlayerViewModel
                     showPreviewTip = false,
                     showSkipToNextEp = false,
                     showBackToStart = false,
+                    showPlaybackEndPanel = false,
+                    playbackEndCountdownSeconds = 0,
                     shortcutTipText = null,
                     mediaProfileState =
                         MediaProfileState(
@@ -1569,10 +1623,29 @@ class PlayerViewModel
             playNextCountdownJob?.cancel()
             playNextCountdownJob =
                 viewModelScope.launch {
-                    _uiState.update { it.copy(showSkipToNextEp = true) }
-                    delay(PlayerConstants.COUNTDOWN_DURATION_MS)
+                    val totalSeconds = (PlayerConstants.COUNTDOWN_DURATION_MS / 1_000L).toInt()
+                    _uiState.update {
+                        it.copy(
+                            showSkipToNextEp = true,
+                            showPlaybackEndPanel = true,
+                            playbackEndCountdownSeconds = totalSeconds,
+                            showBackToStart = false,
+                        )
+                    }
+                    // 有限次数的逐秒倒数（结束后协程自然终止，非无限轮询），
+                    // 每次 tick 将剩余秒数透出到 UI 状态，供结束面板的倒计时数字环渲染
+                    repeat(totalSeconds) { elapsed ->
+                        delay(1_000L)
+                        _uiState.update { it.copy(playbackEndCountdownSeconds = totalSeconds - elapsed - 1) }
+                    }
                     playNextTarget(target)
-                    _uiState.update { it.copy(showSkipToNextEp = false) }
+                    _uiState.update {
+                        it.copy(
+                            showSkipToNextEp = false,
+                            showPlaybackEndPanel = false,
+                            playbackEndCountdownSeconds = 0,
+                        )
+                    }
                 }
         }
 

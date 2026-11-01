@@ -14,6 +14,7 @@ import dev.frost819.newbv.app.ui.state.player.PlayerState
 import dev.frost819.newbv.app.ui.state.player.PlayerUiEffect
 import dev.frost819.newbv.app.ui.state.player.PlayerUiState
 import dev.frost819.newbv.app.util.PlaybackCandidate
+import dev.frost819.newbv.app.util.PlayerConstants
 import dev.frost819.newbv.app.util.VideoCapabilityProvider
 import dev.frost819.newbv.biliapi.entity.DashAudio
 import dev.frost819.newbv.biliapi.entity.DashVideo
@@ -880,6 +881,254 @@ class PlayerViewModelTest {
 
             viewModel.cancelPlayNext()
 
+            assertThat(viewModel.uiState.value.showSkipToNextEp).isFalse()
+        }
+
+    // ── playback end panel tests ──────────────────────────────
+
+    /** 构造单条相关视频，供结束面板/连播倒计时测试使用。 */
+    private fun relatedVideo(
+        aid: Long,
+        cid: Long,
+    ): RelatedVideo =
+        RelatedVideo(
+            aid = aid,
+            cid = cid,
+            cover = "",
+            title = "Related Video $aid",
+            duration = 0,
+            author = null,
+            jumpToSeason = false,
+            epid = null,
+            view = 0,
+            danmaku = 0,
+        )
+
+    @Test
+    fun `checkAndPlayNext with PlayRelated opens end panel with countdown`() =
+        runTest(testDispatcher) {
+            // Given: 结束动作为播放相关视频且存在相关视频
+            every { Prefs.actionAfterPlay } returns ActionAfterPlay.PlayRelated
+            every { videoInfoRepository.relatedVideos } returns
+                MutableStateFlow(listOf(relatedVideo(aid = 999L, cid = 888L)))
+
+            // When: 播放结束
+            viewModel.checkAndPlayNext()
+            runCurrent()
+
+            // Then: 结束面板显示，倒计时从总秒数起步，跳下集提示同步生效
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isTrue()
+            assertThat(viewModel.uiState.value.playbackEndCountdownSeconds)
+                .isEqualTo((PlayerConstants.COUNTDOWN_DURATION_MS / 1_000L).toInt())
+            assertThat(viewModel.uiState.value.showSkipToNextEp).isTrue()
+        }
+
+    @Test
+    fun `playback end countdown ticks down per second`() =
+        runTest(testDispatcher) {
+            // Given: 连播倒计时已启动（逐秒 tick 由有限 repeat 驱动，非无限轮询）
+            every { Prefs.actionAfterPlay } returns ActionAfterPlay.PlayRelated
+            every { videoInfoRepository.relatedVideos } returns
+                MutableStateFlow(listOf(relatedVideo(aid = 999L, cid = 888L)))
+
+            viewModel.checkAndPlayNext()
+            runCurrent()
+            assertThat(viewModel.uiState.value.playbackEndCountdownSeconds)
+                .isEqualTo((PlayerConstants.COUNTDOWN_DURATION_MS / 1_000L).toInt())
+
+            // When: 虚拟时间推进 1 秒
+            advanceTimeBy(1_000L)
+            runCurrent()
+
+            // Then: 剩余秒数递减
+            assertThat(viewModel.uiState.value.playbackEndCountdownSeconds)
+                .isEqualTo((PlayerConstants.COUNTDOWN_DURATION_MS / 1_000L).toInt() - 1)
+        }
+
+    @Test
+    fun `playback end countdown completion plays next video and closes panel`() =
+        runTest(testDispatcher) {
+            // Given: 结束动作为播放列表下一个，列表中存在下一个视频
+            every { Prefs.actionAfterPlay } returns ActionAfterPlay.PlayNext
+            every { videoInfoRepository.videoList } returns
+                MutableStateFlow(
+                    listOf(
+                        VideoListItem(aid = 1L, cid = 11L, title = "当前视频"),
+                        VideoListItem(aid = 2L, cid = 22L, title = "下一个视频"),
+                    ),
+                )
+            updateUiState { it.copy(aid = 1L, cid = 11L) }
+
+            viewModel.checkAndPlayNext()
+            runCurrent()
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isTrue()
+
+            // When: 倒计时走完（无无限循环任务，可安全推进虚拟时间）
+            advanceTimeBy(PlayerConstants.COUNTDOWN_DURATION_MS)
+            runCurrent()
+
+            // Then: 自动续播下一个视频，面板与倒计时状态复位
+            assertThat(viewModel.uiState.value.aid).isEqualTo(2L)
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isFalse()
+            assertThat(viewModel.uiState.value.playbackEndCountdownSeconds).isEqualTo(0)
+            assertThat(viewModel.uiState.value.showSkipToNextEp).isFalse()
+        }
+
+    @Test
+    fun `checkAndPlayNext with Exit action does not open end panel`() =
+        runTest(testDispatcher) {
+            every { Prefs.actionAfterPlay } returns ActionAfterPlay.Exit
+
+            viewModel.uiEffect.test {
+                viewModel.checkAndPlayNext()
+                runCurrent()
+
+                val effect = awaitItem()
+                assertThat(effect).isEqualTo(PlayerUiEffect.FinishActivity)
+                assertThat(viewModel.uiState.value.showPlaybackEndPanel).isFalse()
+            }
+        }
+
+    @Test
+    fun `checkAndPlayNext with Pause action does not open end panel`() =
+        runTest(testDispatcher) {
+            every { Prefs.actionAfterPlay } returns ActionAfterPlay.Pause
+
+            viewModel.checkAndPlayNext()
+            runCurrent()
+
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isFalse()
+        }
+
+    @Test
+    fun `onPlaybackEnded with looping does not open end panel`() =
+        runTest(testDispatcher) {
+            setVideoPlayer(mockPlayer)
+            updateUiState { it.copy(isLooping = true) }
+
+            viewModel.onPlaybackEnded()
+
+            verify { mockPlayer.seekTo(0) }
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isFalse()
+        }
+
+    @Test
+    fun `cancelPlayNext opens end panel when playback ended`() =
+        runTest(testDispatcher) {
+            // Given: 播放已结束且连播倒计时提示显示中
+            updateUiState { it.copy(playerState = PlayerState.Ended, showSkipToNextEp = true) }
+
+            // When: 用户取消跳下集
+            viewModel.cancelPlayNext()
+
+            // Then: 打开结束面板（保留在末帧），无倒计时
+            assertThat(viewModel.uiState.value.showSkipToNextEp).isFalse()
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isTrue()
+            assertThat(viewModel.uiState.value.playbackEndCountdownSeconds).isEqualTo(0)
+        }
+
+    @Test
+    fun `cancelPlayNext does not open end panel while playing`() =
+        runTest(testDispatcher) {
+            updateUiState { it.copy(playerState = PlayerState.Playing, showSkipToNextEp = true) }
+
+            viewModel.cancelPlayNext()
+
+            assertThat(viewModel.uiState.value.showSkipToNextEp).isFalse()
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isFalse()
+        }
+
+    @Test
+    fun `closePlaybackEndPanel hides panel and cancels pending countdown`() =
+        runTest(testDispatcher) {
+            // Given: 连播倒计时已启动
+            every { Prefs.actionAfterPlay } returns ActionAfterPlay.PlayRelated
+            every { videoInfoRepository.relatedVideos } returns
+                MutableStateFlow(listOf(relatedVideo(aid = 999L, cid = 888L)))
+
+            viewModel.checkAndPlayNext()
+            runCurrent()
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isTrue()
+
+            // When: 用户按 Back 关闭面板
+            viewModel.closePlaybackEndPanel()
+
+            // Then: 面板复位，倒计时取消，时间推进后不再自动续播相关视频
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isFalse()
+            assertThat(viewModel.uiState.value.playbackEndCountdownSeconds).isEqualTo(0)
+            advanceTimeBy(PlayerConstants.COUNTDOWN_DURATION_MS + 1_000L)
+            runCurrent()
+            assertThat(viewModel.uiState.value.aid).isEqualTo(0L)
+        }
+
+    @Test
+    fun `replayFromPlaybackEnd seeks to start and plays`() =
+        runTest(testDispatcher) {
+            // Given: 结束面板显示中且播放器已就绪
+            setVideoPlayer(mockPlayer)
+            updateUiState {
+                it.copy(
+                    playerState = PlayerState.Ended,
+                    showPlaybackEndPanel = true,
+                    playbackEndCountdownSeconds = 3,
+                    showBackToStart = true,
+                )
+            }
+
+            // When: 点击重播
+            viewModel.replayFromPlaybackEnd()
+
+            // Then: 回到开头并立即恢复播放，面板与提示状态复位
+            verify { mockPlayer.seekTo(0) }
+            verify { mockPlayer.start() }
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isFalse()
+            assertThat(viewModel.uiState.value.playbackEndCountdownSeconds).isEqualTo(0)
+            assertThat(viewModel.uiState.value.showBackToStart).isFalse()
+        }
+
+    @Test
+    fun `replayFromPlaybackEnd cancels pending countdown`() =
+        runTest(testDispatcher) {
+            // Given: 连播倒计时已启动
+            setVideoPlayer(mockPlayer)
+            every { Prefs.actionAfterPlay } returns ActionAfterPlay.PlayRelated
+            every { videoInfoRepository.relatedVideos } returns
+                MutableStateFlow(listOf(relatedVideo(aid = 999L, cid = 888L)))
+
+            viewModel.checkAndPlayNext()
+            runCurrent()
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isTrue()
+
+            // When: 倒计时期间点击重播
+            viewModel.replayFromPlaybackEnd()
+
+            // Then: 倒计时取消，时间推进后不再自动续播相关视频
+            advanceTimeBy(PlayerConstants.COUNTDOWN_DURATION_MS + 1_000L)
+            runCurrent()
+            assertThat(viewModel.uiState.value.aid).isEqualTo(0L)
+        }
+
+    @Test
+    fun `playNewVideo closes end panel and resets countdown`() =
+        runTest(testDispatcher) {
+            // Given: 结束面板显示中（含残留倒计时与提示）
+            updateUiState {
+                it.copy(
+                    playerState = PlayerState.Ended,
+                    showPlaybackEndPanel = true,
+                    playbackEndCountdownSeconds = 3,
+                    showSkipToNextEp = true,
+                )
+            }
+
+            // When: 从面板选片切换视频
+            viewModel.playNewVideo(VideoListItem(aid = 5L, cid = 55L, title = "新视频"))
+            runCurrent()
+
+            // Then: 面板/倒计时/提示全部复位
+            assertThat(viewModel.uiState.value.aid).isEqualTo(5L)
+            assertThat(viewModel.uiState.value.showPlaybackEndPanel).isFalse()
+            assertThat(viewModel.uiState.value.playbackEndCountdownSeconds).isEqualTo(0)
             assertThat(viewModel.uiState.value.showSkipToNextEp).isFalse()
         }
 
