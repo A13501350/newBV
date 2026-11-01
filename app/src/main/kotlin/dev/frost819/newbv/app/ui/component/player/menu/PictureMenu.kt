@@ -16,7 +16,7 @@ import dev.frost819.newbv.data.datastore.VideoCodec
  * 画质设置面板。
  *
  * 双列布局：左侧为选项值列表（[RadioMenuList]），右侧为子项列表。
- * 子项包括：分辨率、编码、宽高比、音轨。
+ * 子项包括：分辨率、编码、宽高比、镜像、音轨。
  *
  * @param modifier 修饰符
  * @param availableQualityIds 可用画质 ID 列表
@@ -25,10 +25,12 @@ import dev.frost819.newbv.data.datastore.VideoCodec
  * @param currentResolution 当前画质 ID
  * @param currentVideoCodec 当前编码
  * @param currentVideoAspectRatio 当前宽高比
+ * @param isMirrored 视频画面是否水平镜像
  * @param currentAudio 当前音轨
  * @param onResolutionChange 画质变化回调
  * @param onCodecChange 编码变化回调
  * @param onAspectRatioChange 宽高比变化回调
+ * @param onMirrorChange 画面镜像变化回调（true = 水平镜像）
  * @param onAudioChange 音轨变化回调
  * @param onFocusStateChange 焦点状态变化回调
  */
@@ -41,10 +43,12 @@ fun PictureMenuList(
     currentResolution: Int?,
     currentVideoCodec: VideoCodec,
     currentVideoAspectRatio: VideoAspectRatio,
+    isMirrored: Boolean,
     currentAudio: Audio,
     onResolutionChange: (Int) -> Unit,
     onCodecChange: (VideoCodec) -> Unit,
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
+    onMirrorChange: (Boolean) -> Unit,
     onAudioChange: (Audio) -> Unit,
     onFocusStateChange: (MenuFocusState) -> Unit,
 ) {
@@ -88,6 +92,15 @@ fun PictureMenuList(
                     items = VideoAspectRatio.entries.map { it.displayName },
                     selected = VideoAspectRatio.entries.indexOf(currentVideoAspectRatio),
                     onSelectedChanged = { onAspectRatioChange(VideoAspectRatio.entries[it]) },
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerPictureMenuItem.Mirror ->
+                RadioMenuList(
+                    modifier = itemModifier,
+                    items = listOf("关闭", "开启"),
+                    selected = if (isMirrored) 1 else 0,
+                    onSelectedChanged = { onMirrorChange(it == 1) },
                     onFocusBackToParent = backToMenu,
                 )
 

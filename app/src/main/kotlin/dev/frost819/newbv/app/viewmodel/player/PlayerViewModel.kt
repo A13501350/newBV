@@ -851,6 +851,16 @@ class PlayerViewModel
             _uiState.update { it.copy(aspectRatio = ratio) }
         }
 
+        /**
+         * 设置视频画面水平镜像。
+         *
+         * 仅翻转视频 surface，弹幕/字幕/控制层不翻转；
+         * 会话级状态，不持久化，切集时保留。
+         */
+        fun setVideoMirrored(enabled: Boolean) {
+            _uiState.update { it.copy(isMirrored = enabled) }
+        }
+
         /** 切换循环播放。 */
         fun toggleLoop() {
             _uiState.update { it.copy(isLooping = !it.isLooping) }

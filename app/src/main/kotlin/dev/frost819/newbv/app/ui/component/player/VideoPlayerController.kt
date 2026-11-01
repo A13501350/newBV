@@ -68,6 +68,9 @@ import kotlinx.coroutines.launch
  * 6. ControllerVideoInfo — 信息栏 + 进度条 + 按钮
  * 7. VideoListController — 分集列表
  * 8. MenuController — 设置菜单
+ *
+ * @param onMirrorChange 画面镜像变化回调（true = 水平镜像视频画面）；
+ * 仅翻转视频 surface，弹幕/字幕/控制层不翻转
  */
 @Composable
 @Suppress("LongParameterList", "CyclomaticComplexMethod")
@@ -95,6 +98,7 @@ fun VideoPlayerController(
     onShowComments: () -> Unit,
     onMediaProfileSettingChange: (MediaProfileSettingAction) -> Unit,
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
+    onMirrorChange: (Boolean) -> Unit,
     onPlaySpeedChange: (Float) -> Unit,
     onDanmakuSettingChange: (DanmakuSettingAction) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
@@ -594,6 +598,7 @@ fun VideoPlayerController(
                 onResolutionChange = { onMediaProfileSettingChange(MediaProfileSettingAction.SetQuality(it)) },
                 onCodecChange = { onMediaProfileSettingChange(MediaProfileSettingAction.SetVideoCodec(it)) },
                 onAspectRatioChange = onAspectRatioChange,
+                onMirrorChange = onMirrorChange,
                 onPlaySpeedChange = onPlaySpeedChange,
                 onAudioChange = { onMediaProfileSettingChange(MediaProfileSettingAction.SetAudio(it)) },
                 onDanmakuSwitchChange = { types ->
