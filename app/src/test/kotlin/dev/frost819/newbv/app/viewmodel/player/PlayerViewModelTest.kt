@@ -615,6 +615,97 @@ class PlayerViewModelTest {
             verify(exactly = 0) { mockPlayer.speed = any() }
         }
 
+    // ── temp speed tests ─────────────────────────────────────
+
+    @Test
+    fun `startTempSpeed doubles player speed and keeps user speed unchanged`() {
+        // Given
+        setVideoPlayer(mockPlayer)
+        updateUiState { it.copy(playSpeed = 1.25f) }
+
+        // When
+        viewModel.startTempSpeed()
+
+        // Then: 引擎速度翻倍，但用户设定速度不被污染
+        verify { mockPlayer.speed = 2.5f }
+        assertThat(viewModel.isTempSpeedActive).isTrue()
+        assertThat(viewModel.uiState.value.playSpeed).isEqualTo(1.25f)
+        assertThat(viewModel.uiState.value.shortcutTipText).isEqualTo("2.5x")
+    }
+
+    @Test
+    fun `startTempSpeed dedupes repeated long press repeat events`() {
+        // Given
+        setVideoPlayer(mockPlayer)
+        updateUiState { it.copy(playSpeed = 1f) }
+
+        // When: 长按确认键会补发多条 isLongPress KeyDown，只应生效一次
+        viewModel.startTempSpeed()
+        viewModel.startTempSpeed()
+        viewModel.startTempSpeed()
+
+        // Then
+        verify(exactly = 1) { mockPlayer.speed = 2f }
+        assertThat(viewModel.isTempSpeedActive).isTrue()
+    }
+
+    @Test
+    fun `startTempSpeed caps boosted speed at max limit`() {
+        // Given
+        setVideoPlayer(mockPlayer)
+        updateUiState { it.copy(playSpeed = 2f) }
+
+        // When
+        viewModel.startTempSpeed()
+
+        // Then: 2x 用户速度为 4.0，超过上限封顶 3.0
+        verify { mockPlayer.speed = 3f }
+        assertThat(viewModel.isTempSpeedActive).isTrue()
+    }
+
+    @Test
+    fun `stopTempSpeed restores recorded speed and clears active flag`() {
+        // Given
+        setVideoPlayer(mockPlayer)
+        updateUiState { it.copy(playSpeed = 1.25f) }
+
+        // When
+        viewModel.startTempSpeed()
+        // 激活期间用户改设定速度也不影响恢复基准（恢复进入时的记录值）
+        updateUiState { it.copy(playSpeed = 1.5f) }
+        viewModel.stopTempSpeed()
+
+        // Then: 引擎恢复原速，用户设定保持不变
+        verify { mockPlayer.speed = 1.25f }
+        assertThat(viewModel.isTempSpeedActive).isFalse()
+        assertThat(viewModel.uiState.value.playSpeed).isEqualTo(1.5f)
+    }
+
+    @Test
+    fun `stopTempSpeed without start has no side effects`() {
+        // Given
+        setVideoPlayer(mockPlayer)
+
+        // When
+        viewModel.stopTempSpeed()
+
+        // Then
+        verify(exactly = 0) { mockPlayer.speed = any() }
+        assertThat(viewModel.isTempSpeedActive).isFalse()
+    }
+
+    @Test
+    fun `startTempSpeed does nothing when videoPlayer is null`() {
+        // Given: 未调用 setVideoPlayer，videoPlayer 保持 null
+
+        // When
+        viewModel.startTempSpeed()
+
+        // Then: 不激活，避免记录到错误的恢复基准
+        assertThat(viewModel.isTempSpeedActive).isFalse()
+        verify(exactly = 0) { mockPlayer.speed = any() }
+    }
+
     // ── toggleLoop test ──────────────────────────────────────
 
     @Test
