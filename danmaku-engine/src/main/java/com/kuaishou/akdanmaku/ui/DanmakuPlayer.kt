@@ -199,6 +199,9 @@ class DanmakuPlayer(
         this.danmakuView = WeakReference(danmakuView)
         danmakuView.danmakuPlayer = this
         engine.context.displayer = danmakuView.displayer
+        // 绑定用新 displayer 替换了 context 默认 displayer（margin 固定 4），
+        // 需将已保存配置的行距同步过去，否则持久化的行距在重新绑定后失效
+        config?.let { danmakuView.displayer.margin = it.lineSpacing }
         notifyDisplayerSizeChanged(danmakuView.displayer.width, danmakuView.displayer.height)
         danmakuView.postInvalidate()
     }
@@ -313,6 +316,9 @@ class DanmakuPlayer(
         if (oldConfig != null && danmakuConfig.rollingSpeedFactor != oldConfig.rollingSpeedFactor) {
             danmakuConfig.rollingSpeedFactor = oldConfig.rollingSpeedFactor
         }
+
+        // 行距布局读取的是 displayer.margin 而非 config，配置更新时同步，保持 lineSpacing 为唯一事实来源
+        engine.context.displayer.margin = danmakuConfig.lineSpacing
 
         engine.updateConfig(danmakuConfig)
 

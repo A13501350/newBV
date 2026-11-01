@@ -56,6 +56,7 @@ internal object PrefKeys {
     val defaultDanmakuOpacity = floatPreferencesKey("ddo")
     val defaultDanmakuSpeedFactor = floatPreferencesKey("ddsf")
     val defaultDanmakuArea = floatPreferencesKey("dda")
+    val defaultDanmakuLineSpacing = intPreferencesKey("ddls")
     val defaultDanmakuMask = booleanPreferencesKey("prefer_enable_webmark")
     val defaultDanmakuBlockColorfulEnabled = booleanPreferencesKey("dbc")
     val defaultDanmakuBlockRepeatEnabled = booleanPreferencesKey("dbr")

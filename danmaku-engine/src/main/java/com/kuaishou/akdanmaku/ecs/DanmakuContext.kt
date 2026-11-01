@@ -67,7 +67,7 @@ internal class DanmakuContext(
         object : DanmakuDisplayer {
             override var height: Int = 0
             override var width: Int = 0
-            override val margin: Int = 4
+            override var margin: Int = 4
             override val allMarginTop: Float = 0f
             override val density: Float = 1f
             override val scaleDensity: Float = 1f

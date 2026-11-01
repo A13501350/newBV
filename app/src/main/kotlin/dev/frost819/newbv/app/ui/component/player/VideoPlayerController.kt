@@ -606,6 +606,7 @@ fun VideoPlayerController(
                     onDanmakuSettingChange(DanmakuSettingAction.SetEnabledTypes(entityTypes))
                 },
                 onDanmakuSizeChange = { onDanmakuSettingChange(DanmakuSettingAction.SetScale(it)) },
+                onDanmakuLineSpacingChange = { onDanmakuSettingChange(DanmakuSettingAction.SetLineSpacing(it)) },
                 onDanmakuOpacityChange = { onDanmakuSettingChange(DanmakuSettingAction.SetOpacity(it)) },
                 onDanmakuSpeedFactorChange = { onDanmakuSettingChange(DanmakuSettingAction.SetSpeedFactor(it)) },
                 onDanmakuAreaChange = { onDanmakuSettingChange(DanmakuSettingAction.SetArea(it)) },

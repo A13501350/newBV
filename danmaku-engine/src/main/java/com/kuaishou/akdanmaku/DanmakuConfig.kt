@@ -63,6 +63,10 @@ data class DanmakuConfig(
      */
     var textSizeScale: Float = 1f,
     /**
+     * 弹幕行距（弹幕之间的间距），更新配置时同步到 [com.kuaishou.akdanmaku.ui.DanmakuDisplayer.margin]
+     */
+    var lineSpacing: Int = 4,
+    /**
      * 播放速率
      */
     var timeFactor: Float = 1f,
