@@ -66,8 +66,9 @@ import kotlinx.coroutines.launch
  * 4. PlayStateTips — 播放状态提示
  * 5. RelatedVideosController — 相关视频
  * 6. ControllerVideoInfo — 信息栏 + 进度条 + 按钮
- * 7. VideoListController — 分集列表
- * 8. MenuController — 设置菜单
+ * 7. PlaybackEndPanel — 播放结束推荐面板（重播 + 相关视频网格 + 连播倒计时）
+ * 8. VideoListController — 分集列表
+ * 9. MenuController — 设置菜单
  */
 @Composable
 @Suppress("LongParameterList", "CyclomaticComplexMethod")
@@ -84,6 +85,8 @@ fun VideoPlayerController(
     onGoTime: (time: Long) -> Unit,
     onBackToStart: () -> Unit,
     onCancelSkipToNextEp: () -> Unit,
+    onReplayFromEnd: () -> Unit,
+    onClosePlaybackEndPanel: () -> Unit,
     onPlayNewVideo: (VideoListItem) -> Unit,
     onPlayPrevious: () -> Unit,
     onPlayNext: () -> Unit,
@@ -306,6 +309,17 @@ fun VideoPlayerController(
             return true
         }
 
+        // 播放结束面板打开时：Back 关闭面板（保留在末帧）；其余按键返回 false
+        // 交给面板内焦点组件（重播按钮/相关视频网格卡片）按焦点系统自然处理，
+        // OK 激活当前聚焦项，方向键在面板内移动焦点（Back 的 KeyUp 已在上方过滤）
+        if (uiState.showPlaybackEndPanel) {
+            if (event.key == Key.Back) {
+                onClosePlaybackEndPanel()
+                return true
+            }
+            return false
+        }
+
         // 自定义快捷键
         if (handleCustomShortcut(event)) return true
 
@@ -518,7 +532,8 @@ fun VideoPlayerController(
             // 跳转提示
             SkipTips(
                 showBackToStart = uiState.showBackToStart,
-                showSkipToNextEp = uiState.showSkipToNextEp,
+                // 结束面板显示时由面板承接"即将播放下一集"的呈现，隐藏左下角提示
+                showSkipToNextEp = uiState.showSkipToNextEp && !uiState.showPlaybackEndPanel,
                 showPreviewTip = uiState.showPreviewTip,
                 shortcutTipText = uiState.shortcutTipText,
             )
@@ -576,6 +591,20 @@ fun VideoPlayerController(
                 onGoToUpPage = onGoToUpPage,
                 onShowInteraction = onShowInteraction,
                 onShowComments = onShowComments,
+            )
+
+            // 播放结束推荐面板：重播 + 相关视频网格 + 连播倒计时数字环
+            PlaybackEndPanel(
+                visible = uiState.showPlaybackEndPanel,
+                countdownSeconds = uiState.playbackEndCountdownSeconds,
+                relatedVideos = uiState.relatedVideos,
+                onReplay = onReplayFromEnd,
+                onVideoClicked = { video ->
+                    // 面板内选片先取消连播倒计时并关闭面板：PGC 卡片走导航
+                    // 不经过 playNewVideo，倒计时若不取消会在详情页继续自动续播
+                    onClosePlaybackEndPanel()
+                    onRelatedVideoClicked(video)
+                },
             )
 
             // 分集列表

@@ -271,6 +271,11 @@ fun VideoPlayerScreen(
         },
         onBackToStart = { playerViewModel.backToStart() },
         onCancelSkipToNextEp = { playerViewModel.cancelPlayNext() },
+        onReplayFromEnd = {
+            logger.info { "[PLAYBACK] replayFromEnd aid=${uiState.aid}" }
+            playerViewModel.replayFromPlaybackEnd()
+        },
+        onClosePlaybackEndPanel = { playerViewModel.closePlaybackEndPanel() },
         onPlayNewVideo = { item: VideoListItem ->
             logger.info { "[PLAYBACK] switch aid=${item.aid}, cid=${item.cid}" }
             playerViewModel.playNewVideo(item)
