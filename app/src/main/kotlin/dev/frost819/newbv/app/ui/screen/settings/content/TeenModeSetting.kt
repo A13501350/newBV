@@ -265,8 +265,7 @@ private enum class WatchLimitOption(
          * @param minutes 分钟数。
          * @return 匹配的选项；无匹配回退"不限制"。
          */
-        fun fromMinutes(minutes: Int): WatchLimitOption =
-            entries.firstOrNull { it.minutes == minutes } ?: Unlimited
+        fun fromMinutes(minutes: Int): WatchLimitOption = entries.firstOrNull { it.minutes == minutes } ?: Unlimited
     }
 }
 
@@ -294,8 +293,7 @@ private enum class RestDurationOption(
          * @param minutes 分钟数。
          * @return 匹配的选项；无匹配回退默认 20 分钟。
          */
-        fun fromMinutes(minutes: Int): RestDurationOption =
-            entries.firstOrNull { it.minutes == minutes } ?: Min20
+        fun fromMinutes(minutes: Int): RestDurationOption = entries.firstOrNull { it.minutes == minutes } ?: Min20
     }
 }
 
