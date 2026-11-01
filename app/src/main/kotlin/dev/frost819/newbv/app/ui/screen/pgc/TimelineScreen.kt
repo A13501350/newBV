@@ -162,9 +162,10 @@ private fun TimelineContent(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(vertical = 16.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(vertical = 16.dp),
     ) {
         Text(
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
@@ -213,9 +214,10 @@ private fun TimelineContent(
 
         if (state.selectedEpisodes.isEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -226,9 +228,10 @@ private fun TimelineContent(
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
             ) {
@@ -243,10 +246,11 @@ private fun TimelineContent(
                                 PgcFeatureRoute(seasonId = episode.seasonId.toLong()),
                             )
                         },
-                        modifier = Modifier.focusSaverItem(
-                            focusSaver,
-                            "tl_ep_${state.selectedDateString}_${episode.seasonId}",
-                        ),
+                        modifier =
+                            Modifier.focusSaverItem(
+                                focusSaver,
+                                "tl_ep_${state.selectedDateString}_${episode.seasonId}",
+                            ),
                     )
                 }
             }
@@ -388,17 +392,19 @@ private fun TimelineEpisodeCard(
             ),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             AsyncImage(
-                modifier = Modifier
-                    .width(160.dp)
-                    .height(90.dp)
-                    .clip(MaterialTheme.shapes.small),
+                modifier =
+                    Modifier
+                        .width(160.dp)
+                        .height(90.dp)
+                        .clip(MaterialTheme.shapes.small),
                 model = episode.cover,
                 contentDescription = episode.title,
                 contentScale = ContentScale.Crop,
@@ -459,9 +465,10 @@ private fun TimelineErrorScreen(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Surface(
-                modifier = Modifier
-                    .focusRequester(focusRequester)
-                    .touchClickable(onClick = onRetry),
+                modifier =
+                    Modifier
+                        .focusRequester(focusRequester)
+                        .touchClickable(onClick = onRetry),
                 onClick = onRetry,
                 shape = ClickableSurfaceDefaults.shape(shape = MaterialTheme.shapes.medium),
                 border =

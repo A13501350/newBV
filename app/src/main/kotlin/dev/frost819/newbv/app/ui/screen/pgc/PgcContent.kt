@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material3.Scaffold as Material3Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,6 +59,7 @@ import dev.frost819.newbv.core.focus.focusInvertedColors
 import dev.frost819.newbv.core.focus.touchClickable
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import androidx.compose.material3.Scaffold as Material3Scaffold
 
 /**
  * PGC 影视顶部导航项。
