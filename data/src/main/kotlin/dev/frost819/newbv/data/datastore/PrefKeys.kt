@@ -50,6 +50,10 @@ internal object PrefKeys {
     // ===== 播放器 - 章节（调试分支专用） =====
     val debugChapterStats = booleanPreferencesKey("debug_chapter_stats")
 
+    // ===== 播放器 - 空降助手 =====
+    val sponsorBlockEnabled = booleanPreferencesKey("sponsor_block_enabled")
+    val sponsorCategories = stringPreferencesKey("sponsor_categories")
+
     // ===== 播放器 - 音频 =====
     val defaultAudio = intPreferencesKey("da")
 
