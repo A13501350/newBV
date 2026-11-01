@@ -64,6 +64,7 @@ import dev.frost819.newbv.core.interaction.currentInputMethod
  * @param onGoToDetailPage 详情页回调（null 时不显示按钮）。
  * @param onGoToUpPage UP 主页回调（null 时不显示按钮）。
  * @param onRemoveWatchLater 移除稍后再看回调（null 时不显示按钮）。
+ * @param onDeleteHistory 删除观看历史回调（null 时不显示按钮）。
  */
 @Composable
 fun SmallVideoCard(
@@ -74,6 +75,7 @@ fun SmallVideoCard(
     onGoToDetailPage: (() -> Unit)? = null,
     onGoToUpPage: (() -> Unit)? = null,
     onRemoveWatchLater: (() -> Unit)? = null,
+    onDeleteHistory: (() -> Unit)? = null,
 ) {
     var showActions by remember { mutableStateOf(false) }
     var releaseLongPress by remember { mutableStateOf(false) }
@@ -84,7 +86,8 @@ fun SmallVideoCard(
         onAddWatchLater != null ||
             onGoToDetailPage != null ||
             onGoToUpPage != null ||
-            onRemoveWatchLater != null
+            onRemoveWatchLater != null ||
+            onDeleteHistory != null
 
     BackHandler(enabled = showActions) {
         showActions = false
@@ -273,6 +276,48 @@ fun SmallVideoCard(
                             Icon(
                                 painter = painterResource(id = R.drawable.contact_page_24px),
                                 contentDescription = "UP主主页",
+                            )
+                        }
+                    }
+
+                    onDeleteHistory?.let { action ->
+                        val deleteIsFirst =
+                            onRemoveWatchLater == null &&
+                                onAddWatchLater == null &&
+                                onGoToDetailPage == null &&
+                                onGoToUpPage == null
+                        IconButton(
+                            onClick = {
+                                if (!isTouchMode && deleteIsFirst && !releaseLongPress) {
+                                    releaseLongPress = true
+                                    return@IconButton
+                                }
+                                action()
+                            },
+                            modifier =
+                                if (deleteIsFirst) {
+                                    Modifier
+                                        .focusRequester(firstButtonRequester)
+                                        .touchClickable(onClick = {
+                                            if (!isTouchMode && deleteIsFirst && !releaseLongPress) {
+                                                releaseLongPress = true
+                                            } else {
+                                                action()
+                                            }
+                                        })
+                                } else {
+                                    Modifier.touchClickable(onClick = {
+                                        if (!isTouchMode && deleteIsFirst && !releaseLongPress) {
+                                            releaseLongPress = true
+                                        } else {
+                                            action()
+                                        }
+                                    })
+                                },
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.delete_24px),
+                                contentDescription = "删除历史",
                             )
                         }
                     }

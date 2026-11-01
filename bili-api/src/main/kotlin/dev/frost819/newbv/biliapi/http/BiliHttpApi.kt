@@ -773,6 +773,35 @@ object BiliHttpApi {
     }
 
     /**
+     * 删除观看历史记录。
+     *
+     * 对应接口：POST https://api.bilibili.com/x/v2/history/delete
+     * 鉴权：SESSDATA Cookie（csrf），仅有 Web 通道（无 App 等价接口）
+     *
+     * @param kid 观看记录目标 id，格式为 `arc_` + avid 或 `pgc_` + season id
+     * @param csrf 登录 Token（bili_jct）
+     * @return (是否成功, 失败原因)
+     */
+    suspend fun deleteHistory(
+        kid: String,
+        csrf: String,
+    ): Pair<Boolean, String> {
+        val response =
+            client
+                .post("/x/v2/history/delete") {
+                    setBody(
+                        FormDataContent(
+                            Parameters.build {
+                                append("kid", kid)
+                                append("csrf", csrf)
+                            },
+                        ),
+                    )
+                }.body<BiliResponseWithoutData>()
+        return Pair(response.code == 0, response.message)
+    }
+
+    /**
      * 获取与视频[avid]或[bvid]有关的相关推荐视频
      */
     suspend fun getRelatedVideos(

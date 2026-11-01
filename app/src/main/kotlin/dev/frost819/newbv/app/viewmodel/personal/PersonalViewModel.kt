@@ -52,6 +52,7 @@ sealed interface PersonalUiEffect {
  * @property historyItems 历史列表。
  * @property historyLoading 历史加载中。
  * @property historyError 历史加载失败。
+ * @property historyDeleteError 历史删除失败。
  * @property historyHasMore 历史是否还有更多。
  * @property favoriteFolders 收藏夹列表。
  * @property favoriteItems 当前收藏夹视频列表。
@@ -73,6 +74,7 @@ data class PersonalUiState(
     val historyItems: List<HistoryItem> = emptyList(),
     val historyLoading: Boolean = false,
     val historyError: Boolean = false,
+    val historyDeleteError: Boolean = false,
     val historyHasMore: Boolean = true,
     val favoriteFolders: List<FavoriteFolderMetadata> = emptyList(),
     val favoriteItems: List<FavoriteItem> = emptyList(),
@@ -257,12 +259,53 @@ class PersonalViewModel
         }
 
         /**
+         * 删除一条观看历史记录。
+         *
+         * 先乐观地从本地列表移除（UI 立即响应），删除失败时按原位置回滚并置 [PersonalUiState.historyDeleteError]。
+         *
+         * @param item 待删除的历史条目。
+         */
+        fun deleteHistory(item: HistoryItem) {
+            viewModelScope.launch {
+                val index = _uiState.value.historyItems.indexOf(item)
+                if (index < 0) return@launch
+
+                _uiState.update {
+                    it.copy(historyItems = it.historyItems - item, historyDeleteError = false)
+                }
+
+                runCatching {
+                    historyRepository.deleteHistory(item)
+                }.onSuccess {
+                    _effect.emit(PersonalUiEffect.ShowToast("已删除观看历史"))
+                }.onFailure { error ->
+                    if (error is CancellationException && error !is TimeoutCancellationException) {
+                        throw error
+                    }
+                    logger.error(error) { "Failed to delete history ${item.oid}" }
+                    // 失败回滚：按原位置恢复被移除的条目，避免列表顺序跳变
+                    _uiState.update { state ->
+                        val restored = state.historyItems.toMutableList()
+                        restored.add(index.coerceAtMost(restored.size), item)
+                        state.copy(historyItems = restored, historyDeleteError = true)
+                    }
+                    _effect.emit(PersonalUiEffect.ShowToast("删除失败: ${error.message ?: "未知错误"}"))
+                }
+            }
+        }
+
+        /**
          * 刷新历史记录。
          */
         fun refreshHistory() {
             historyCursor = 0L
             _uiState.update {
-                it.copy(historyItems = emptyList(), historyHasMore = true, historyError = false)
+                it.copy(
+                    historyItems = emptyList(),
+                    historyHasMore = true,
+                    historyError = false,
+                    historyDeleteError = false,
+                )
             }
             loadHistory()
         }

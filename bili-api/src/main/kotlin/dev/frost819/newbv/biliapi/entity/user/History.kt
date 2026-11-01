@@ -46,6 +46,24 @@ data class HistoryItem(
     val type: HistoryItemType,
 ) {
     companion object {
+        /**
+         * 编码删除观看历史所需的 `kid` 参数。
+         *
+         * 删除端点 `/x/v2/history/delete` 的 `kid` 格式：UGC 为 `arc_` + 稿件 avid（[HistoryItem.oid]），
+         * PGC 为 `pgc_` + 番剧 season id（[HistoryItem.seasonId]）。
+         * 注意 [HistoryItem.kid] 是历史记录 id（App 接口）或未解析占位（Web 接口），
+         * 与删除参数的 kid 含义不同，不能直接使用。
+         *
+         * @param item 历史条目
+         * @return 编码后的 kid 字符串；类型未知或 PGC 缺少 season id 时返回 null（无法构造合法 kid）
+         */
+        fun encodeDeleteKid(item: HistoryItem): String? =
+            when (item.type) {
+                HistoryItemType.Archive -> "arc_${item.oid}"
+                HistoryItemType.Pgc -> item.seasonId?.let { "pgc_$it" }
+                HistoryItemType.Unknown -> null
+            }
+
         fun fromHistoryItem(item: dev.frost819.newbv.biliapi.http.entity.history.HistoryItem) =
             HistoryItem(
                 oid = item.history.oid,
