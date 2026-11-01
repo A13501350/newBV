@@ -255,20 +255,22 @@ class FollowViewModelTest {
     @Test
     fun `switchListType back to following reloads followed users`() =
         runTest(testDispatcher) {
-            coEvery { userRepository.getFollowedUsers(1L, any()) } returnsMany
-                listOf(fakeUsers(2), fakeUsers(5))
+            // Given: 粉丝列表已加载，关注仓库返回 5 个用户
+            coEvery { userRepository.getFollowedUsers(1L, any()) } returns fakeUsers(5)
             coEvery { userRepository.getFollowers(1L, any()) } returns fakeUsers(4)
 
             viewModel = createViewModel()
             viewModel.init(1L, FollowListType.Followers)
             advanceUntilIdle()
 
+            // When: 切回关注列表
             viewModel.switchListType(FollowListType.Following)
             advanceUntilIdle()
 
+            // Then: 用户数 4 → 5 证明走了一次新的关注列表拉取
             assertThat(viewModel.uiState.value.users).hasSize(5)
             assertThat(viewModel.uiState.value.listType).isEqualTo(FollowListType.Following)
-            coVerify(exactly = 2) { userRepository.getFollowedUsers(1L, any()) }
+            coVerify(exactly = 1) { userRepository.getFollowedUsers(1L, any()) }
         }
 
     @Test
