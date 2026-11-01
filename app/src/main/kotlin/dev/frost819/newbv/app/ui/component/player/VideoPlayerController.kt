@@ -29,6 +29,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import dev.frost819.newbv.BuildConfig
 import dev.frost819.newbv.app.entity.player.VideoAspectRatio
 import dev.frost819.newbv.app.entity.player.VideoListItem
 import dev.frost819.newbv.app.entity.player.shortcut.PlayerCustomShortcutAction
@@ -132,10 +133,16 @@ fun VideoPlayerController(
     // 常显进度条
     var showPersistentSeek by remember { mutableStateOf(Prefs.showPersistentSeek) }
 
-    // 章节分段（view_points）：时长未就绪时 normalize 返回空，进度条自动回退单线渲染
+    // 章节分段（view_points）：时长未就绪时 normalize 返回空，进度条自动回退单线渲染。
+    // 调试构建开启章节调试后，无章节视频注入示例分段验证渲染
     val chapterSegments =
         remember(uiState.chapters, seekerState.value.totalDuration) {
-            VideoChapters.normalize(uiState.chapters, seekerState.value.totalDuration)
+            val normalized = VideoChapters.normalize(uiState.chapters, seekerState.value.totalDuration)
+            if (BuildConfig.VIDEO_CHAPTERS_DEBUG && Prefs.debugChapterStats) {
+                VideoChaptersDebugFake.effectiveSegments(normalized, seekerState.value.totalDuration)
+            } else {
+                normalized
+            }
         }
 
     // 手势状态
