@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -308,6 +309,7 @@ fun VideoPlayerScreen(
         },
         onMediaProfileSettingChange = { action -> playerViewModel.updateMediaProfile(action) },
         onAspectRatioChange = { ratio -> playerViewModel.updateVideoAspectRatio(ratio) },
+        onMirrorChange = { enabled -> playerViewModel.setVideoMirrored(enabled) },
         onPlaySpeedChange = { speed ->
             logger.info { "[PLAYBACK] speedChange aid=${uiState.aid}, speed=$speed" }
             playerViewModel.updatePlaySpeed(speed)
@@ -351,7 +353,15 @@ fun VideoPlayerScreen(
 
             if (videoPlayer != null) {
                 BvVideoPlayer(
-                    modifier = Modifier.fillMaxHeight().aspectRatio(aspectRatio),
+                    modifier =
+                        Modifier
+                            .fillMaxHeight()
+                            .aspectRatio(aspectRatio)
+                            .graphicsLayer {
+                                // 镜像只挂在视频 surface 这一层：弹幕层是本 Box 的兄弟节点，
+                                // 字幕/控制层在 VideoPlayerController 的其他子树，均不受此 transform 影响
+                                scaleX = if (uiState.isMirrored) -1f else 1f
+                            },
                     videoPlayer = videoPlayer,
                 )
             }

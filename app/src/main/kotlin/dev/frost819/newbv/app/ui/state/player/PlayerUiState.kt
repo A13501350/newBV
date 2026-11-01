@@ -53,6 +53,15 @@ data class PlayerUiState(
     val mediaProfileState: MediaProfileState = MediaProfileState(),
     val playSpeed: Float = 1f,
     val aspectRatio: VideoAspectRatio = VideoAspectRatio.Default,
+
+    /**
+     * 视频画面是否水平镜像。
+     *
+     * 仅作用于视频 surface（弹幕/字幕/控制层不翻转）。
+     * 会话级状态，不持久化；切集时 copy() 不显式重置此字段，自然保留，
+     * 与 [aspectRatio] 同语义。
+     */
+    val isMirrored: Boolean = false,
     val isLooping: Boolean = false,
     // 弹幕
     val danmakuState: DanmakuState = DanmakuState(),
