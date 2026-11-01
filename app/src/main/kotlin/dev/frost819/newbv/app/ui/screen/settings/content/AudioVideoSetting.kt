@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.frost819.newbv.BuildConfig
+import dev.frost819.newbv.app.entity.player.SponsorCategories
 import dev.frost819.newbv.app.entity.player.shortcut.PlayerCustomShortcutsStore
 import dev.frost819.newbv.app.ui.component.settings.OptionDialog
 import dev.frost819.newbv.app.ui.component.settings.SettingListItem
@@ -47,6 +48,7 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
     var showPlaySpeedDialog by remember { mutableStateOf(false) }
     var showActionAfterPlayDialog by remember { mutableStateOf(false) }
     var showPlayerCustomShortcutsDialog by remember { mutableStateOf(false) }
+    var showSponsorCategoriesDialog by remember { mutableStateOf(false) }
 
     var selectedResolution by remember { mutableStateOf(Prefs.defaultQuality) }
     var selectedVideoCodec by remember { mutableStateOf(Prefs.defaultVideoCodec) }
@@ -59,6 +61,8 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
     var showPlayerDebugInfo by remember { mutableStateOf(Prefs.showPlayerDebugInfo) }
     var autoSelectCdn by remember { mutableStateOf(Prefs.autoSelectCdn) }
     var debugChapterStats by remember { mutableStateOf(Prefs.debugChapterStats) }
+    var sponsorBlockEnabled by remember { mutableStateOf(Prefs.sponsorBlockEnabled) }
+    var sponsorCategories by remember { mutableStateOf(SponsorCategories.parse(Prefs.sponsorCategories).toSet()) }
 
     Column(
         modifier =
@@ -130,6 +134,29 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
                 autoSelectCdn = it
                 Prefs.autoSelectCdn = it
             },
+        )
+        SettingSwitchListItem(
+            title = "空降助手",
+            supportText = "播放中自动跳过恰饭/开场/片尾等片段（SponsorBlock 社区数据，数据源 bsbsb.top）",
+            checked = sponsorBlockEnabled,
+            onCheckedChange = {
+                sponsorBlockEnabled = it
+                Prefs.sponsorBlockEnabled = it
+            },
+        )
+        SettingListItem(
+            title = "空降助手跳过分类",
+            supportText =
+                if (sponsorCategories.isEmpty()) {
+                    "当前：全部关闭"
+                } else {
+                    "当前：${
+                        SponsorCategories.OPTIONS
+                            .filter { it.category in sponsorCategories }
+                            .joinToString("、") { it.displayName }
+                    }"
+                },
+            onClick = { showSponsorCategoriesDialog = true },
         )
         if (BuildConfig.VIDEO_CHAPTERS_DEBUG) {
             SettingSwitchListItem(
@@ -213,6 +240,17 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
         PlayerCustomShortcutsDialog(
             onDismiss = { showPlayerCustomShortcutsDialog = false },
             onShortcutsChanged = { playerCustomShortcuts = it },
+        )
+    }
+
+    if (showSponsorCategoriesDialog) {
+        SponsorCategoriesDialog(
+            enabledCategories = sponsorCategories,
+            onDismiss = { showSponsorCategoriesDialog = false },
+            onCategoriesChanged = { next ->
+                sponsorCategories = next
+                Prefs.sponsorCategories = SponsorCategories.serialize(next.toList())
+            },
         )
     }
 }

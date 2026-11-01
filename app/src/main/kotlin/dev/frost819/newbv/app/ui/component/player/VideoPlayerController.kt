@@ -145,6 +145,12 @@ fun VideoPlayerController(
             }
         }
 
+    // 空降片段标记：总开关关闭时隐藏（跳过行为在 VM 侧同样被拦截）
+    val skipSegments =
+        remember(uiState.skipSegments) {
+            if (Prefs.sponsorBlockEnabled) uiState.skipSegments else emptyList()
+        }
+
     // 手势状态
     val gestureTipState = rememberGestureTipState()
     var currentBrightness by remember { mutableFloatStateOf(-1f) }
@@ -510,6 +516,7 @@ fun VideoPlayerController(
                     bufferedPercentage = seekerState.value.bufferedPercentage,
                     isPersistentSeek = true,
                     chapterSegments = chapterSegments,
+                    skipSegments = skipSegments,
                 )
             }
 
@@ -576,6 +583,7 @@ fun VideoPlayerController(
                 videoShot = uiState.videoShot,
                 videoShotCache = videoShotCache,
                 chapterSegments = chapterSegments,
+                skipSegments = skipSegments,
                 isPgc = isPgc,
                 danmakuEnabled = uiState.danmakuState.enabledTypes.isNotEmpty(),
                 isLooping = isLooping,

@@ -57,6 +57,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import dev.frost819.newbv.R
+import dev.frost819.newbv.app.entity.player.SponsorSegment
 import dev.frost819.newbv.app.ui.state.player.SeekerState
 import dev.frost819.newbv.app.util.VideoShotImageCache
 import dev.frost819.newbv.app.util.formatHourMinSec
@@ -83,6 +84,7 @@ import kotlinx.coroutines.delay
  * @param videoShot 缩略图数据（为 null 时不显示预览）
  * @param videoShotCache 缩略图缓存
  * @param chapterSegments 归一化后的章节分段（空列表时进度条为普通单线渲染）
+ * @param skipSegments 空降片段列表（进度条按分类着色标记，空列表不绘制）
  * @param isPgc 是否来自番剧（为 true 时隐藏详情/UP/相关视频按钮）
  * @param danmakuEnabled 弹幕是否开启
  * @param isLooping 是否循环播放
@@ -113,6 +115,7 @@ fun ControllerVideoInfo(
     videoShot: VideoShot?,
     videoShotCache: VideoShotImageCache,
     chapterSegments: List<VideoChapterSegment>,
+    skipSegments: List<SponsorSegment>,
     isPgc: Boolean,
     danmakuEnabled: Boolean,
     isLooping: Boolean,
@@ -160,6 +163,7 @@ fun ControllerVideoInfo(
                 videoShot = videoShot,
                 videoShotCache = videoShotCache,
                 chapterSegments = chapterSegments,
+                skipSegments = skipSegments,
                 isPgc = isPgc,
                 danmakuEnabled = danmakuEnabled,
                 isLooping = isLooping,
@@ -272,6 +276,7 @@ fun ControllerVideoInfoBottom(
     videoShot: VideoShot?,
     videoShotCache: VideoShotImageCache,
     chapterSegments: List<VideoChapterSegment>,
+    skipSegments: List<SponsorSegment>,
     isPgc: Boolean,
     danmakuEnabled: Boolean,
     isLooping: Boolean,
@@ -421,6 +426,7 @@ fun ControllerVideoInfoBottom(
                 bufferedPercentage = seekerState.bufferedPercentage,
                 isPersistentSeek = false,
                 chapterSegments = chapterSegments,
+                skipSegments = skipSegments,
             )
         }
 

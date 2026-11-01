@@ -8,10 +8,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
+import dev.frost819.newbv.app.entity.player.SponsorActionType
+import dev.frost819.newbv.app.entity.player.SponsorCategories
+import dev.frost819.newbv.app.entity.player.SponsorSegment
 import dev.frost819.newbv.biliapi.entity.video.VideoChapterSegment
 import dev.frost819.newbv.core.theme.BVTheme
 
@@ -33,6 +37,9 @@ import dev.frost819.newbv.core.theme.BVTheme
  * - **交互模式**（[isPersistentSeek] = false）：8dp 粗线，显示缓冲进度，
  *   用于控制器信息栏中的可交互 seek bar。
  *
+ * 空降片段标记（[skipSegments]）绘制在播放进度之上，按分类着色，
+ * 使已播与未播区域的片段覆盖范围都清晰可辨。
+ *
  * @param modifier 修饰符
  * @param duration 视频总时长（毫秒）
  * @param position 当前播放位置（毫秒）
@@ -40,6 +47,7 @@ import dev.frost819.newbv.core.theme.BVTheme
  * @param isPersistentSeek 是否为常显模式
  * @param chapterSegments 归一化后的章节分段（[VideoChapters.normalize] 的产物），
  *   需已按 fromMs 升序、互不重叠、裁剪进片长
+ * @param skipSegments 空降片段列表（已归一化、按起点升序），空列表不绘制标记层
  */
 @Composable
 fun VideoProgressSeek(
@@ -49,6 +57,7 @@ fun VideoProgressSeek(
     bufferedPercentage: Int,
     isPersistentSeek: Boolean,
     chapterSegments: List<VideoChapterSegment> = emptyList(),
+    skipSegments: List<SponsorSegment> = emptyList(),
 ) {
     val trackWidthDp = if (isPersistentSeek) 2.dp else 8.dp
     val activeTrackColor = MaterialTheme.colorScheme.primary
@@ -134,6 +143,36 @@ fun VideoProgressSeek(
                         cap = StrokeCap.Round,
                     )
                 }
+            }
+        }
+
+        // 空降片段标记：绘制在播放进度之上，已播/未播区域都清晰可辨
+        if (skipSegments.isNotEmpty() && duration > 0) {
+            val skipBounds =
+                computeChapterSegmentBounds(
+                    segments =
+                        skipSegments.map { segment ->
+                            VideoChapterSegment(
+                                fromMs = segment.startMs,
+                                toMs = segment.endMs,
+                                content = segment.category,
+                            )
+                        },
+                    durationMs = duration,
+                    trackWidthPx = size.width,
+                    strokeWidthPx = trackWidthPx,
+                    gapPx = chapterGap.toPx(),
+                )
+            skipSegments.forEachIndexed { index, segment ->
+                val (startX, endX) = skipBounds[index]
+                if (endX <= startX) return@forEachIndexed
+                drawLine(
+                    color = Color(SponsorCategories.colorOf(segment.category)).copy(alpha = 0.6f),
+                    start = Offset(startX, center.y),
+                    end = Offset(endX, center.y),
+                    strokeWidth = trackWidthPx,
+                    cap = StrokeCap.Round,
+                )
             }
         }
     }
@@ -241,6 +280,36 @@ private fun VideoProgressSeekChaptersPreview() {
                     VideoChapterSegment(0L, 20_000L, "开场"),
                     VideoChapterSegment(20_000L, 45_000L, "正片"),
                     VideoChapterSegment(45_000L, 100_000L, "片尾"),
+                ),
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun VideoProgressSeekSkipSegmentsPreview() {
+    BVTheme {
+        VideoProgressSeek(
+            duration = 100_000L,
+            position = 35_000L,
+            bufferedPercentage = 60,
+            isPersistentSeek = false,
+            skipSegments =
+                listOf(
+                    SponsorSegment(
+                        uuid = "1",
+                        category = SponsorCategories.SPONSOR,
+                        actionType = SponsorActionType.SKIP,
+                        startMs = 10_000L,
+                        endMs = 20_000L,
+                    ),
+                    SponsorSegment(
+                        uuid = "2",
+                        category = SponsorCategories.OUTRO,
+                        actionType = SponsorActionType.SKIP,
+                        startMs = 90_000L,
+                        endMs = 98_000L,
+                    ),
                 ),
         )
     }
