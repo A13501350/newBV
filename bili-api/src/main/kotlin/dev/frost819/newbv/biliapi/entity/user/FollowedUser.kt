@@ -24,13 +24,12 @@ data class FollowedUser(
          * @param follower HTTP 层粉丝数据。
          * @return 粉丝领域实体。
          */
-        fun fromHttpFollower(
-            follower: dev.frost819.newbv.biliapi.http.entity.user.UserFollowersData.Follower,
-        ) = FollowedUser(
-            mid = follower.mid,
-            name = follower.uname,
-            avatar = follower.face,
-            sign = follower.sign,
-        )
+        fun fromHttpFollower(follower: dev.frost819.newbv.biliapi.http.entity.user.UserFollowersData.Follower) =
+            FollowedUser(
+                mid = follower.mid,
+                name = follower.uname,
+                avatar = follower.face,
+                sign = follower.sign,
+            )
     }
 }
