@@ -230,6 +230,71 @@ class HistoryEntityTest {
 
     // endregion
 
+    // region ---- encodeDeleteKid ----
+
+    @Test
+    fun `encodeDeleteKid archive encodes arc prefix with oid`() {
+        val item = fakeDomainHistoryItem(type = HistoryItemType.Archive, oid = 993403941L)
+
+        val kid = HistoryItem.encodeDeleteKid(item)
+
+        assertThat(kid).isEqualTo("arc_993403941")
+    }
+
+    @Test
+    fun `encodeDeleteKid pgc encodes pgc prefix with seasonId`() {
+        val item =
+            fakeDomainHistoryItem(
+                type = HistoryItemType.Pgc,
+                oid = 100L,
+                seasonId = 328146,
+            )
+
+        val kid = HistoryItem.encodeDeleteKid(item)
+
+        assertThat(kid).isEqualTo("pgc_328146")
+    }
+
+    @Test
+    fun `encodeDeleteKid pgc without seasonId returns null`() {
+        val item = fakeDomainHistoryItem(type = HistoryItemType.Pgc, oid = 100L, seasonId = null)
+
+        val kid = HistoryItem.encodeDeleteKid(item)
+
+        assertThat(kid).isNull()
+    }
+
+    @Test
+    fun `encodeDeleteKid unknown type returns null`() {
+        val item = fakeDomainHistoryItem(type = HistoryItemType.Unknown, oid = 100L)
+
+        val kid = HistoryItem.encodeDeleteKid(item)
+
+        assertThat(kid).isNull()
+    }
+
+    // endregion
+
+    private fun fakeDomainHistoryItem(
+        type: HistoryItemType,
+        oid: Long,
+        seasonId: Int? = null,
+    ) = HistoryItem(
+        oid = oid,
+        bvid = "BV1xx",
+        cid = 1051761130L,
+        kid = 0L,
+        epid = null,
+        seasonId = seasonId,
+        title = "标题",
+        cover = "http://cover.test",
+        author = "UP主",
+        mid = 12345L,
+        duration = 300,
+        progress = 120,
+        type = type,
+    )
+
     private fun fakeHistoryItem(
         business: String = "archive",
         title: String = "title",
