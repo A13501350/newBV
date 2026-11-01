@@ -11,6 +11,7 @@ import dev.frost819.newbv.app.ui.screen.live.liveAreaScreen
 import dev.frost819.newbv.app.ui.screen.live.liveFollowScreen
 import dev.frost819.newbv.app.ui.screen.login.loginScreen
 import dev.frost819.newbv.app.ui.screen.pgc.pgcFeatureScreen
+import dev.frost819.newbv.app.ui.screen.pgc.timelineScreen
 import dev.frost819.newbv.app.ui.screen.player.livePlayerScreen
 import dev.frost819.newbv.app.ui.screen.player.seasonPlayerScreen
 import dev.frost819.newbv.app.ui.screen.player.videoPlayerScreen
@@ -74,6 +75,7 @@ fun AppNavHost(
 
         // ── PGC ──────────────────────────────────────────────────────
         pgcFeatureScreen(navController)
+        timelineScreen(navController)
 
         // ── 设置 ─────────────────────────────────────────────────────
         settingsScreen(navController)

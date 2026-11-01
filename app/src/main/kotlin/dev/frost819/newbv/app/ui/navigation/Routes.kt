@@ -102,6 +102,10 @@ data class PgcFeatureRoute(
     val epid: Long? = null,
 )
 
+/** 新番放送时间表页。 */
+@Serializable
+object TimelineRoute
+
 // ── 设置 ──────────────────────────────────────────────────────────────
 
 /** 设置主页。 */
