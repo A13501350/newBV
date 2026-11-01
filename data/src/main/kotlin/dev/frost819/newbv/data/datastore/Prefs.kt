@@ -402,6 +402,23 @@ object Prefs {
     /** 缓存自动清空开关（关闭后不自动清理）。 */
     var cacheAutoClean by pref(PrefKeys.cacheAutoClean, true)
 
+    // --- 青少年模式 ---
+
+    /** 青少年保护开关（默认关闭）。 */
+    var teenModeEnabled by pref(PrefKeys.teenModeEnabled, false)
+
+    /** 每日观看时长上限（分钟，0 = 不限制）。 */
+    var teenWatchLimitMin by pref(PrefKeys.teenWatchLimitMin, 0)
+
+    /** 单次休息时长（分钟）。 */
+    var teenRestLimitMin by pref(PrefKeys.teenRestLimitMin, 20)
+
+    /** 累计观看毫秒（青少年模式内部状态，随进程持久化，休息结束后清零）。 */
+    var teenAccumulatedMs by pref(PrefKeys.teenAccumulatedMs, 0L)
+
+    /** 休息开始的墙钟时间戳（毫秒），0 = 未在休息。用墙钟使杀进程/重启无法绕过休息。 */
+    var teenRestStartMs by pref(PrefKeys.teenRestStartMs, 0L)
+
     // ===== Flow 属性（用于 Compose collectAsState 实时观察） =====
 
     /** 主题模式 Flow（实时响应设置变更）。 */
