@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -39,19 +40,23 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import dev.frost819.newbv.app.ui.component.TopNav
+import dev.frost819.newbv.app.ui.component.TopNavItem
 import dev.frost819.newbv.app.ui.component.TvLazyVerticalGrid
 import dev.frost819.newbv.app.ui.component.focusSaverItem
 import dev.frost819.newbv.app.ui.component.rememberFocusSaver
 import dev.frost819.newbv.app.ui.navigation.FollowRoute
 import dev.frost819.newbv.app.ui.navigation.UserSpaceRoute
+import dev.frost819.newbv.app.viewmodel.user.FollowListType
 import dev.frost819.newbv.app.viewmodel.user.FollowViewModel
 import dev.frost819.newbv.biliapi.entity.user.FollowedUser
 import dev.frost819.newbv.core.focus.touchClickable
 
 /**
- * 关注列表页。
+ * 关注/粉丝列表页。
  *
- * 展示当前用户关注的 UP 主列表，点击卡片跳转到对应用户空间页。
+ * 顶部两段式 Tab 切换关注与粉丝列表（粉丝 Tab 仅本人主页可见），
+ * 点击卡片跳转到对应用户空间页。
  */
 fun NavGraphBuilder.followScreen(navController: NavController) {
     composable<FollowRoute> { backStackEntry ->
@@ -59,6 +64,7 @@ fun NavGraphBuilder.followScreen(navController: NavController) {
         val viewModel: FollowViewModel = hiltViewModel()
         FollowScreen(
             mid = route.mid,
+            initialTab = route.tab,
             viewModel = viewModel,
             navController = navController,
         )
@@ -68,6 +74,7 @@ fun NavGraphBuilder.followScreen(navController: NavController) {
 @Composable
 private fun FollowScreen(
     mid: Long,
+    initialTab: String,
     viewModel: FollowViewModel,
     navController: NavController,
 ) {
@@ -75,62 +82,112 @@ private fun FollowScreen(
     val gridState = rememberLazyGridState()
     val focusSaver = rememberFocusSaver()
 
-    LaunchedEffect(mid) {
-        viewModel.init(mid)
+    LaunchedEffect(mid, initialTab) {
+        viewModel.init(mid, FollowListType.fromTabParam(initialTab))
     }
 
     focusSaver.RestoreFocus()
 
-    TvLazyVerticalGrid(
-        state = gridState,
-        columns = GridCells.Fixed(4),
-        contentPadding = PaddingValues(24.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (state.loading && state.users.isEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 48.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (state.isSelf) {
+            FollowTabRow(
+                selectedType = state.listType,
+                onSelectedChanged = viewModel::switchListType,
+                onRefresh = viewModel::refresh,
+            )
+        }
+        TvLazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Fixed(4),
+            contentPadding = PaddingValues(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (state.loading && state.users.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
                 }
-            }
-        } else if (state.error && state.users.isEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 48.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "加载失败",
-                        color = Color.Gray,
-                        fontSize = 14.sp,
+            } else if (state.error && state.users.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "加载失败",
+                            color = Color.Gray,
+                            fontSize = 14.sp,
+                        )
+                    }
+                }
+            } else {
+                itemsIndexed(
+                    items = state.users,
+                    key = { _, user -> user.mid },
+                ) { index, user ->
+                    FollowedUserCard(
+                        modifier = Modifier.focusSaverItem(focusSaver, "follow_$index"),
+                        user = user,
+                        onClick = {
+                            navController.navigate(UserSpaceRoute(mid = user.mid, name = user.name, face = user.avatar))
+                        },
                     )
                 }
             }
-        } else {
-            itemsIndexed(
-                items = state.users,
-                key = { _, user -> user.mid },
-            ) { index, user ->
-                FollowedUserCard(
-                    modifier = Modifier.focusSaverItem(focusSaver, "follow_$index"),
-                    user = user,
-                    onClick = {
-                        navController.navigate(UserSpaceRoute(mid = user.mid, name = user.name, face = user.avatar))
-                    },
-                )
-            }
         }
     }
+}
+
+/**
+ * 关注/粉丝两段式 Tab 行。
+ *
+ * 仅本人主页展示（粉丝接口对非本人返回 22110007），复用 TV 焦点导航的 [TopNav]。
+ * 焦点移到另一个 Tab 即切换列表；点击当前选中 Tab 刷新。
+ *
+ * @param selectedType 当前选中的列表类型。
+ * @param onSelectedChanged Tab 焦点切换回调。
+ * @param onRefresh 点击当前选中 Tab 时的刷新回调。
+ */
+@Composable
+private fun FollowTabRow(
+    selectedType: FollowListType,
+    onSelectedChanged: (FollowListType) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val items = FollowListType.entries.map { FollowTabItem(it) }
+    TopNav(
+        items = items,
+        selectedIndex = items.indexOfFirst { it.type == selectedType },
+        isLargePadding = true,
+        onSelectedChanged = { tab -> onSelectedChanged((tab as FollowTabItem).type) },
+        onClick = { tab -> if ((tab as FollowTabItem).type == selectedType) onRefresh() },
+    )
+}
+
+/**
+ * 关注/粉丝 Tab 项。
+ *
+ * @property type 对应的列表类型。
+ */
+private data class FollowTabItem(
+    val type: FollowListType,
+) : TopNavItem {
+    override val displayName: String =
+        when (type) {
+            FollowListType.Following -> "关注"
+            FollowListType.Followers -> "粉丝"
+        }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
