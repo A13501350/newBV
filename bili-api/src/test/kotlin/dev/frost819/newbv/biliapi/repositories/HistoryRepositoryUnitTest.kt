@@ -115,6 +115,88 @@ class HistoryRepositoryUnitTest {
             assertThat(result.data).isEmpty()
         }
 
+    @Test
+    fun `deleteHistory posts encoded arc kid with csrf`() =
+        runTest {
+            // Given
+            authRepository.biliJct = "test-csrf"
+            coEvery { BiliHttpApi.deleteHistory(any(), any()) } returns Pair(true, "0")
+
+            // When
+            repository.deleteHistory(fakeDomainItem(type = HistoryItemType.Archive, oid = 993403941L))
+
+            // Then
+            coVerify { BiliHttpApi.deleteHistory(kid = "arc_993403941", csrf = "test-csrf") }
+        }
+
+    @Test
+    fun `deleteHistory posts encoded pgc kid with csrf`() =
+        runTest {
+            // Given
+            authRepository.biliJct = "test-csrf"
+            coEvery { BiliHttpApi.deleteHistory(any(), any()) } returns Pair(true, "0")
+
+            // When
+            repository.deleteHistory(fakeDomainItem(type = HistoryItemType.Pgc, oid = 100L, seasonId = 328146))
+
+            // Then
+            coVerify { BiliHttpApi.deleteHistory(kid = "pgc_328146", csrf = "test-csrf") }
+        }
+
+    @Test
+    fun `deleteHistory throws IllegalStateException when response code is not 0`() =
+        runTest {
+            // Given
+            authRepository.biliJct = "test-csrf"
+            coEvery { BiliHttpApi.deleteHistory(any(), any()) } returns Pair(false, "csrf无效")
+
+            // When
+            val exception =
+                runCatching {
+                    repository.deleteHistory(fakeDomainItem(type = HistoryItemType.Archive, oid = 1L))
+                }.exceptionOrNull()
+
+            // Then
+            assertThat(exception).isInstanceOf(IllegalStateException::class.java)
+            assertThat(exception?.message).isEqualTo("csrf无效")
+        }
+
+    @Test
+    fun `deleteHistory throws IllegalArgumentException when kid cannot be encoded`() =
+        runTest {
+            // Given: PGC 条目缺少 season id，无法构造合法 kid
+
+            // When
+            val exception =
+                runCatching {
+                    repository.deleteHistory(fakeDomainItem(type = HistoryItemType.Pgc, oid = 1L, seasonId = null))
+                }.exceptionOrNull()
+
+            // Then
+            assertThat(exception).isInstanceOf(IllegalArgumentException::class.java)
+            coVerify(exactly = 0) { BiliHttpApi.deleteHistory(any(), any()) }
+        }
+
+    private fun fakeDomainItem(
+        type: HistoryItemType,
+        oid: Long,
+        seasonId: Int? = null,
+    ) = dev.frost819.newbv.biliapi.entity.user.HistoryItem(
+        oid = oid,
+        bvid = "BV1xx",
+        cid = 1051761130L,
+        kid = 0L,
+        epid = null,
+        seasonId = seasonId,
+        title = "标题",
+        cover = "http://cover.test",
+        author = "UP主",
+        mid = 12345L,
+        duration = 300,
+        progress = 120,
+        type = type,
+    )
+
     private fun fakeHistoryItem(
         business: String,
         title: String,

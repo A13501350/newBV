@@ -348,6 +348,58 @@ class PersonalViewModelTest {
             assertThat(vm.uiState.value.historyHasMore).isFalse()
         }
 
+    @Test
+    fun `deleteHistory removes item from list on success`() =
+        runTest(testDispatcher) {
+            // Given
+            val item1 = fakeHistoryItem(1)
+            val item2 = fakeHistoryItem(2)
+            coEvery { historyRepo.getHistories(any(), any()) } returns
+                fakeHistoryData(listOf(item1, item2), cursor = 0)
+            coEvery { historyRepo.deleteHistory(any()) } returns Unit
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            // When
+            vm.deleteHistory(item1)
+            advanceUntilIdle()
+
+            // Then
+            assertThat(vm.uiState.value.historyItems).hasSize(1)
+            assertThat(
+                vm.uiState.value.historyItems[0]
+                    .oid,
+            ).isEqualTo(2)
+            assertThat(vm.uiState.value.historyDeleteError).isFalse()
+        }
+
+    @Test
+    fun `deleteHistory keeps item and sets error on failure`() =
+        runTest(testDispatcher) {
+            // Given
+            val item1 = fakeHistoryItem(1)
+            val item2 = fakeHistoryItem(2)
+            coEvery { historyRepo.getHistories(any(), any()) } returns
+                fakeHistoryData(listOf(item1, item2), cursor = 0)
+            coEvery { historyRepo.deleteHistory(any()) } throws RuntimeException("network error")
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            // When
+            vm.deleteHistory(item1)
+            advanceUntilIdle()
+
+            // Then: 失败回滚，条目按原位置保留
+            assertThat(vm.uiState.value.historyItems).hasSize(2)
+            assertThat(
+                vm.uiState.value.historyItems[0]
+                    .oid,
+            ).isEqualTo(1)
+            assertThat(vm.uiState.value.historyDeleteError).isTrue()
+        }
+
     // endregion
 
     // region Favorite
