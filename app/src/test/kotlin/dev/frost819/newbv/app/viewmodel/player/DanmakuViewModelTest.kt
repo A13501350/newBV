@@ -1,6 +1,9 @@
 package dev.frost819.newbv.app.viewmodel.player
 
 import com.google.common.truth.Truth.assertThat
+import com.kuaishou.akdanmaku.DanmakuConfig
+import com.kuaishou.akdanmaku.ecs.component.filter.DuplicateMergingFilter
+import com.kuaishou.akdanmaku.ecs.component.filter.TypeFilter
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
@@ -8,12 +11,15 @@ import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
 import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
 import dev.frost819.newbv.danmaku.entity.DanmakuType
 import dev.frost819.newbv.data.datastore.Prefs
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +61,7 @@ class DanmakuViewModelTest {
         every { Prefs.defaultDanmakuArea } returns 0.5f
         every { Prefs.defaultDanmakuSpeedFactor } returns 1f
         every { Prefs.defaultDanmakuMask } returns false
+        every { Prefs.defaultDanmakuMergeDuplicate } returns false
         every { Prefs.defaultDanmakuTypes } returns
             listOf(
                 DataDanmakuType.All,
@@ -67,6 +74,7 @@ class DanmakuViewModelTest {
         every { Prefs.defaultDanmakuArea = any() } answers {}
         every { Prefs.defaultDanmakuSpeedFactor = any() } answers {}
         every { Prefs.defaultDanmakuMask = any() } answers {}
+        every { Prefs.defaultDanmakuMergeDuplicate = any() } answers {}
         every { Prefs.defaultDanmakuTypes = any() } answers {}
         every { Prefs.apiType } returns DataApiType.Web
 
@@ -234,6 +242,93 @@ class DanmakuViewModelTest {
             advanceUntilIdle()
 
             verify { Prefs.defaultDanmakuTypes = any() }
+        }
+
+    // === 合并重复弹幕 ===
+
+    @Test
+    fun `initial danmakuState has mergeDuplicate disabled`() {
+        assertThat(viewModel.danmakuState.value.mergeDuplicate).isFalse()
+    }
+
+    @Test
+    fun `updateDanmakuState SetMergeDuplicate updates mergeDuplicate`() =
+        runTest(testDispatcher) {
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(true))
+            advanceUntilIdle()
+            assertThat(viewModel.danmakuState.value.mergeDuplicate).isTrue()
+
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(false))
+            advanceUntilIdle()
+            assertThat(viewModel.danmakuState.value.mergeDuplicate).isFalse()
+        }
+
+    @Test
+    fun `updateDanmakuState SetMergeDuplicate persists to Prefs`() =
+        runTest(testDispatcher) {
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(true))
+            advanceUntilIdle()
+
+            verify { Prefs.defaultDanmakuMergeDuplicate = true }
+        }
+
+    @Test
+    fun `enabling merge duplicate mounts filter into dataFilter and pushes config to engine`() =
+        runTest(testDispatcher) {
+            val player = mockk<DanmakuPlayer>(relaxed = true)
+            val configSlot = slot<DanmakuConfig>()
+            every { player.updateConfig(capture(configSlot)) } just Runs
+            viewModel.danmakuPlayer = player
+
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(true))
+            advanceUntilIdle()
+
+            verify(exactly = 1) { player.updateConfig(any()) }
+            val dataFilter = configSlot.captured.dataFilter
+            assertThat(dataFilter.filterIsInstance<DuplicateMergingFilter>()).hasSize(1)
+            // 类型过滤器始终保留
+            assertThat(dataFilter.filterIsInstance<TypeFilter>()).hasSize(1)
+        }
+
+    @Test
+    fun `disabling merge duplicate removes filter from dataFilter and pushes config to engine`() =
+        runTest(testDispatcher) {
+            val player = mockk<DanmakuPlayer>(relaxed = true)
+            val configSlot = slot<DanmakuConfig>()
+            every { player.updateConfig(capture(configSlot)) } just Runs
+            viewModel.danmakuPlayer = player
+
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(true))
+            advanceUntilIdle()
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(false))
+            advanceUntilIdle()
+
+            verify(exactly = 2) { player.updateConfig(any()) }
+            val dataFilter = configSlot.captured.dataFilter
+            assertThat(dataFilter.filterIsInstance<DuplicateMergingFilter>()).isEmpty()
+            assertThat(dataFilter.filterIsInstance<TypeFilter>()).hasSize(1)
+        }
+
+    @Test
+    fun `merge duplicate filter instance is reused across repeated toggles`() =
+        runTest(testDispatcher) {
+            val player = mockk<DanmakuPlayer>(relaxed = true)
+            val capturedConfigs = mutableListOf<DanmakuConfig>()
+            every { player.updateConfig(capture(capturedConfigs)) } just Runs
+            viewModel.danmakuPlayer = player
+
+            // 开 → 关 → 开：三次均推送配置，但过滤器实例必须复用而非重建
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(true))
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(false))
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetMergeDuplicate(true))
+            advanceUntilIdle()
+
+            verify(exactly = 3) { player.updateConfig(any()) }
+            val mergedPerConfig = capturedConfigs.map { it.dataFilter.filterIsInstance<DuplicateMergingFilter>() }
+            assertThat(mergedPerConfig[0]).hasSize(1)
+            assertThat(mergedPerConfig[1]).isEmpty()
+            assertThat(mergedPerConfig[2]).hasSize(1)
+            assertThat(mergedPerConfig[2].single()).isSameInstanceAs(mergedPerConfig[0].single())
         }
 
     @Test
