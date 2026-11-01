@@ -48,7 +48,7 @@ import dev.frost819.newbv.data.datastore.DanmakuType as DataDanmakuType
  * 弹幕 ViewModel。
  *
  * 管理弹幕播放器生命周期、弹幕数据加载（分段 → [DanmakuItemData]）、
- * 弹幕配置（大小/透明度/区域/速度/类型/蒙版）、播放同步。
+ * 弹幕配置（大小/行距/透明度/区域/速度/类型/蒙版）、播放同步。
  *
  * 弹幕数据采用分段加载（每段时长由 dm/view 元数据决定，通常 6 分钟）：
  * - [loadDanmaku] 获取元数据并按初始位置加载首段
@@ -99,6 +99,7 @@ class DanmakuViewModel
                     opacity = Prefs.defaultDanmakuOpacity,
                     area = Prefs.defaultDanmakuArea,
                     speedFactor = Prefs.defaultDanmakuSpeedFactor,
+                    lineSpacing = Prefs.defaultDanmakuLineSpacing,
                     maskEnabled = Prefs.defaultDanmakuMask,
                     enabledTypes = Prefs.defaultDanmakuTypes.map { it.toDanmakuEntity() },
                     blockColorfulEnabled = Prefs.defaultDanmakuBlockColorfulEnabled,
@@ -651,6 +652,11 @@ class DanmakuViewModel
                     Prefs.defaultDanmakuScale = new.scale
                 }
 
+                is DanmakuSettingAction.SetLineSpacing -> {
+                    updateDanmakuLineSpacing(new.lineSpacing)
+                    Prefs.defaultDanmakuLineSpacing = new.lineSpacing
+                }
+
                 is DanmakuSettingAction.SetSpeedFactor -> {
                     danmakuPlayer?.setDanmakuRollingSpeed(new.speedFactor)
                     Prefs.defaultDanmakuSpeedFactor = new.speedFactor
@@ -680,6 +686,7 @@ class DanmakuViewModel
                 is DanmakuSettingAction.SetOpacity -> state.copy(opacity = opacity)
                 is DanmakuSettingAction.SetArea -> state.copy(area = area)
                 is DanmakuSettingAction.SetSpeedFactor -> state.copy(speedFactor = factor)
+                is DanmakuSettingAction.SetLineSpacing -> state.copy(lineSpacing = lineSpacing)
                 is DanmakuSettingAction.SetMaskEnabled -> state.copy(maskEnabled = enabled)
                 is DanmakuSettingAction.SetEnabledTypes -> state.copy(enabledTypes = types)
                 is DanmakuSettingAction.SetBlockColorfulEnabled -> state.copy(blockColorfulEnabled = enabled)
@@ -697,6 +704,7 @@ class DanmakuViewModel
                 danmakuConfig.copy(
                     density = 120,
                     textSizeScale = state.scale,
+                    lineSpacing = state.lineSpacing,
                     screenPart = state.area,
                     rollingSpeedFactor = state.speedFactor,
                 )
@@ -760,6 +768,11 @@ class DanmakuViewModel
 
         private fun updateDanmakuScale(scale: Float) {
             danmakuConfig = danmakuConfig.copy(textSizeScale = scale)
+            danmakuPlayer?.updateConfig(danmakuConfig)
+        }
+
+        private fun updateDanmakuLineSpacing(lineSpacing: Int) {
+            danmakuConfig = danmakuConfig.copy(lineSpacing = lineSpacing)
             danmakuPlayer?.updateConfig(danmakuConfig)
         }
 

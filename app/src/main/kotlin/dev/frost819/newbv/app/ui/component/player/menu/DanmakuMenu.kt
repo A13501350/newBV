@@ -17,17 +17,19 @@ import java.text.NumberFormat
  * 弹幕设置面板。
  *
  * 双列布局：左侧为选项值面板（CheckBoxMenuList / StepLessMenuItem），右侧为子项列表。
- * 子项包括：开关、大小、透明度、速度、区域、蒙版。
+ * 子项包括：开关、大小、行距、透明度、速度、区域、蒙版。
  *
  * @param modifier 修饰符
  * @param currentEnabledTypes 当前启用的弹幕类型
  * @param currentScale 当前字体缩放
+ * @param currentLineSpacing 当前行距
  * @param currentOpacity 当前透明度
  * @param currentSpeedFactor 当前速度因子
  * @param currentArea 当前显示区域
  * @param currentMaskEnabled 当前蒙版状态
  * @param onDanmakuSwitchChange 弹幕类型变化回调
  * @param onDanmakuSizeChange 大小变化回调
+ * @param onDanmakuLineSpacingChange 行距变化回调
  * @param onDanmakuOpacityChange 透明度变化回调
  * @param onDanmakuSpeedFactorChange 速度因子变化回调
  * @param onDanmakuAreaChange 区域变化回调
@@ -40,12 +42,14 @@ fun DanmakuMenuList(
     modifier: Modifier = Modifier,
     currentEnabledTypes: List<DanmakuType>,
     currentScale: Float,
+    currentLineSpacing: Int,
     currentOpacity: Float,
     currentSpeedFactor: Float,
     currentArea: Float,
     currentMaskEnabled: Boolean,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
+    onDanmakuLineSpacingChange: (Int) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
@@ -86,6 +90,17 @@ fun DanmakuMenuList(
                             .apply { maximumFractionDigits = 0 }
                             .format(currentScale),
                     onValueChange = onDanmakuSizeChange,
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerDanmakuMenuItem.LineSpacing ->
+                StepLessMenuItem(
+                    modifier = itemModifier,
+                    value = currentLineSpacing.toFloat(),
+                    step = 2f,
+                    range = 0f..16f,
+                    text = "$currentLineSpacing",
+                    onValueChange = { onDanmakuLineSpacingChange(it.toInt()) },
                     onFocusBackToParent = backToMenu,
                 )
 
