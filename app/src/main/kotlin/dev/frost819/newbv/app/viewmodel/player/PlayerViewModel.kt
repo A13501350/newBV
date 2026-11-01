@@ -87,16 +87,6 @@ private const val ONLINE_WATCH_REFRESH_MS = 60_000L
 private val AUDIO_FALLBACK_ORDER = listOf(Audio.A192K, Audio.A132K, Audio.A64K)
 
 /**
- * 长按确认键临时倍速的放大倍数（对齐 MyTVB：按住 OK 临时 2 倍速，松开恢复）。
- */
-private const val TEMP_SPEED_MULTIPLIER = 2f
-
-/**
- * 长按确认键临时倍速的上限（MyTVB 默认倍速上限 3.0）。
- */
-private const val MAX_TEMP_SPEED = 3f
-
-/**
  * 播放器主 ViewModel。
  *
  * 管理视频播放器生命周期、URL 解析与播放、进度同步、心跳上报、
@@ -858,48 +848,36 @@ class PlayerViewModel
             videoPlayer?.speed = targetSpeed
         }
 
+        // 长按确认键临时倍速状态机：薄委托给纯 JVM 协作者 TempSpeedController；
+        // 写速度 lambda 在播放器未就绪时抛异常，由协作者兜底保持未激活
+        private val tempSpeedController =
+            TempSpeedController(
+                readBaseSpeed = { _uiState.value.playSpeed },
+                writeEngineSpeed = { speed ->
+                    val player = videoPlayer ?: throw IllegalStateException("videoPlayer 未初始化")
+                    player.speed = speed
+                },
+                onTip = { showShortcutTip(it) },
+            )
+
         /**
-         * 长按确认键临时倍速会话是否激活。
-         *
-         * UI 层据此决定确认键 KeyUp 的语义：激活中 → 恢复原速，否则 → 短按播放/暂停。
+         * 长按确认键临时倍速会话是否激活（委托 [TempSpeedController]）。
          */
-        var isTempSpeedActive: Boolean = false
-            private set
-
-        /** 进入临时倍速前记录的用户设定速度，松开确认键后恢复。 */
-        private var speedBeforeTempBoost: Float = 1f
+        val isTempSpeedActive: Boolean
+            get() = tempSpeedController.isTempSpeedActive
 
         /**
-         * 进入长按确认键临时倍速会话。
-         *
-         * 把播放器引擎速度临时设为用户设定速度 ×[TEMP_SPEED_MULTIPLIER]（封顶 [MAX_TEMP_SPEED]），
-         * 并在提示浮层显示实际速度。重复调用直接返回（去重长按 repeat 补发的 KeyDown）。
-         * 不修改 [PlayerUiState.playSpeed]（用户设定速度），倍速菜单显示保持不变。
-         *
-         * 播放器未初始化时不激活，避免记录到错误的恢复基准。
+         * 进入长按确认键临时倍速会话（委托 [TempSpeedController]）。
          */
         fun startTempSpeed() {
-            if (isTempSpeedActive) return
-            val player = videoPlayer ?: return
-            val baseSpeed = _uiState.value.playSpeed
-            speedBeforeTempBoost = baseSpeed
-            // 临时速度 = 用户设定速度 ×2，超过上限封顶（MyTVB 默认倍速上限 3.0）
-            val boostedSpeed = (baseSpeed * TEMP_SPEED_MULTIPLIER).coerceAtMost(MAX_TEMP_SPEED)
-            player.speed = boostedSpeed
-            isTempSpeedActive = true
-            showShortcutTip("${boostedSpeed}x")
+            tempSpeedController.startTempSpeed()
         }
 
         /**
-         * 退出长按确认键临时倍速会话，恢复用户设定速度。
-         *
-         * 未激活时调用无副作用（退出/菜单打开等兜底路径可随意调用）。
-         * 只恢复播放器引擎速度，不改 [PlayerUiState.playSpeed]，用户设定不被临时倍速污染。
+         * 退出长按确认键临时倍速会话并恢复原速（委托 [TempSpeedController]）。
          */
         fun stopTempSpeed() {
-            if (!isTempSpeedActive) return
-            isTempSpeedActive = false
-            videoPlayer?.speed = speedBeforeTempBoost
+            tempSpeedController.stopTempSpeed()
         }
 
         /** 更新宽高比。 */
