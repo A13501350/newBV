@@ -43,8 +43,7 @@ enum class FollowListType(
          * @param tab 路由参数值（"following"/"followers"），未知值回退 [Following]。
          * @return 对应的列表类型。
          */
-        fun fromTabParam(tab: String): FollowListType =
-            entries.firstOrNull { it.tabParam == tab } ?: Following
+        fun fromTabParam(tab: String): FollowListType = entries.firstOrNull { it.tabParam == tab } ?: Following
     }
 }
 
