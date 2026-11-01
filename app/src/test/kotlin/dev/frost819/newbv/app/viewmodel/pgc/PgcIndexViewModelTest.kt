@@ -106,9 +106,21 @@ class PgcIndexViewModelTest {
     private fun stubGetPgcIndex(respond: (callIndex: Int) -> PgcIndexData) {
         coEvery {
             pgcRepository.getPgcIndex(
-                any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
             )
         } answers {
             capturedOrders.add(secondArg())
@@ -121,9 +133,21 @@ class PgcIndexViewModelTest {
     private fun verifyRepoCalls(count: Int = 1) {
         coVerify(exactly = count) {
             pgcRepository.getPgcIndex(
-                any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
             )
         }
     }
@@ -244,9 +268,7 @@ class PgcIndexViewModelTest {
             assertThat(
                 viewModel.uiState.value.filter.order,
             ).isEqualTo(IndexOrder.Score)
-            assertThat(
-                viewModel.uiState.value.items.map { it.seasonId },
-            ).containsExactly(5)
+            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(5)
         }
 
     @Test
@@ -308,9 +330,7 @@ class PgcIndexViewModelTest {
             advanceUntilIdle()
 
             // Then: 跨页重复的 seasonId 被去重，顺序保持
-            assertThat(
-                viewModel.uiState.value.items.map { it.seasonId },
-            ).containsExactly(1, 2, 3).inOrder()
+            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(1, 2, 3).inOrder()
             assertThat(viewModel.uiState.value.hasMore).isFalse()
         }
 
@@ -340,25 +360,33 @@ class PgcIndexViewModelTest {
             val movieData = fakeIndexData(listOf(200), hasNext = false)
             coEvery {
                 pgcRepository.getPgcIndex(
-                    eq(PgcType.Anime), any(), any(), any(), any(),
-                    any(), any(), any(), any(), any(),
-                    any(), any(), any(), any(), any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
                 )
-            } coAnswers { animeGate.await() }
-            coEvery {
-                pgcRepository.getPgcIndex(
-                    eq(PgcType.Movie), any(), any(), any(), any(),
-                    any(), any(), any(), any(), any(),
-                    any(), any(), any(), any(), any(),
-                )
-            } returns movieData
+            } coAnswers {
+                when (firstArg<PgcType>()) {
+                    PgcType.Anime -> animeGate.await()
+                    else -> movieData
+                }
+            }
             viewModel = createViewModel("Anime")
             advanceUntilIdle()
             viewModel.switchType(PgcType.Movie)
             advanceUntilIdle()
-            assertThat(
-                viewModel.uiState.value.items.map { it.seasonId },
-            ).containsExactly(200)
+            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(200)
 
             viewModel.uiState.test {
                 awaitItem() // 消费订阅时 StateFlow 发出的当前值
@@ -368,9 +396,7 @@ class PgcIndexViewModelTest {
 
                 // Then: 不产生任何状态更新
                 expectNoEvents()
-                assertThat(
-                    viewModel.uiState.value.items.map { it.seasonId },
-                ).containsExactly(200)
+                assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(200)
             }
         }
 
@@ -382,9 +408,21 @@ class PgcIndexViewModelTest {
             val fastData = fakeIndexData(listOf(9), hasNext = false)
             coEvery {
                 pgcRepository.getPgcIndex(
-                    any(), any(), any(), any(), any(),
-                    any(), any(), any(), any(), any(),
-                    any(), any(), any(), any(), any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
                 )
             } coAnswers {
                 if (secondArg<IndexOrder>() == IndexOrder.FollowCount) {
@@ -397,9 +435,7 @@ class PgcIndexViewModelTest {
             advanceUntilIdle()
             viewModel.selectOption(PgcIndexDimension.Order, 2)
             advanceUntilIdle()
-            assertThat(
-                viewModel.uiState.value.items.map { it.seasonId },
-            ).containsExactly(9)
+            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(9)
 
             viewModel.uiState.test {
                 awaitItem() // 消费订阅时 StateFlow 发出的当前值
@@ -409,9 +445,7 @@ class PgcIndexViewModelTest {
 
                 // Then: 不产生任何状态更新
                 expectNoEvents()
-                assertThat(
-                    viewModel.uiState.value.items.map { it.seasonId },
-                ).containsExactly(9)
+                assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(9)
             }
         }
 
@@ -441,8 +475,6 @@ class PgcIndexViewModelTest {
 
             // Then: 错误清除并成功加载
             assertThat(viewModel.uiState.value.error).isFalse()
-            assertThat(
-                viewModel.uiState.value.items.map { it.seasonId },
-            ).containsExactly(7)
+            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(7)
         }
 }
