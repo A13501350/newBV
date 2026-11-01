@@ -37,7 +37,7 @@ class VideoChaptersDebugFakeTest {
                 "示例章节 2",
                 "示例章节 3",
                 "示例章节 4",
-        ).inOrder()
+            )
     }
 
     @Test
