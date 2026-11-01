@@ -11,6 +11,7 @@ import dev.frost819.newbv.biliapi.http.entity.login.sms.SmsLoginResponse
 import dev.frost819.newbv.biliapi.http.plugins.BiliUserAgent
 import dev.frost819.newbv.biliapi.http.util.encApiSign
 import dev.frost819.newbv.biliapi.http.util.useSharedBiliClient
+import dev.frost819.newbv.biliapi.util.NetworkDebugHooks
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -43,6 +44,11 @@ object BiliPassportHttpApi {
                     useSharedBiliClient()
                 }
                 BiliUserAgent()
+                engine {
+                    config {
+                        NetworkDebugHooks.interceptors.forEach(::addInterceptor)
+                    }
+                }
                 install(ContentNegotiation) {
                     json(
                         Json {

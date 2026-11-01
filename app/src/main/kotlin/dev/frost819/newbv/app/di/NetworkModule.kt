@@ -31,6 +31,7 @@ import dev.frost819.newbv.biliapi.repositories.UgcRepository
 import dev.frost819.newbv.biliapi.repositories.UserRepository
 import dev.frost819.newbv.biliapi.repositories.VideoDetailRepository
 import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
+import dev.frost819.newbv.biliapi.util.NetworkDebugHooks
 import dev.frost819.newbv.core.interaction.InteractionTracker
 import dev.frost819.newbv.core.log.CrashHandler
 import dev.frost819.newbv.core.log.CrashUploader
@@ -358,6 +359,7 @@ object NetworkModule {
                 config {
                     readTimeout(15, TimeUnit.SECONDS)
                     writeTimeout(15, TimeUnit.SECONDS)
+                    NetworkDebugHooks.interceptors.forEach(::addInterceptor)
                 }
             }
             install(HttpTimeout)

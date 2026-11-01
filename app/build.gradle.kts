@@ -66,12 +66,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // 章节调试设施仅在 debug 构建启用（调试分支专用参数）
+            buildConfigField("boolean", "VIDEO_CHAPTERS_DEBUG", "false")
             if (signingPropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
         debug {
             isMinifyEnabled = false
+            // 章节调试设施：诊断日志级别、调试信息开关入口、示例章节注入
+            buildConfigField("boolean", "VIDEO_CHAPTERS_DEBUG", "true")
             applicationIdSuffix = ".debug"
         }
     }
@@ -123,6 +127,10 @@ dependencies {
     implementation(project(":danmaku"))
     implementation(project(":core"))
     implementation(project(":data"))
+
+    // === Network debugging（debug 包生效，release 为 no-op） ===
+    debugImplementation(libs.chucker)
+    releaseImplementation(libs.chucker.no.op)
 
     // === AndroidX Core ===
     implementation(libs.androidx.core.ktx)

@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.frost819.newbv.BuildConfig
 import dev.frost819.newbv.app.entity.player.shortcut.PlayerCustomShortcutsStore
 import dev.frost819.newbv.app.ui.component.settings.OptionDialog
 import dev.frost819.newbv.app.ui.component.settings.SettingListItem
@@ -57,6 +58,7 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
     var enableSoftwareVideoDecoder by remember { mutableStateOf(Prefs.enableSoftwareVideoDecoder) }
     var showPlayerDebugInfo by remember { mutableStateOf(Prefs.showPlayerDebugInfo) }
     var autoSelectCdn by remember { mutableStateOf(Prefs.autoSelectCdn) }
+    var debugChapterStats by remember { mutableStateOf(Prefs.debugChapterStats) }
 
     Column(
         modifier =
@@ -129,6 +131,17 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
                 Prefs.autoSelectCdn = it
             },
         )
+        if (BuildConfig.VIDEO_CHAPTERS_DEBUG) {
+            SettingSwitchListItem(
+                title = "章节调试信息（仅调试构建）",
+                supportText = "在播放器调试信息中附加当前章节与分段统计，无章节视频注入示例分段",
+                checked = debugChapterStats,
+                onCheckedChange = {
+                    debugChapterStats = it
+                    Prefs.debugChapterStats = it
+                },
+            )
+        }
     }
 
     if (showResolutionDialog) {

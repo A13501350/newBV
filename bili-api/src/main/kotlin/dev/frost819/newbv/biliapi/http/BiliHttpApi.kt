@@ -78,6 +78,7 @@ import dev.frost819.newbv.biliapi.http.util.BiliAppConf
 import dev.frost819.newbv.biliapi.http.util.encApiSign
 import dev.frost819.newbv.biliapi.http.util.injectCookies
 import dev.frost819.newbv.biliapi.http.util.useSharedBiliClient
+import dev.frost819.newbv.biliapi.util.NetworkDebugHooks
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -282,6 +283,11 @@ object BiliHttpApi {
                 useSharedBiliClient()
             }
             BiliUserAgent()
+            engine {
+                config {
+                    NetworkDebugHooks.interceptors.forEach(::addInterceptor)
+                }
+            }
             install(ContentNegotiation) { json(json) }
             install(ContentEncoding) {
                 deflate(1.0F)
