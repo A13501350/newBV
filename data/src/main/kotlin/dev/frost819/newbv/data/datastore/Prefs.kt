@@ -354,6 +354,9 @@ object Prefs {
     /** 显示播放器调试信息。 */
     var showPlayerDebugInfo by pref(PrefKeys.showPlayerDebugInfo, false)
 
+    /** 长按确认键临时倍速（开启后长按 OK 临时 2 倍速、松开恢复；关闭时长按 OK 打开设置菜单）。 */
+    var longPressTempSpeed by pref(PrefKeys.longPressTempSpeed, false)
+
     // --- 应用界面（PRD 7.2） ---
 
     /** 界面缩放密度（默认 1f，app 层 init 时按屏幕宽度重新计算）。 */
