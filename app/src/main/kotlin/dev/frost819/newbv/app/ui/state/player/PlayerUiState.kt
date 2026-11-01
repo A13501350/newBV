@@ -45,6 +45,9 @@ data class PlayerUiState(
     val showBackToStart: Boolean = false,
     val showPreviewTip: Boolean = false,
     val shortcutTipText: String? = null,
+    // 播放结束面板
+    val showPlaybackEndPanel: Boolean = false,
+    val playbackEndCountdownSeconds: Int = 0,
     // 可用资源
     val availableQuality: Map<Int, String> = emptyMap(),
     val availableVideoCodec: List<VideoCodec> = emptyList(),
