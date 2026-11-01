@@ -93,6 +93,7 @@ enum class VideoPlayerPictureMenuItem(
     Resolution("分辨率"),
     Codec("编码"),
     AspectRatio("宽高比"),
+    Mirror("镜像"),
     Audio("音轨"),
 }
 

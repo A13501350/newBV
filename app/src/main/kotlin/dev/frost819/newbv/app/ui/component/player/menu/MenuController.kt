@@ -54,6 +54,7 @@ import dev.frost819.newbv.data.datastore.VideoCodec
  * @param onResolutionChange 画质变化回调
  * @param onCodecChange 编码变化回调
  * @param onAspectRatioChange 宽高比变化回调
+ * @param onMirrorChange 画面镜像变化回调（true = 水平镜像）
  * @param onPlaySpeedChange 倍速变化回调
  * @param onAudioChange 音轨变化回调
  * @param onDanmakuSwitchChange 弹幕类型变化回调
@@ -76,6 +77,7 @@ fun MenuController(
     onResolutionChange: (Int) -> Unit = {},
     onCodecChange: (VideoCodec) -> Unit = {},
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
+    onMirrorChange: (Boolean) -> Unit,
     onPlaySpeedChange: (Float) -> Unit = {},
     onAudioChange: (Audio) -> Unit,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
@@ -115,6 +117,7 @@ fun MenuController(
                 onResolutionChange = onResolutionChange,
                 onCodecChange = onCodecChange,
                 onAspectRatioChange = onAspectRatioChange,
+                onMirrorChange = onMirrorChange,
                 onPlaySpeedChange = onPlaySpeedChange,
                 onAudioChange = onAudioChange,
                 onDanmakuSwitchChange = onDanmakuSwitchChange,
@@ -142,6 +145,7 @@ private fun MenuControllerContent(
     onResolutionChange: (Int) -> Unit,
     onCodecChange: (VideoCodec) -> Unit,
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
+    onMirrorChange: (Boolean) -> Unit,
     onPlaySpeedChange: (Float) -> Unit,
     onAudioChange: (Audio) -> Unit,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
@@ -179,6 +183,7 @@ private fun MenuControllerContent(
                     onCodecChange = onCodecChange,
                     onPlaySpeedChange = onPlaySpeedChange,
                     onAspectRatioChange = onAspectRatioChange,
+                    onMirrorChange = onMirrorChange,
                     onAudioChange = onAudioChange,
                     onDanmakuSwitchChange = onDanmakuSwitchChange,
                     onDanmakuSizeChange = onDanmakuSizeChange,
@@ -227,6 +232,7 @@ private fun MenuList(
     onResolutionChange: (Int) -> Unit,
     onCodecChange: (VideoCodec) -> Unit,
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
+    onMirrorChange: (Boolean) -> Unit,
     onPlaySpeedChange: (Float) -> Unit,
     onAudioChange: (Audio) -> Unit,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
@@ -251,10 +257,12 @@ private fun MenuList(
                     currentResolution = uiState.mediaProfileState.qualityId,
                     currentVideoCodec = uiState.mediaProfileState.videoCodec,
                     currentVideoAspectRatio = uiState.aspectRatio,
+                    isMirrored = uiState.isMirrored,
                     currentAudio = uiState.mediaProfileState.audio,
                     onResolutionChange = onResolutionChange,
                     onCodecChange = onCodecChange,
                     onAspectRatioChange = onAspectRatioChange,
+                    onMirrorChange = onMirrorChange,
                     onAudioChange = onAudioChange,
                     onFocusStateChange = onFocusStateChange,
                 )
