@@ -402,6 +402,14 @@ object Prefs {
     /** 缓存自动清空开关（关闭后不自动清理）。 */
     var cacheAutoClean by pref(PrefKeys.cacheAutoClean, true)
 
+    /**
+     * 播放媒体缓存容量档位（MB）。
+     *
+     * 0 = 关闭（默认）；可选 256 / 512 / 1024。
+     * 变更在下一个播放会话生效（SimpleCache 的 LRU 容量在实例创建时固定）。
+     */
+    var playbackCacheMb by pref(PrefKeys.playbackCacheMb, 0)
+
     // ===== Flow 属性（用于 Compose collectAsState 实时观察） =====
 
     /** 主题模式 Flow（实时响应设置变更）。 */
