@@ -7,6 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -26,6 +27,7 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.upstream.ParsingLoadable
 import dev.frost819.newbv.player.AbstractVideoPlayer
 import dev.frost819.newbv.player.VideoPlayerOptions
+import dev.frost819.newbv.player.cache.PlayerMediaCache
 import dev.frost819.newbv.player.formatMinSec
 import dev.frost819.newbv.player.isAudioRenderError
 import dev.frost819.newbv.player.isVideoDecodeError
@@ -47,6 +49,9 @@ import java.util.Locale
  * @param httpClient 复用的共享 OkHttpClient（由 `PlayerModule` 单例提供）。
  *   不要在播放器实例内自行创建：OkHttpClient 的 ConnectionPool 是「每个 client 一个」，
  *   按播放器实例创建会让每个播放会话都新增一个连接池，进程线程数随播放轮次上升。
+ * @param mediaCache 播放媒体磁盘缓存（由 `PlayerModule` 提供进程级单例）。
+ *   注入时按 `Prefs.playbackCacheMb` 容量档位边播边缓存（档位 0 = 关闭）；null 表示
+ *   完全关闭缓存，数据源工厂直接透传上游。
  */
 @OptIn(UnstableApi::class)
 class ExoMediaPlayer(
@@ -54,6 +59,7 @@ class ExoMediaPlayer(
     private val options: VideoPlayerOptions,
     /** 复用的共享 OkHttpClient；`internal` 便于插桩测试断言同实例。 */
     internal val httpClient: OkHttpClient,
+    private val mediaCache: PlayerMediaCache? = null,
 ) : AbstractVideoPlayer(),
     Player.Listener {
     companion object {
@@ -85,7 +91,15 @@ class ExoMediaPlayer(
             options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
         }
 
-    private val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+    private val upstreamDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+
+    /**
+     * 数据源工厂：注入了 [mediaCache] 且缓存开启（档位 > 0）时经
+     * [PlayerMediaCache.wrap] 包裹为 CacheDataSource（规范化 key + LRU 容量淘汰）；
+     * 缓存关闭（档位 0）或未注入时直接透传上游工厂。
+     */
+    private val dataSourceFactory: DataSource.Factory =
+        mediaCache?.wrap(upstreamDataSourceFactory) ?: upstreamDataSourceFactory
 
     init {
         initPlayer()
@@ -178,6 +192,10 @@ class ExoMediaPlayer(
      * 会导致 ExoPlayer 错误计算直播窗口位置，触发 `ERROR_CODE_BEHIND_LIVE_WINDOW`。
      * 因此对 `.m3u8` URL 使用 [HlsMediaSource] 并通过自定义 [HlsPlaylistParserFactory]
      * 剥离该标签；其余格式（DASH / FLV / progressive）走 [DefaultMediaSourceFactory]。
+     *
+     * 直播 HLS 流不接入磁盘缓存（本应用中 `.m3u8` 均为直播流）：分片转瞬即逝且
+     * playlist 随直播窗口滚动，写入缓存只浪费 I/O，故直连上游工厂；点播
+     * （DASH / FLV / progressive）走 [dataSourceFactory]，按容量档位边播边缓存。
      */
     private fun createMediaSource(url: String): MediaSource {
         val isHls =
@@ -186,13 +204,14 @@ class ExoMediaPlayer(
                 .trim()
                 .lowercase(Locale.US)
                 .endsWith(".m3u8")
+        val factory = if (isHls) upstreamDataSourceFactory else dataSourceFactory
         return if (isHls) {
             HlsMediaSource
-                .Factory(dataSourceFactory)
+                .Factory(factory)
                 .setPlaylistParserFactory(ExtXStartStrippingHlsPlaylistParserFactory())
                 .createMediaSource(MediaItem.fromUri(url))
         } else {
-            DefaultMediaSourceFactory(dataSourceFactory)
+            DefaultMediaSourceFactory(factory)
                 .createMediaSource(MediaItem.fromUri(url))
         }
     }

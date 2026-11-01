@@ -8,9 +8,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.frost819.newbv.app.util.MediaCodecVideoCapabilityProvider
 import dev.frost819.newbv.app.util.VideoCapabilityProvider
+import dev.frost819.newbv.data.datastore.Prefs
 import dev.frost819.newbv.player.CdnSelector
 import dev.frost819.newbv.player.OkHttpCdnSelector
 import dev.frost819.newbv.player.OkHttpUtil
+import dev.frost819.newbv.player.cache.PlayerMediaCache
 import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
 import okhttp3.OkHttpClient
 import javax.inject.Singleton
@@ -39,6 +41,21 @@ object PlayerModule {
     ): OkHttpClient = OkHttpUtil.generateCustomSslOkHttpClient(context)
 
     /**
+     * 提供播放媒体缓存（Media3 SimpleCache 封装）单例。
+     *
+     * SimpleCache 必须全进程唯一：同一目录同时存在两个实例会因文件锁直接抛异常，
+     * 且重复建索引浪费 I/O。容量档位（[Prefs.playbackCacheMb]，0 = 关闭）在每次
+     * 创建播放器时惰性读取，变更在下一个播放会话生效。
+     *
+     * @param context 应用级 Context。
+     */
+    @Provides
+    @Singleton
+    fun providePlayerMediaCache(
+        @ApplicationContext context: Context,
+    ): PlayerMediaCache = PlayerMediaCache(context) { Prefs.playbackCacheMb }
+
+    /**
      * 提供 [ExoPlayerFactory] 单例。
      *
      * 用于创建 Media3 ExoPlayer 实例。通过工厂模式抽象播放器创建，
@@ -46,7 +63,10 @@ object PlayerModule {
      */
     @Provides
     @Singleton
-    fun provideExoPlayerFactory(playerHttpClient: OkHttpClient): ExoPlayerFactory = ExoPlayerFactory(playerHttpClient)
+    fun provideExoPlayerFactory(
+        playerHttpClient: OkHttpClient,
+        mediaCache: PlayerMediaCache?,
+    ): ExoPlayerFactory = ExoPlayerFactory(playerHttpClient, mediaCache)
 
     /**
      * 提供设备视频解码能力查询器。
