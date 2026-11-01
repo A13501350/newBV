@@ -291,4 +291,77 @@ class UserRepository(
                 result
             }
         }
+
+    /**
+     * 获取用户[mid]的粉丝列表（一次性分页拉全量）。
+     *
+     * 对应接口：`GET /x/relation/followers`，仅允许查询本人，查询他人返回 22110007。
+     *
+     * @param mid 用户 mid。
+     * @param preferApiType 偏好的 API 类型。
+     * @return 粉丝列表。
+     */
+    suspend fun getFollowers(
+        mid: Long,
+        preferApiType: ApiType,
+    ): List<FollowedUser> =
+        when (preferApiType) {
+            ApiType.Web -> {
+                val result = mutableListOf<FollowedUser>()
+                val firstResponse =
+                    BiliHttpApi
+                        .getFollowers(
+                            mid = mid,
+                        ).getResponseData()
+                val userCount = firstResponse.total
+                val pageCount = ceil((userCount.toFloat() / 50)).toInt()
+                result.addAll(firstResponse.list.map { FollowedUser.fromHttpFollower(it) })
+                withContext(Dispatchers.IO) {
+                    (2..pageCount)
+                        .map { pageNumber ->
+                            async {
+                                BiliHttpApi
+                                    .getFollowers(
+                                        mid = mid,
+                                        pageNumber = pageNumber,
+                                    ).getResponseData()
+                            }
+                        }.awaitAll()
+                        .forEach { userFollowersData ->
+                            result.addAll(userFollowersData.list.map { FollowedUser.fromHttpFollower(it) })
+                        }
+                }
+                result
+            }
+
+            ApiType.App -> {
+                val result = mutableListOf<FollowedUser>()
+                val firstResponse =
+                    BiliHttpApi
+                        .getFollowers(
+                            mid = mid,
+                            accessKey = authRepository.accessToken,
+                        ).getResponseData()
+                val userCount = firstResponse.total
+                val pageCount = ceil((userCount.toFloat() / 50)).toInt()
+                result.addAll(firstResponse.list.map { FollowedUser.fromHttpFollower(it) })
+                withContext(Dispatchers.IO) {
+                    (2..pageCount)
+                        .map { pageNumber ->
+                            async {
+                                BiliHttpApi
+                                    .getFollowers(
+                                        mid = mid,
+                                        pageNumber = pageNumber,
+                                        accessKey = authRepository.accessToken,
+                                    ).getResponseData()
+                            }
+                        }.awaitAll()
+                        .forEach { userFollowersData ->
+                            result.addAll(userFollowersData.list.map { FollowedUser.fromHttpFollower(it) })
+                        }
+                }
+                result
+            }
+        }
 }

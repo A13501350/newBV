@@ -80,6 +80,41 @@ data class UserFollowData(
     }
 }
 
+/**
+ * 粉丝列表数据（`GET /x/relation/followers`）
+ *
+ * 响应结构与 [UserFollowData] 同构，但粉丝项通常不含 tag、nft_icon、rec_reason、
+ * track_id 等字段（vip/official_verify 的字段形态也不稳定），故只建模下游消费的
+ * mid/uname/face/sign，其余字段交由 `ignoreUnknownKeys` 忽略，避免反序列化失败。
+ *
+ * @param list 粉丝明细列表
+ * @param reVersion
+ * @param total 粉丝总数
+ */
+@Serializable
+data class UserFollowersData(
+    val list: List<Follower> = emptyList(),
+    @SerialName("re_version")
+    val reVersion: Int = 0,
+    val total: Int = 0,
+) {
+    /**
+     * 粉丝信息
+     *
+     * @param mid 粉丝用户 mid
+     * @param uname 用户昵称
+     * @param face 用户头像 url
+     * @param sign 用户签名
+     */
+    @Serializable
+    data class Follower(
+        val mid: Long,
+        val uname: String,
+        val face: String,
+        val sign: String = "",
+    )
+}
+
 enum class FollowAction(
     val id: Int,
 ) {
