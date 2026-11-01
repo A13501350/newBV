@@ -556,6 +556,7 @@ private fun ControllerVideoInfoPreview() {
             onlineWatching = "9.4万+",
             videoShot = null,
             videoShotCache = VideoShotImageCache(),
+            chapterSegments = emptyList(),
             isPgc = false,
             danmakuEnabled = true,
             isLooping = false,
