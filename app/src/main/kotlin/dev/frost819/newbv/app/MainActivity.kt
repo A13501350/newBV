@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
@@ -12,7 +13,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
+import dev.frost819.newbv.app.ui.component.TeenModeRestOverlay
 import dev.frost819.newbv.app.ui.navigation.AppNavHost
 import dev.frost819.newbv.app.ui.navigation.HomeRoute
 import dev.frost819.newbv.core.interaction.InteractionTracker
@@ -64,7 +67,13 @@ class MainActivity : ComponentActivity() {
                     LocalInteractionTracker provides interactionTracker,
                 ) {
                     Surface(modifier = Modifier.fillMaxSize()) {
-                        AppNavHost(startDestination = HomeRoute)
+                        // 提升导航控制器：青少年模式休息遮罩需从顶层跳转公益广告播放器
+                        val navController = rememberNavController()
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            AppNavHost(navController = navController, startDestination = HomeRoute)
+                            // 青少年模式休息遮罩挂在最顶层：单 Activity 架构下覆盖一切路由
+                            TeenModeRestOverlay(navController = navController)
+                        }
                     }
                 }
             }
