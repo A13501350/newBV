@@ -42,6 +42,7 @@ import dev.frost819.newbv.app.ui.component.focusSaverItem
 import dev.frost819.newbv.app.ui.component.videocard.SeasonCard
 import dev.frost819.newbv.app.ui.component.videocard.SeasonCardData
 import dev.frost819.newbv.app.ui.navigation.PgcFeatureRoute
+import dev.frost819.newbv.app.ui.navigation.PgcIndexRoute
 import dev.frost819.newbv.app.viewmodel.pgc.PgcViewModel
 import dev.frost819.newbv.biliapi.entity.pgc.PgcType
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -68,9 +69,19 @@ enum class PgcTabItem(
 }
 
 /**
+ * PGC 顶部导航中的「索引」入口项。
+ *
+ * 非分区 Tab：焦点滑过不切换内容，按确认键跳转索引筛选页。
+ */
+private object PgcIndexNavItem : TopNavItem {
+    override val displayName: String = "索引"
+}
+
+/**
  * PGC 影视内容（TopNav + 轮播图 + 4 列网格）。
  *
  * 顶部 Tab 切换分区，内容区上方为轮播图，下方为番剧/影视卡片网格 + 无限滚动。
+ * 顶部 Tab 末尾为「索引」入口，按确认键进入索引筛选页。
  * 菜单键刷新当前分区数据。
  *
  * @param navFocusRequester 顶部 Tab 的焦点请求器。
@@ -93,19 +104,23 @@ fun PgcContent(
         topBar = {
             TopNav(
                 modifier = Modifier.focusRequester(navFocusRequester),
-                items = PgcTabItem.entries.toList(),
+                items = PgcTabItem.entries.toList() + PgcIndexNavItem,
                 selectedIndex = PgcTabItem.entries.indexOf(selectedTab),
                 isLargePadding = !focusOnContent,
                 onSelectedChanged = { nav ->
-                    val tab = nav as PgcTabItem
-                    if (tab != selectedTab) {
-                        selectedTab = tab
-                        viewModel.switchType(tab.pgcType)
+                    if (nav is PgcTabItem) {
+                        if (nav != selectedTab) {
+                            selectedTab = nav
+                            viewModel.switchType(nav.pgcType)
+                        }
                     }
                 },
                 onClick = { nav ->
-                    val tab = nav as PgcTabItem
-                    viewModel.refresh()
+                    if (nav is PgcTabItem) {
+                        viewModel.refresh()
+                    } else {
+                        navController.navigate(PgcIndexRoute(pgcType = selectedTab.pgcType.name))
+                    }
                 },
             )
         },

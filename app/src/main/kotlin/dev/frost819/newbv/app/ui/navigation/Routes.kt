@@ -1,5 +1,6 @@
 package dev.frost819.newbv.app.ui.navigation
 
+import dev.frost819.newbv.biliapi.entity.pgc.PgcType
 import kotlinx.serialization.Serializable
 
 /*
@@ -100,6 +101,12 @@ data class FollowRoute(
 data class PgcFeatureRoute(
     val seasonId: Long = 0,
     val epid: Long? = null,
+)
+
+/** 番剧/影视索引筛选页。 */
+@Serializable
+data class PgcIndexRoute(
+    val pgcType: String = PgcType.Anime.name,
 )
 
 // ── 设置 ──────────────────────────────────────────────────────────────
