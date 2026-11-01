@@ -639,6 +639,38 @@ class PlayerViewModelTest {
             assertThat(viewModel.uiState.value.aspectRatio).isEqualTo(VideoAspectRatio.FourToThree)
         }
 
+    // ── setVideoMirrored test ────────────────────────────────
+
+    @Test
+    fun `setVideoMirrored defaults to off then flips on and restores`() =
+        runTest(testDispatcher) {
+            // Given: 镜像默认关闭
+            assertThat(viewModel.uiState.value.isMirrored).isFalse()
+
+            // When / Then: 开启后翻转为 true
+            viewModel.setVideoMirrored(true)
+            assertThat(viewModel.uiState.value.isMirrored).isTrue()
+
+            // When / Then: 再次关闭后恢复 false
+            viewModel.setVideoMirrored(false)
+            assertThat(viewModel.uiState.value.isMirrored).isFalse()
+        }
+
+    @Test
+    fun `setVideoMirrored keeps value across playNewVideo`() =
+        runTest(testDispatcher) {
+            // 镜像与宽高比同为会话级状态：切集不重置
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+            viewModel.setVideoMirrored(true)
+
+            viewModel.playNewVideo(VideoListItem(aid = 10, cid = 20, title = "New"))
+
+            assertThat(viewModel.uiState.value.isMirrored).isTrue()
+        }
+
     // ── Listener callback tests ──────────────────────────────
 
     @Test
