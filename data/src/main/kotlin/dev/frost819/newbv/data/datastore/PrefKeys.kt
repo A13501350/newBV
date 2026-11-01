@@ -47,6 +47,9 @@ internal object PrefKeys {
     val actionAfterPlay = intPreferencesKey("action_after_play")
     val playerCustomShortcuts = stringPreferencesKey("player_custom_shortcuts")
 
+    // ===== 播放器 - 章节（调试分支专用） =====
+    val debugChapterStats = booleanPreferencesKey("debug_chapter_stats")
+
     // ===== 播放器 - 音频 =====
     val defaultAudio = intPreferencesKey("da")
 

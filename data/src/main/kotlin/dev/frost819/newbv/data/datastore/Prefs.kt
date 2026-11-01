@@ -354,6 +354,9 @@ object Prefs {
     /** 显示播放器调试信息。 */
     var showPlayerDebugInfo by pref(PrefKeys.showPlayerDebugInfo, false)
 
+    /** 章节调试信息开关（仅调试构建可见，配合播放器调试信息显示当前章节与分段统计）。 */
+    var debugChapterStats by pref(PrefKeys.debugChapterStats, false)
+
     // --- 应用界面（PRD 7.2） ---
 
     /** 界面缩放密度（默认 1f，app 层 init 时按屏幕宽度重新计算）。 */

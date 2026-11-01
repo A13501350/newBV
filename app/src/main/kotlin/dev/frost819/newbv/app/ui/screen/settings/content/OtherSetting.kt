@@ -15,10 +15,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
+import com.chuckerteam.chucker.api.Chucker
 import dev.frost819.newbv.BuildConfig
 import dev.frost819.newbv.app.ui.component.FocusSaver
 import dev.frost819.newbv.app.ui.component.focusSaverItem
@@ -88,6 +90,12 @@ fun OtherSetting(
         )
 
         if (BuildConfig.DEBUG) {
+            val context = LocalContext.current
+            SettingListItem(
+                title = "网络调试",
+                supportText = "打开 Chucker 面板查看 Web 通道请求",
+                onClick = { context.startActivity(Chucker.getLaunchIntent(context)) },
+            )
             SettingListItem(
                 title = "触发测试崩溃",
                 supportText = "仅用于测试崩溃上传流程",

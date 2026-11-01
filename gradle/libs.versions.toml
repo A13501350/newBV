@@ -40,6 +40,7 @@ protobuf = "4.31.0"
 # 与 ktor-client-okhttp / media3-datasource-okhttp / coil-network-okhttp 的传递版本保持一致
 okhttp = "4.12.0"
 okio = "3.10.2"
+chucker = "4.0.0"
 
 # === Kotlin libraries ===
 kotlinx-coroutines = "1.10.2"
@@ -142,6 +143,10 @@ ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref =
 ktor-server-cio = { group = "io.ktor", name = "ktor-server-cio", version.ref = "ktor" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
+
+# === Network debugging (debug 包 Chucker，release 为 no-op) ===
+chucker = { group = "com.github.chuckerteam.chucker", name = "library", version.ref = "chucker" }
+chucker-no-op = { group = "com.github.chuckerteam.chucker", name = "library-no-op", version.ref = "chucker" }
 
 # === gRPC ===
 grpc-kotlin-stub = { group = "io.grpc", name = "grpc-kotlin-stub", version.ref = "grpc-kotlin" }
