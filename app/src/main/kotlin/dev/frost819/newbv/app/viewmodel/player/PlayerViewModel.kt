@@ -31,6 +31,7 @@ import dev.frost819.newbv.biliapi.entity.ApiType
 import dev.frost819.newbv.biliapi.entity.DashVideo
 import dev.frost819.newbv.biliapi.entity.PlayData
 import dev.frost819.newbv.biliapi.entity.video.HeartbeatVideoType
+import dev.frost819.newbv.biliapi.entity.video.VideoChapters
 import dev.frost819.newbv.biliapi.entity.video.VideoPage
 import dev.frost819.newbv.biliapi.repositories.AuthRepository
 import dev.frost819.newbv.biliapi.repositories.CoinRepository
@@ -1344,7 +1345,16 @@ class PlayerViewModel
         internal suspend fun updateViewPoints() {
             val state = _uiState.value
             runCatching {
-                videoPlayRepository.getViewPoints(aid = state.aid, cid = state.cid)
+                val startMs = System.currentTimeMillis()
+                val loaded = videoPlayRepository.getViewPoints(aid = state.aid, cid = state.cid)
+                if (Prefs.debugChapterStats) {
+                    logger.debug {
+                        "ViewPoints loaded: aid=${state.aid} cid=${state.cid} " +
+                            "count=${loaded.size} cost=${System.currentTimeMillis() - startMs}ms " +
+                            "segments=${loaded.joinToString { "[${it.fromMs}-${it.toMs}]${it.content}" }}"
+                    }
+                }
+                loaded
             }.onSuccess { chapters ->
                 // 快速切集时丢弃过期响应，避免旧视频章节残留到新视频
                 val current = _uiState.value
@@ -1470,10 +1480,25 @@ class PlayerViewModel
                 viewModelScope.launch(Dispatchers.Main) {
                     while (isActive) {
                         val player = videoPlayer ?: break
-                        _seekerState.update { it.copy(debugInfo = player.debugInfo) }
+                        _seekerState.update { it.copy(debugInfo = buildDebugInfo(player)) }
                         delay(500)
                     }
                 }
+        }
+
+        /**
+         * 组装调试浮层文本；开启 [Prefs.debugChapterStats] 时附加当前章节与分段统计。
+         */
+        private fun buildDebugInfo(player: AbstractVideoPlayer): String {
+            val base = player.debugInfo
+            if (!Prefs.debugChapterStats) return base
+            val duration = player.duration
+            val chapters = _uiState.value.chapters
+            if (duration <= 0L || chapters.isEmpty()) return base
+            val segments = VideoChapters.normalize(chapters, duration)
+            val current = VideoChapters.findSegmentAt(segments, player.currentPosition)
+            val index = current?.let { segments.indexOf(it) }?.plus(1) ?: 0
+            return base + "\n章节: $index/${segments.size} ${current?.content.orEmpty()}"
         }
 
         private fun stopDebugInfoUpdater() {
