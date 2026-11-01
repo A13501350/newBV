@@ -2,9 +2,11 @@
 
 package dev.frost819.newbv.data.datastore
 
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import dev.frost819.newbv.data.security.CredentialCipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -139,6 +141,9 @@ object Prefs {
     /** 持久化写入互斥锁，避免并发 edit 冲突。 */
     private val persistMutex = Mutex()
 
+    /** 凭据加解密日志 TAG。 */
+    private const val TAG = "Prefs"
+
     // ===== 委托工厂 =====
 
     /**
@@ -178,6 +183,23 @@ object Prefs {
         delegateMap[key] = delegate
     }
 
+    /**
+     * 创建登录凭据委托。
+     *
+     * 与基本类型委托一致，但落盘值经过 [CredentialCipher] 加密（AES-GCM）：
+     * 读时带 `v1:` 前缀的密文解密还原、历史明文原样兼容；写时加密落盘，
+     * 加密失败回退明文并打日志（见 [encryptCredential]）。
+     *
+     * @param key DataStore 键。
+     */
+    private fun credentialPref(key: Preferences.Key<String>): PrefDelegate<String, String> =
+        pref(
+            key,
+            "",
+            save = ::encryptCredential,
+            restore = ::decryptCredential,
+        )
+
     // ===== 偏好项定义 =====
 
     // --- 账号 & 认证（PRD 7.8） ---
@@ -188,17 +210,17 @@ object Prefs {
     /** 当前登录用户 UID。 */
     var uid by pref(PrefKeys.uid, 0L)
 
-    /** SID（会话标识）。 */
-    var sid by pref(PrefKeys.sid, "")
+    /** SID（会话标识），落盘时加密。 */
+    var sid by credentialPref(PrefKeys.sid)
 
-    /** SESSDATA Cookie 值。 */
-    var sessData by pref(PrefKeys.sessData, "")
+    /** SESSDATA Cookie 值，落盘时加密。 */
+    var sessData by credentialPref(PrefKeys.sessData)
 
-    /** bili_jct（csrf token）。 */
-    var biliJct by pref(PrefKeys.biliJct, "")
+    /** bili_jct（csrf token），落盘时加密。 */
+    var biliJct by credentialPref(PrefKeys.biliJct)
 
-    /** uid_ck_md5（登录校验值）。 */
-    var uidCkMd5 by pref(PrefKeys.uidCkMd5, "")
+    /** uid_ck_md5（登录校验值），落盘时加密。 */
+    var uidCkMd5 by credentialPref(PrefKeys.uidCkMd5)
 
     /** Token 过期时间。 */
     var tokenExpiredDate by pref(
@@ -208,11 +230,11 @@ object Prefs {
         restore = { Date(it) },
     )
 
-    /** Access Token。 */
-    var accessToken by pref(PrefKeys.accessToken, "")
+    /** Access Token，落盘时加密。 */
+    var accessToken by credentialPref(PrefKeys.accessToken)
 
-    /** Refresh Token。 */
-    var refreshToken by pref(PrefKeys.refreshToken, "")
+    /** Refresh Token，落盘时加密。 */
+    var refreshToken by credentialPref(PrefKeys.refreshToken)
 
     /** buvid（设备标识），首次启动自动生成。 */
     var buvid by pref(PrefKeys.buvid, "")
@@ -223,8 +245,8 @@ object Prefs {
     /** buvid3 是否已通过 SPI 接口注册（已注册则不再重复获取）。 */
     var buvid3FromSpi by pref(PrefKeys.buvid3FromSpi, false)
 
-    /** 设备 cookie 字符串（buvid3 + b_nut 等），由 SPI 流程获取并持久化。 */
-    var deviceCookies by pref(PrefKeys.deviceCookies, "")
+    /** 设备 cookie 字符串（buvid3 + b_nut 等），由 SPI 流程获取并持久化，落盘时加密。 */
+    var deviceCookies by credentialPref(PrefKeys.deviceCookies)
 
     /** 无痕模式（不记录历史）。 */
     var incognitoMode by pref(PrefKeys.incognitoMode, false)
@@ -414,6 +436,44 @@ object Prefs {
     /** 缓存自动清空开关（关闭后不自动清理）。 */
     var cacheAutoClean by pref(PrefKeys.cacheAutoClean, true)
 
+    // ===== 凭据加密 =====
+
+    /**
+     * 登录凭据加密器，由 [init] 注入。
+     *
+     * 为 null 时凭据按明文读写（JVM 单元测试环境，或 Keystore 不可用降级）；
+     * 注入后凭据字段落盘自动加密，历史明文读取兼容。
+     */
+    @Volatile
+    internal var credentialCipher: CredentialCipher? = null
+
+    /**
+     * 加密凭据值用于落盘。
+     *
+     * 未注入加密器时原样返回；加密失败（AndroidKeyStore 不可用等）时回退明文并打日志，
+     * 保证凭据不因 Keystore 故障丢失——解密侧对无前缀明文原样兼容（见 [decryptCredential]）。
+     */
+    private fun encryptCredential(value: String): String {
+        val cipher = credentialCipher ?: return value
+        val encrypted = cipher.encrypt(value)
+        if (encrypted == null) {
+            Log.w(TAG, "Credential encryption failed; fallback to plaintext persistence")
+            return value
+        }
+        return encrypted
+    }
+
+    /**
+     * 从落盘值还原凭据明文。
+     *
+     * 未注入加密器时原样返回；其余委托 [CredentialCipher.decrypt]——
+     * 带 `v1:` 前缀的密文解密（失败返回空串，按未登录处理），历史明文原样返回。
+     */
+    private fun decryptCredential(value: String): String {
+        val cipher = credentialCipher ?: return value
+        return cipher.decrypt(value)
+    }
+
     // ===== Flow 属性（用于 Compose collectAsState 实时观察） =====
 
     /** 主题模式 Flow（实时响应设置变更）。 */
@@ -446,9 +506,16 @@ object Prefs {
      * 已同步更新内存缓存，无需 collect 反向同步（且避免部分写入时的竞态）。
      *
      * @param dataStore DataStore 实例（由 Hilt 注入）。
+     * @param credentialCipher 登录凭据加密器（由 Hilt 注入）；null 时凭据按明文读写
+     *   （JVM 单测环境或 Keystore 不可用降级）。已注入时凭据字段落盘自动加密，
+     *   历史明文读取兼容并在下次写入时自然升级为密文。
      */
-    fun init(dataStore: DataStore<Preferences>) {
+    fun init(
+        dataStore: DataStore<Preferences>,
+        credentialCipher: CredentialCipher? = null,
+    ) {
         check(!initialized) { "Prefs 已经初始化，禁止重复调用 init()" }
+        this.credentialCipher = credentialCipher
         dataStoreRef = dataStore
         initialized = true
 
@@ -513,6 +580,7 @@ object Prefs {
     fun resetForTesting() {
         initialized = false
         dataStoreRef = null
+        credentialCipher = null
         delegateMap.forEach { (_, delegate) -> delegate.resetToDefault() }
     }
 }

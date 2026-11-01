@@ -19,6 +19,7 @@ import dev.frost819.newbv.core.log.CrashHandler
 import dev.frost819.newbv.core.log.CrashUploader
 import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.data.datastore.Prefs
+import dev.frost819.newbv.data.security.CredentialCipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -72,10 +73,21 @@ class BVApplication : Application() {
     @Inject
     lateinit var playerHttpClientProvider: Provider<OkHttpClient>
 
+    /**
+     * 凭据加密器提供器。
+     *
+     * 用 [Provider] 延迟解析并在获取失败时降级：AndroidKeyStore 个别低端设备
+     * 可能不可用，此时登录凭据回退明文持久化（读取侧兼容历史明文），
+     * 不允许因密钥获取失败阻塞应用启动。
+     */
+    @Inject
+    lateinit var credentialCipherProvider: Provider<CredentialCipher>
+
     override fun onCreate() {
         super.onCreate()
 
-        Prefs.init(dataStore)
+        // AndroidKeyStore 获取密钥失败时降级为明文持久化，凭据不丢失且不阻塞启动
+        Prefs.init(dataStore, runCatching { credentialCipherProvider.get() }.getOrNull())
 
         val buvid3 = Prefs.buvid3
         val deviceCookies = Prefs.deviceCookies
