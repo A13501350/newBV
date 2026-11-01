@@ -131,9 +131,30 @@ class VideoChapterTest {
 
     // ── findSegmentAt ────────────────────────────────────────
 
+    /** 两段连续章节（A: 0-60s，B: 60-120s）归一化到 [durationMs] 片长。 */
+    private fun twoSegments(durationMs: Long = 180_000L): List<VideoChapterSegment> =
+        VideoChapters.normalize(
+            listOf(
+                VideoChapter(0L, 60_000L, "A"),
+                VideoChapter(60_000L, 120_000L, "B"),
+            ),
+            durationMs,
+        )
+
+    /** 三段连续章节（A/B/C 各 60s）归一化到 [durationMs] 片长。 */
+    private fun threeSegments(): List<VideoChapterSegment> =
+        VideoChapters.normalize(
+            listOf(
+                VideoChapter(0L, 60_000L, "A"),
+                VideoChapter(60_000L, 120_000L, "B"),
+                VideoChapter(120_000L, 180_000L, "C"),
+            ),
+            180_000L,
+        )
+
     @Test
     fun `findSegmentAt hits containing segment`() {
-        val segments = VideoChapters.normalize(listOf(VideoChapter(0L, 60_000L, "A"), VideoChapter(60_000L, 120_000L, "B")), 180_000L)
+        val segments = twoSegments()
 
         assertThat(VideoChapters.findSegmentAt(segments, 30_000L)?.content).isEqualTo("A")
         assertThat(VideoChapters.findSegmentAt(segments, 60_000L)?.content).isEqualTo("B")
@@ -158,7 +179,7 @@ class VideoChapterTest {
 
     @Test
     fun `seekChapterMs forward jumps to next chapter start`() {
-        val segments = VideoChapters.normalize(listOf(VideoChapter(0L, 60_000L, "A"), VideoChapter(60_000L, 120_000L, "B"), VideoChapter(120_000L, 180_000L, "C")), 180_000L)
+        val segments = threeSegments()
 
         // 正片进行到 30s → 下一章 60s
         assertThat(VideoChapters.seekChapterMs(segments, 30_000L, forward = true)).isEqualTo(60_000L)
@@ -166,7 +187,7 @@ class VideoChapterTest {
 
     @Test
     fun `seekChapterMs forward skips adjacent chapter when near its start`() {
-        val segments = VideoChapters.normalize(listOf(VideoChapter(0L, 60_000L, "A"), VideoChapter(60_000L, 120_000L, "B"), VideoChapter(120_000L, 180_000L, "C")), 180_000L)
+        val segments = threeSegments()
 
         // 已在 B 章开头 500ms 处 → 直接跳到 C
         assertThat(VideoChapters.seekChapterMs(segments, 60_500L, forward = true)).isEqualTo(120_000L)
@@ -174,7 +195,7 @@ class VideoChapterTest {
 
     @Test
     fun `seekChapterMs backward returns to previous chapter start`() {
-        val segments = VideoChapters.normalize(listOf(VideoChapter(0L, 60_000L, "A"), VideoChapter(60_000L, 120_000L, "B"), VideoChapter(120_000L, 180_000L, "C")), 180_000L)
+        val segments = threeSegments()
 
         // B 章进行到 65s（刚跳过章首）→ 回到 A 章首
         assertThat(VideoChapters.seekChapterMs(segments, 65_000L, forward = false)).isEqualTo(0L)
@@ -184,7 +205,7 @@ class VideoChapterTest {
 
     @Test
     fun `seekChapterMs returns null when no target or empty input`() {
-        val segments = VideoChapters.normalize(listOf(VideoChapter(0L, 60_000L, "A"), VideoChapter(60_000L, 120_000L, "B")), 120_000L)
+        val segments = twoSegments(durationMs = 120_000L)
 
         // 已在最后一章内 → 无下一章
         assertThat(VideoChapters.seekChapterMs(segments, 90_000L, forward = true)).isNull()
