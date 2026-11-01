@@ -35,6 +35,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -374,7 +375,11 @@ private fun TeenModeVerifyDialog(
                         }
                     },
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            colors =
+                SurfaceDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
             tonalElevation = 4.dp,
         ) {
             Column(
