@@ -31,11 +31,12 @@ class VideoChaptersDebugFakeTest {
         assertThat(segments[0].toMs).isEqualTo(100_000L)
         // 最后一段延伸到片尾
         assertThat(segments[3].toMs).isEqualTo(400_000L)
-        assertThat(segments.map { it.content }).containsExactly(
-            "示例章节 1",
-            "示例章节 2",
-            "示例章节 3",
-            "示例章节 4",
+        assertThat(segments.map { it.content })
+            .containsExactly(
+                "示例章节 1",
+                "示例章节 2",
+                "示例章节 3",
+                "示例章节 4",
         ).inOrder()
     }
 

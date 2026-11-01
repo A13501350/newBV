@@ -63,7 +63,8 @@ class VideoChaptersNormalizeProbeTest {
                 }
 
                 val visibleGapMs =
-                    segments.zipWithNext { prev, next -> next.fromMs - prev.toMs }
+                    segments
+                        .zipWithNext { prev, next -> next.fromMs - prev.toMs }
                         .firstOrNull { it == 0L }
                 report.appendLine(
                     "[probe] scene=${scene.name.padEnd(16)} width=${trackWidth.toInt().toString().padEnd(4)} " +
