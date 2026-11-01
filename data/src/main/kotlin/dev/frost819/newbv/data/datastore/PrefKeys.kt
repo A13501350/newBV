@@ -84,4 +84,11 @@ internal object PrefKeys {
     // ===== 存储设置 =====
     val cacheThreshold = intPreferencesKey("cache_threshold")
     val cacheAutoClean = booleanPreferencesKey("cache_auto_clean")
+
+    // ===== 青少年模式 =====
+    val teenModeEnabled = booleanPreferencesKey("teen_mode_enabled")
+    val teenWatchLimitMin = intPreferencesKey("teen_watch_limit_min")
+    val teenRestLimitMin = intPreferencesKey("teen_rest_limit_min")
+    val teenAccumulatedMs = longPreferencesKey("teen_accumulated_ms")
+    val teenRestStartMs = longPreferencesKey("teen_rest_start_ms")
 }
