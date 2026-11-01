@@ -49,7 +49,7 @@ class PrefsCredentialStorageTest {
                 scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
                 produceFile = { File(tempDir, "Test.preferences_pb") },
             )
-        key = KeyGenerator.getInstance("AES").apply { init(KEY_SIZE_BITS) }.key
+        key = KeyGenerator.getInstance("AES").apply { init(KEY_SIZE_BITS) }.generateKey()
         Prefs.resetForTesting()
     }
 
@@ -175,7 +175,7 @@ class PrefsCredentialStorageTest {
             awaitAsyncWrite()
 
             // When: 密钥被系统重置（重新初始化后使用新密钥 B）
-            val newKey = KeyGenerator.getInstance("AES").apply { init(KEY_SIZE_BITS) }.key
+            val newKey = KeyGenerator.getInstance("AES").apply { init(KEY_SIZE_BITS) }.generateKey()
             Prefs.resetForTesting()
             Prefs.init(dataStore = dataStore, credentialCipher = CredentialCipher(newKey))
 
