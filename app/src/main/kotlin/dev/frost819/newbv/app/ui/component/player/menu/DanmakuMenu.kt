@@ -15,7 +15,7 @@ import java.text.NumberFormat
  * 弹幕设置面板。
  *
  * 双列布局：左侧为选项值面板（CheckBoxMenuList / StepLessMenuItem），右侧为子项列表。
- * 子项包括：开关、大小、透明度、速度、区域、蒙版。
+ * 子项包括：开关、大小、透明度、速度、区域、蒙版、合并重复。
  *
  * @param modifier 修饰符
  * @param currentEnabledTypes 当前启用的弹幕类型
@@ -24,12 +24,14 @@ import java.text.NumberFormat
  * @param currentSpeedFactor 当前速度因子
  * @param currentArea 当前显示区域
  * @param currentMaskEnabled 当前蒙版状态
+ * @param currentMergeDuplicate 当前合并重复状态
  * @param onDanmakuSwitchChange 弹幕类型变化回调
  * @param onDanmakuSizeChange 大小变化回调
  * @param onDanmakuOpacityChange 透明度变化回调
  * @param onDanmakuSpeedFactorChange 速度因子变化回调
  * @param onDanmakuAreaChange 区域变化回调
  * @param onDanmakuMaskChange 蒙版变化回调
+ * @param onDanmakuMergeDuplicateChange 合并重复变化回调
  * @param onFocusStateChange 焦点状态变化回调
  */
 @Composable
@@ -42,12 +44,14 @@ fun DanmakuMenuList(
     currentSpeedFactor: Float,
     currentArea: Float,
     currentMaskEnabled: Boolean,
+    currentMergeDuplicate: Boolean,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
+    onDanmakuMergeDuplicateChange: (Boolean) -> Unit,
     onFocusStateChange: (MenuFocusState) -> Unit,
 ) {
     PlayerThreeLevelMenu(
@@ -134,6 +138,15 @@ fun DanmakuMenuList(
                     items = listOf("关闭", "开启"),
                     selected = if (currentMaskEnabled) 1 else 0,
                     onSelectedChanged = { onDanmakuMaskChange(it == 1) },
+                    onFocusBackToParent = backToMenu,
+                )
+
+            VideoPlayerDanmakuMenuItem.MergeDuplicate ->
+                RadioMenuList(
+                    modifier = itemModifier,
+                    items = listOf("关闭", "开启"),
+                    selected = if (currentMergeDuplicate) 1 else 0,
+                    onSelectedChanged = { onDanmakuMergeDuplicateChange(it == 1) },
                     onFocusBackToParent = backToMenu,
                 )
         }

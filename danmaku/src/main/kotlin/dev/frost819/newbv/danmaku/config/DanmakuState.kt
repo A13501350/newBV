@@ -11,6 +11,7 @@ import dev.frost819.newbv.danmaku.entity.DanmakuType
  * - [area] 滚动弹幕显示区域比例（0.0-1.0，默认 0.5 = 下半屏）
  * - [speedFactor] 滚动速度因子（默认 1.0）
  * - [maskEnabled] 是否启用弹幕防遮挡蒙版（默认 false）
+ * - [mergeDuplicate] 是否合并重复弹幕（同内容短窗口内只显示首条，默认 false）
  * - [enabledTypes] 启用的弹幕类型列表（默认包含 Rolling + Top + Bottom）
  */
 data class DanmakuState(
@@ -19,6 +20,7 @@ data class DanmakuState(
     val area: Float = 0.5f,
     val speedFactor: Float = 1.0f,
     val maskEnabled: Boolean = false,
+    val mergeDuplicate: Boolean = false,
     val enabledTypes: List<DanmakuType> =
         listOf(
             DanmakuType.Rolling,

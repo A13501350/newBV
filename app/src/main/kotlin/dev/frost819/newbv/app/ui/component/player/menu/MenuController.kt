@@ -62,6 +62,7 @@ import dev.frost819.newbv.data.datastore.VideoCodec
  * @param onDanmakuSpeedFactorChange 弹幕速度变化回调
  * @param onDanmakuAreaChange 弹幕区域变化回调
  * @param onDanmakuMaskChange 弹幕蒙版变化回调
+ * @param onDanmakuMergeDuplicateChange 弹幕合并重复变化回调
  * @param onSubtitleChange 字幕轨道变化回调
  * @param onSubtitleSizeChange 字幕大小变化回调
  * @param onSubtitleBackgroundOpacityChange 字幕透明度变化回调
@@ -84,6 +85,7 @@ fun MenuController(
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit = {},
+    onDanmakuMergeDuplicateChange: (Boolean) -> Unit = {},
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (Int) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -123,6 +125,7 @@ fun MenuController(
                 onDanmakuSpeedFactorChange = onDanmakuSpeedFactorChange,
                 onDanmakuAreaChange = onDanmakuAreaChange,
                 onDanmakuMaskChange = onDanmakuMaskChange,
+                onDanmakuMergeDuplicateChange = onDanmakuMergeDuplicateChange,
                 onSubtitleChange = onSubtitleChange,
                 onSubtitleSizeChange = onSubtitleSizeChange,
                 onSubtitleBackgroundOpacityChange = onSubtitleBackgroundOpacityChange,
@@ -150,6 +153,7 @@ private fun MenuControllerContent(
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
+    onDanmakuMergeDuplicateChange: (Boolean) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (Int) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -186,6 +190,7 @@ private fun MenuControllerContent(
                     onDanmakuSpeedFactorChange = onDanmakuSpeedFactorChange,
                     onDanmakuAreaChange = onDanmakuAreaChange,
                     onDanmakuMaskChange = onDanmakuMaskChange,
+                    onDanmakuMergeDuplicateChange = onDanmakuMergeDuplicateChange,
                     onFocusStateChange = { focusState = it },
                     onSubtitleChange = onSubtitleChange,
                     onSubtitleSizeChange = onSubtitleSizeChange,
@@ -235,6 +240,7 @@ private fun MenuList(
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
+    onDanmakuMergeDuplicateChange: (Boolean) -> Unit,
     onFocusStateChange: (MenuFocusState) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (Int) -> Unit,
@@ -280,6 +286,7 @@ private fun MenuList(
                     currentSpeedFactor = uiState.danmakuState.speedFactor,
                     currentArea = uiState.danmakuState.area,
                     currentMaskEnabled = uiState.danmakuState.maskEnabled,
+                    currentMergeDuplicate = uiState.danmakuState.mergeDuplicate,
                     onDanmakuSwitchChange = onDanmakuSwitchChange,
                     onDanmakuSizeChange = onDanmakuSizeChange,
                     onDanmakuOpacityChange = onDanmakuOpacityChange,
@@ -287,6 +294,7 @@ private fun MenuList(
                     onDanmakuAreaChange = onDanmakuAreaChange,
                     onFocusStateChange = onFocusStateChange,
                     onDanmakuMaskChange = onDanmakuMaskChange,
+                    onDanmakuMergeDuplicateChange = onDanmakuMergeDuplicateChange,
                 )
             }
 

@@ -324,6 +324,9 @@ object Prefs {
     /** 默认防遮挡蒙版开关。 */
     var defaultDanmakuMask by pref(PrefKeys.defaultDanmakuMask, false)
 
+    /** 默认合并重复弹幕开关（同内容短窗口内只显示首条）。 */
+    var defaultDanmakuMergeDuplicate by pref(PrefKeys.defaultDanmakuMergeDuplicate, false)
+
     // --- 播放器 - 字幕（PRD 7.4） ---
 
     /** 默认字幕字号（SP）。 */

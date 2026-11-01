@@ -9,6 +9,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.DanmakuConfig
 import com.kuaishou.akdanmaku.data.DanmakuItemData
+import com.kuaishou.akdanmaku.ecs.component.filter.DanmakuDataFilter
+import com.kuaishou.akdanmaku.ecs.component.filter.DuplicateMergingFilter
 import com.kuaishou.akdanmaku.ecs.component.filter.TypeFilter
 import com.kuaishou.akdanmaku.render.SimpleRenderer
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
@@ -86,6 +88,14 @@ class DanmakuViewModel
         private var danmakuConfig = DanmakuConfig()
         private val danmakuTypeFilter = TypeFilter()
 
+        /**
+         * 合并重复弹幕过滤器。
+         *
+         * 惰性创建：开关从未开启时保持 null，不产生引擎过滤开销；
+         * 首次开启后复用同一实例，避免重复创建导致内部去重窗口状态丢失。
+         */
+        private var danmakuDuplicateMergingFilter: DuplicateMergingFilter? = null
+
         private val _danmakuState =
             MutableStateFlow(
                 DanmakuState(
@@ -94,6 +104,7 @@ class DanmakuViewModel
                     area = Prefs.defaultDanmakuArea,
                     speedFactor = Prefs.defaultDanmakuSpeedFactor,
                     maskEnabled = Prefs.defaultDanmakuMask,
+                    mergeDuplicate = Prefs.defaultDanmakuMergeDuplicate,
                     enabledTypes = Prefs.defaultDanmakuTypes.map { it.toDanmakuEntity() },
                 ),
             )
@@ -495,6 +506,7 @@ class DanmakuViewModel
                     is DanmakuSettingAction.SetArea -> old.copy(area = action.area)
                     is DanmakuSettingAction.SetSpeedFactor -> old.copy(speedFactor = action.factor)
                     is DanmakuSettingAction.SetMaskEnabled -> old.copy(maskEnabled = action.enabled)
+                    is DanmakuSettingAction.SetMergeDuplicate -> old.copy(mergeDuplicate = action.enabled)
                     is DanmakuSettingAction.SetEnabledTypes -> old.copy(enabledTypes = action.types)
                 }
             if (old == new) return
@@ -527,6 +539,10 @@ class DanmakuViewModel
                     loadDanmakuMask()
                 }
             }
+            if (new.mergeDuplicate != old.mergeDuplicate) {
+                updateDanmakuConfigDuplicateMergeFilter(new.mergeDuplicate)
+                Prefs.defaultDanmakuMergeDuplicate = new.mergeDuplicate
+            }
         }
 
         private fun initDanmakuConfig() {
@@ -556,7 +572,7 @@ class DanmakuViewModel
                     density = 120,
                     textSizeScale = scale,
                     screenPart = area,
-                    dataFilter = listOf(danmakuTypeFilter),
+                    dataFilter = buildDataFilterList(Prefs.defaultDanmakuMergeDuplicate),
                     rollingSpeedFactor = factor,
                 )
             danmakuConfig.updateFilter()
@@ -582,6 +598,41 @@ class DanmakuViewModel
             danmakuConfig.updateFilter()
             danmakuPlayer?.updateConfig(danmakuConfig)
         }
+
+        /**
+         * 挂载/摘除合并重复过滤器并推送配置到弹幕引擎。
+         *
+         * 沿用 TypeFilter 的更新模式：更新 dataFilter 列表后依次调
+         * [DanmakuConfig.updateFilter] 与 [DanmakuPlayer.updateConfig] 使引擎过滤缓存失效。
+         *
+         * @param enabled true 挂载过滤器（实例惰性创建并复用），false 摘除
+         */
+        private fun updateDanmakuConfigDuplicateMergeFilter(enabled: Boolean) {
+            danmakuConfig = danmakuConfig.copy(dataFilter = buildDataFilterList(enabled))
+            danmakuConfig.updateFilter()
+            danmakuPlayer?.updateConfig(danmakuConfig)
+        }
+
+        /**
+         * 构建 dataFilter 列表：始终包含类型过滤器，开启合并重复时附加去重过滤器。
+         *
+         * @param mergeDuplicate 是否合并重复弹幕
+         */
+        private fun buildDataFilterList(mergeDuplicate: Boolean): List<DanmakuDataFilter> {
+            val mergeFilter = if (mergeDuplicate) requireDuplicateMergingFilter() else null
+            return if (mergeFilter == null) {
+                listOf(danmakuTypeFilter)
+            } else {
+                listOf(danmakuTypeFilter, mergeFilter)
+            }
+        }
+
+        /**
+         * 获取合并重复过滤器实例，不存在时创建；整个生命周期内复用同一实例，
+         * 避免反复切换开关时重复创建丢失内部去重窗口状态。
+         */
+        private fun requireDuplicateMergingFilter(): DuplicateMergingFilter =
+            danmakuDuplicateMergingFilter ?: DuplicateMergingFilter().also { danmakuDuplicateMergingFilter = it }
 
         private fun updateDanmakuArea(area: Float) {
             danmakuConfig = danmakuConfig.copy(screenPart = area)

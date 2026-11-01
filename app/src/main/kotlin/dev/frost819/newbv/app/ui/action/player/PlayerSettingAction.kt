@@ -33,6 +33,10 @@ sealed interface DanmakuSettingAction {
     data class SetEnabledTypes(
         val types: List<DanmakuType>,
     ) : DanmakuSettingAction
+
+    data class SetMergeDuplicate(
+        val enabled: Boolean,
+    ) : DanmakuSettingAction
 }
 
 /**
