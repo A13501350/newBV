@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test
  * 通过捕获 lambda 调用序列断言，不依赖播放器实现。
  */
 class TempSpeedControllerTest {
-
     /** 写速度 lambda 收到的速度序列。 */
     private val writtenSpeeds = mutableListOf<Float>()
 
