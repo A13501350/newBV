@@ -42,6 +42,7 @@ import dev.frost819.newbv.biliapi.http.entity.user.RelationData
 import dev.frost819.newbv.biliapi.http.entity.user.RelationStat
 import dev.frost819.newbv.biliapi.http.entity.user.UserCardData
 import dev.frost819.newbv.biliapi.http.entity.user.UserFollowData
+import dev.frost819.newbv.biliapi.http.entity.user.UserFollowersData
 import dev.frost819.newbv.biliapi.http.entity.user.UserInfoData
 import dev.frost819.newbv.biliapi.http.entity.user.WebSpaceVideoData
 import dev.frost819.newbv.biliapi.http.entity.user.favorite.FavoriteFolderInfo
@@ -1651,6 +1652,27 @@ object BiliHttpApi {
                 checkToken(accessKey)
                 parameter("vmid", mid)
                 orderType?.let { parameter("order_type", orderType) }
+                parameter("ps", pageSize)
+                parameter("pn", pageNumber)
+                accessKey?.let { parameter("access_key", accessKey) }
+            }.body()
+
+    /**
+     * 获取用户[mid]的粉丝列表
+     *
+     * 仅允许查询本人的粉丝，查询其他用户返回错误码 22110007。
+     * 鉴权：Web 通道依赖 Cookie（SESSDATA），App 通道依赖 [accessKey]。
+     */
+    suspend fun getFollowers(
+        mid: Long,
+        pageSize: Int = 50,
+        pageNumber: Int = 1,
+        accessKey: String? = null,
+    ): BiliResponse<UserFollowersData> =
+        client
+            .get("/x/relation/followers") {
+                checkToken(accessKey)
+                parameter("vmid", mid)
                 parameter("ps", pageSize)
                 parameter("pn", pageNumber)
                 accessKey?.let { parameter("access_key", accessKey) }
