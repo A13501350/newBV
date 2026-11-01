@@ -87,10 +87,16 @@ data class UserSpaceRoute(
     val face: String? = null,
 )
 
-/** 关注列表页。 */
+/**
+ * 关注列表页。
+ *
+ * @param mid 用户 mid。
+ * @param tab 初始列表："following" 关注（默认）/ "followers" 粉丝（仅本人可见）。
+ */
 @Serializable
 data class FollowRoute(
     val mid: Long,
+    val tab: String = "following",
 )
 
 // ── 番剧/PGC ──────────────────────────────────────────────────────────
