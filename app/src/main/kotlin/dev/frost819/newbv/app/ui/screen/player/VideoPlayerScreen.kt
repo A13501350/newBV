@@ -34,6 +34,8 @@ import dev.frost819.newbv.app.ui.navigation.UserSpaceRoute
 import dev.frost819.newbv.app.ui.navigation.navigateFromVideoCard
 import dev.frost819.newbv.app.ui.navigation.navigateToVideoDetailFromPlayer
 import dev.frost819.newbv.app.ui.state.player.PlayerState
+import dev.frost819.newbv.app.util.PsasRepository
+import dev.frost819.newbv.app.util.TeenModeTimer
 import dev.frost819.newbv.app.util.ToastUtils
 import dev.frost819.newbv.app.util.VideoShotImageCache
 import dev.frost819.newbv.app.viewmodel.comment.CommentViewModel
@@ -173,6 +175,39 @@ fun VideoPlayerScreen(
         } else {
             danmakuViewModel.pause()
         }
+    }
+
+    // 青少年模式播放段上报：与弹幕运行同步同源——仅实际播放（未缓冲）时计时，
+    // 暂停/缓冲/出错/结束即结算；播放中每 15s 周期结算一次，达上限立即进入休息
+    LaunchedEffect(uiState.playerState, uiState.isBuffering) {
+        if (uiState.playerState == PlayerState.Playing && !uiState.isBuffering) {
+            TeenModeTimer.onPlayStart()
+            while (isActive) {
+                delay(TeenModeTimer.TICK_INTERVAL_MS)
+                TeenModeTimer.tick()
+            }
+        } else {
+            TeenModeTimer.onPlayStop()
+        }
+    }
+
+    // 青少年模式休息期：达上限立即暂停播放（遮罩盖在播放器上，避免只见遮罩仍出声）
+    LaunchedEffect(Unit) {
+        TeenModeTimer.state.collect { teenState ->
+            if (teenState.resting &&
+                playerViewModel.uiState.value.playerState == PlayerState.Playing
+            ) {
+                playerViewModel.pausePlayback()
+            }
+        }
+    }
+
+    // 青少年模式公益广告会话：离开播放器或播放器内切走时结束会话，休息遮罩恢复显示。
+    // 必须捕获 effect 启动时的 aid：onDispose 若读 uiState.aid 拿到的是切换后的新值，
+    // 会漏结束会话导致普通视频播放期间遮罩仍处于隐藏（绕过休息）
+    DisposableEffect(uiState.aid) {
+        val playedAid = uiState.aid
+        onDispose { PsasRepository.endPlaybackIfCurrent(playedAid) }
     }
 
     // 弹幕倍速同步：初始默认倍速、菜单/快捷键切换、播放器重建等所有路径统一由播放速度状态驱动

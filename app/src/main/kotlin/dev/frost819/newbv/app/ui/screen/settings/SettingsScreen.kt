@@ -42,6 +42,7 @@ import dev.frost819.newbv.app.ui.screen.settings.content.AudioVideoSetting
 import dev.frost819.newbv.app.ui.screen.settings.content.InfoSetting
 import dev.frost819.newbv.app.ui.screen.settings.content.OtherSetting
 import dev.frost819.newbv.app.ui.screen.settings.content.StorageSetting
+import dev.frost819.newbv.app.ui.screen.settings.content.TeenModeSetting
 import dev.frost819.newbv.app.ui.screen.settings.content.UISetting
 import dev.frost819.newbv.core.focus.touchClickable
 
@@ -202,6 +203,7 @@ private fun SettingContent(
                         onNavigateToLogViewer = onNavigateToLogViewer,
                         screenFocusSaver = screenFocusSaver,
                     )
+                SettingsMenuNavItem.TeenMode -> TeenModeSetting(screenFocusSaver = screenFocusSaver)
                 SettingsMenuNavItem.Storage -> StorageSetting()
                 SettingsMenuNavItem.Info ->
                     InfoSetting(
@@ -277,6 +279,7 @@ enum class SettingsMenuNavItem(
     AudioVideo("播放设置"),
     UI("界面设置"),
     Other("更多设置"),
+    TeenMode("青少年模式"),
     Storage("存储管理"),
     Info("设备信息"),
     About("关于"),
