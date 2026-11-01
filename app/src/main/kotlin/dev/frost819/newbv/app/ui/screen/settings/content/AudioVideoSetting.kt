@@ -57,6 +57,7 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
     var enableSoftwareVideoDecoder by remember { mutableStateOf(Prefs.enableSoftwareVideoDecoder) }
     var showPlayerDebugInfo by remember { mutableStateOf(Prefs.showPlayerDebugInfo) }
     var autoSelectCdn by remember { mutableStateOf(Prefs.autoSelectCdn) }
+    var longPressTempSpeed by remember { mutableStateOf(Prefs.longPressTempSpeed) }
 
     Column(
         modifier =
@@ -127,6 +128,15 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
             onCheckedChange = {
                 autoSelectCdn = it
                 Prefs.autoSelectCdn = it
+            },
+        )
+        SettingSwitchListItem(
+            title = "长按确认键临时倍速",
+            supportText = "开启后长按 OK 临时 2 倍速、松开恢复；关闭时长按 OK 打开设置菜单",
+            checked = longPressTempSpeed,
+            onCheckedChange = {
+                longPressTempSpeed = it
+                Prefs.longPressTempSpeed = it
             },
         )
     }

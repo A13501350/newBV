@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -57,7 +58,8 @@ import kotlinx.coroutines.launch
  * 播放器根控制器。
  *
  * 管理所有覆盖层的可见性和焦点路由，处理 D-pad 按键事件、seek 加速、
- * 自定义快捷键、以及视频列表/菜单/相关信息控制器之间的协调。
+ * 自定义快捷键、长按确认键临时倍速（可开关，默认关闭时长按打开设置菜单）、
+ * 以及视频列表/菜单/相关信息控制器之间的协调。
  *
  * 布局层次（从底到顶）：
  * 1. content() — 视频画面 + 弹幕层
@@ -96,6 +98,8 @@ fun VideoPlayerController(
     onMediaProfileSettingChange: (MediaProfileSettingAction) -> Unit,
     onAspectRatioChange: (VideoAspectRatio) -> Unit,
     onPlaySpeedChange: (Float) -> Unit,
+    onTempSpeedStart: () -> Unit,
+    onTempSpeedStop: () -> Unit,
     onDanmakuSettingChange: (DanmakuSettingAction) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSettingChange: (SubtitleSettingAction) -> Unit,
@@ -134,6 +138,10 @@ fun VideoPlayerController(
     // 手势状态
     val gestureTipState = rememberGestureTipState()
     var currentBrightness by remember { mutableFloatStateOf(-1f) }
+
+    // 长按确认键临时倍速：激活中时确认键 KeyUp 只恢复原速，不触发短按的播放/暂停。
+    // 本地标记与 ViewModel 的会话状态独立，仅用于本组件内的按键语义分流
+    var isTempSpeedActive by remember { mutableStateOf(false) }
 
     fun calCoefficient(): Long =
         if (System.currentTimeMillis() - lastSeekChangeTime < 200) {
@@ -216,6 +224,14 @@ fun VideoPlayerController(
         showListController = false
         showMenuController = false
         showRelatedVideosController = false
+    }
+
+    /** 结束长按临时倍速会话（若激活），通知 ViewModel 恢复用户设定速度。 */
+    fun stopTempSpeedIfNeeded() {
+        if (isTempSpeedActive) {
+            isTempSpeedActive = false
+            onTempSpeedStop()
+        }
     }
 
     /**
@@ -316,6 +332,8 @@ fun VideoPlayerController(
                     closeAllControllers()
                     return true
                 }
+                // 退出播放器前结束临时倍速，避免离开后引擎仍滞留在加速状态
+                stopTempSpeedIfNeeded()
                 onExit()
                 return true
             }
@@ -348,10 +366,24 @@ fun VideoPlayerController(
                 in confirmKeys -> {
                     if (event.type == KeyEventType.KeyDown) {
                         if (event.nativeKeyEvent.isLongPress) {
-                            showMenuController = true
+                            if (Prefs.longPressTempSpeed) {
+                                // 长按临时倍速：记录激活状态，KeyUp 松开时恢复原速
+                                if (!isTempSpeedActive) {
+                                    isTempSpeedActive = true
+                                    onTempSpeedStart()
+                                }
+                            } else {
+                                showMenuController = true
+                            }
                         }
                         return true
                     } else {
+                        // 长按临时倍速松开：恢复原速并吞掉本次 KeyUp，
+                        // 不触发短按的播放/暂停（避免松手瞬间误暂停）
+                        if (isTempSpeedActive) {
+                            stopTempSpeedIfNeeded()
+                            return true
+                        }
                         if (uiState.showBackToStart) {
                             onBackToStart()
                         } else {
@@ -390,6 +422,13 @@ fun VideoPlayerController(
         }
 
         return false
+    }
+
+    // 临时倍速安全兜底：任一覆盖层打开时立即结束临时倍速并恢复原速。
+    // 覆盖层打开后确认键 KeyUp 不再进入临时倍速恢复分支，若不在此恢复，
+    // 松开确认键会让引擎速度滞留在加速状态
+    LaunchedEffect(showClickableControllers) {
+        if (showClickableControllers) stopTempSpeedIfNeeded()
     }
 
     Box(

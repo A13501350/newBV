@@ -313,6 +313,8 @@ fun VideoPlayerScreen(
             playerViewModel.updatePlaySpeed(speed)
             // 弹幕倍速由 LaunchedEffect(uiState.playSpeed) 统一同步，此处无需直接调用
         },
+        onTempSpeedStart = { playerViewModel.startTempSpeed() },
+        onTempSpeedStop = { playerViewModel.stopTempSpeed() },
         onDanmakuSettingChange = { action -> danmakuViewModel.updateDanmakuState(action) },
         onSubtitleChange = { subtitle -> subtitleViewModel.selectSubtitle(subtitle.id) },
         onSubtitleSettingChange = { action -> subtitleViewModel.updateSubtitleState(action) },
