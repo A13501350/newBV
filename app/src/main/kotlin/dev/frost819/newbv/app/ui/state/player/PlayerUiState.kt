@@ -53,7 +53,6 @@ data class PlayerUiState(
     val mediaProfileState: MediaProfileState = MediaProfileState(),
     val playSpeed: Float = 1f,
     val aspectRatio: VideoAspectRatio = VideoAspectRatio.Default,
-
     /**
      * 视频画面是否水平镜像。
      *
