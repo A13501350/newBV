@@ -2,12 +2,13 @@ package dev.frost819.newbv.app.util
 
 import android.content.Context
 import dev.frost819.newbv.data.datastore.Prefs
+import dev.frost819.newbv.player.cache.PlayerMediaCache
 import java.io.File
 
 /**
  * 缓存管理器（缓存满阈值自动清理）。
  *
- * 统一管理应用缓存（图片缓存 + 更新包下载等目录，不区分类型）：
+ * 统一管理应用缓存（图片缓存 + 更新包下载 + 播放媒体缓存等目录，不区分类型）：
  * - 大小统计：递归计算全部缓存目录的总字节数。
  * - 阈值检查：App 启动 + 缓存写入后调用 [checkCache]。
  * - LRU 清理：总大小超过阈值时，按文件最后修改时间从旧到新删除（近似 LRU），
@@ -15,6 +16,9 @@ import java.io.File
  * - 受 [Prefs.cacheAutoClean] 开关控制，关闭后不自动清理。
  * - 图片缓存的常规淘汰由 Coil 在每次写入时自动执行（BVApplication 构建
  *   DiskCache 时按阈值设置 maxSizeBytes），本类检查是运行时兜底。
+ * - 播放媒体缓存另有自身 LRU 容量档位（`Prefs.playbackCacheMb`，由
+ *   [PlayerMediaCache] 执行），本类只负责把它并入大小统计与兜底清理；
+ *   正在播放时清理其中的分片会导致该会话读缓存失败并自动回退网络，不中断播放。
  *
  * 本类无自身状态（状态都在磁盘与 Prefs 中），可按需创建实例；
  * 构造参数全部可注入，便于纯 JVM 单元测试。
@@ -38,6 +42,7 @@ class CacheManager(
             listOf(
                 File(context.cacheDir, IMAGE_CACHE_DIR),
                 File(context.cacheDir, OTHER_CACHE_DIR),
+                File(context.cacheDir, PlayerMediaCache.CACHE_DIR_NAME),
             ),
     )
 

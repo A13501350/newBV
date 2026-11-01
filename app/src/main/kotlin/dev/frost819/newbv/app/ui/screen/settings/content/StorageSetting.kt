@@ -47,11 +47,14 @@ import java.io.File
 /** 缓存阈值可选项（MB），0 表示不限制。 */
 private val CACHE_THRESHOLD_OPTIONS = listOf(50, 100, 200, 500, CacheManager.THRESHOLD_UNLIMITED)
 
+/** 播放媒体缓存容量可选项（MB），0 表示关闭。 */
+private val PLAYBACK_CACHE_OPTIONS = listOf(0, 256, 512, 1024)
+
 /**
  * 存储设置页。
  *
  * 缓存阈值设置（超限自动 LRU 清理）/ 手动清理缓存 / 自动清空开关；
- * 崩溃日志大小显示与清理。
+ * 播放媒体缓存容量档位（边播边缓存，0 = 关闭）；崩溃日志大小显示与清理。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,10 +68,12 @@ fun StorageSetting(modifier: Modifier = Modifier) {
     var crashLogsSize by remember { mutableLongStateOf(0L) }
     var cacheThreshold by remember { mutableStateOf(Prefs.cacheThreshold) }
     var autoCleanEnabled by remember { mutableStateOf(Prefs.cacheAutoClean) }
+    var playbackCacheMb by remember { mutableStateOf(Prefs.playbackCacheMb) }
 
     var showClearDialog by remember { mutableStateOf(false) }
     var showClearLogsDialog by remember { mutableStateOf(false) }
     var showThresholdDialog by remember { mutableStateOf(false) }
+    var showPlaybackCacheDialog by remember { mutableStateOf(false) }
 
     val calSize = {
         cacheSize = cacheManager.cacheSize()
@@ -114,6 +119,15 @@ fun StorageSetting(modifier: Modifier = Modifier) {
                                     "$cacheThreshold MB"
                                 },
                         onClick = { showThresholdDialog = true },
+                    )
+                }
+                item {
+                    SettingListItem(
+                        title = "播放媒体缓存",
+                        supportText =
+                            "边播边缓存视频/音频流，下次播放生效。当前：" +
+                                if (playbackCacheMb == 0) "关闭" else "$playbackCacheMb MB",
+                        onClick = { showPlaybackCacheDialog = true },
                     )
                 }
                 item {
@@ -184,9 +198,11 @@ fun StorageSetting(modifier: Modifier = Modifier) {
     }
 
     if (showThresholdDialog) {
-        ThresholdOptionDialog(
+        OptionPickerDialog(
+            title = "缓存阈值",
             options = CACHE_THRESHOLD_OPTIONS,
             selected = cacheThreshold,
+            zeroLabel = "无限制",
             onDismiss = { showThresholdDialog = false },
             onSelect = { threshold ->
                 cacheThreshold = threshold
@@ -199,23 +215,42 @@ fun StorageSetting(modifier: Modifier = Modifier) {
             },
         )
     }
+
+    if (showPlaybackCacheDialog) {
+        OptionPickerDialog(
+            title = "播放媒体缓存",
+            options = PLAYBACK_CACHE_OPTIONS,
+            selected = playbackCacheMb,
+            zeroLabel = "关闭",
+            onDismiss = { showPlaybackCacheDialog = false },
+            onSelect = { mb ->
+                playbackCacheMb = mb
+                Prefs.playbackCacheMb = mb
+            },
+        )
+    }
 }
 
 /**
- * 缓存阈值选择弹窗。
+ * 档位选择弹窗。
  *
- * 列出预设阈值（MB，0 显示为"不限制"），当前选中项高亮，选中后触发回调并关闭。
+ * 列出预设档位（MB），当前选中项高亮，选中后触发回调并关闭。
+ * 供"缓存阈值"与"播放媒体缓存"两个设置项复用。
  *
- * @param options 预设阈值列表（MB，0 = 不限制）。
- * @param selected 当前阈值。
+ * @param title 弹窗标题。
+ * @param options 预设档位列表（MB）。
+ * @param selected 当前选中值。
+ * @param zeroLabel 档位值为 0 时的展示文案（如"无限制"/"关闭"）。
  * @param onDismiss 关闭回调。
  * @param onSelect 选中回调。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ThresholdOptionDialog(
+private fun OptionPickerDialog(
+    title: String,
     options: List<Int>,
     selected: Int,
+    zeroLabel: String,
     onDismiss: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
@@ -243,7 +278,7 @@ private fun ThresholdOptionDialog(
             ) {
                 item {
                     Text(
-                        text = "缓存阈值",
+                        text = title,
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
@@ -251,7 +286,7 @@ private fun ThresholdOptionDialog(
                 items(options.size) { index ->
                     val option = options[index]
                     SettingsMenuSelectItem(
-                        text = if (option == CacheManager.THRESHOLD_UNLIMITED) "无限制" else "$option MB",
+                        text = if (option == 0) zeroLabel else "$option MB",
                         selected = option == selected,
                         onClick = {
                             onSelect(option)

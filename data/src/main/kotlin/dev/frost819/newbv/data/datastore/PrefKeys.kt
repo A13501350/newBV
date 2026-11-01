@@ -84,4 +84,5 @@ internal object PrefKeys {
     // ===== 存储设置 =====
     val cacheThreshold = intPreferencesKey("cache_threshold")
     val cacheAutoClean = booleanPreferencesKey("cache_auto_clean")
+    val playbackCacheMb = intPreferencesKey("playback_cache_mb")
 }
