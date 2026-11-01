@@ -2,14 +2,20 @@ package dev.frost819.newbv.app.ui.screen.pgc
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material3.Scaffold as Material3Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +38,11 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Icon
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
+import androidx.tv.material3.Text
 import dev.frost819.newbv.app.ui.component.FocusSaver
 import dev.frost819.newbv.app.ui.component.ListFooterTip
 import dev.frost819.newbv.app.ui.component.PgcCarousel
@@ -42,11 +53,13 @@ import dev.frost819.newbv.app.ui.component.focusSaverItem
 import dev.frost819.newbv.app.ui.component.videocard.SeasonCard
 import dev.frost819.newbv.app.ui.component.videocard.SeasonCardData
 import dev.frost819.newbv.app.ui.navigation.PgcFeatureRoute
+import dev.frost819.newbv.app.ui.navigation.TimelineRoute
 import dev.frost819.newbv.app.viewmodel.pgc.PgcViewModel
 import dev.frost819.newbv.biliapi.entity.pgc.PgcType
+import dev.frost819.newbv.core.focus.focusInvertedColors
+import dev.frost819.newbv.core.focus.touchClickable
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import androidx.compose.material3.Scaffold as Material3Scaffold
 
 /**
  * PGC 影视顶部导航项。
@@ -168,6 +181,14 @@ private fun PgcGrid(
         horizontalArrangement = Arrangement.spacedBy(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // 放送时间表入口：与分类并列的功能入口卡，置于内容区顶部
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            TimelineEntryCard(
+                onClick = { navController.navigate(TimelineRoute) },
+                modifier = Modifier.focusSaverItem(focusSaver, "pgc_timeline_entry"),
+            )
+        }
+
         // 轮播图：全宽，始终占位避免异步加载后内容下移
         item(span = { GridItemSpan(maxLineSpan) }) {
             if (state.carouselItems.isNotEmpty()) {
@@ -229,6 +250,58 @@ private fun PgcGrid(
                 hasMore = state.hasMore,
                 itemsIsEmpty = state.items.isEmpty(),
             )
+        }
+    }
+}
+
+/**
+ * 放送时间表入口卡。
+ *
+ * 置于 PGC 网格顶部，点击进入新番放送时间表页。
+ *
+ * @param onClick 点击回调。
+ * @param modifier Modifier。
+ */
+@Composable
+private fun TimelineEntryCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.touchClickable(onClick = onClick),
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(shape = MaterialTheme.shapes.medium),
+        colors =
+            focusInvertedColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CalendarMonth,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "放送时间表",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "每日新番播出安排，一键直达详情",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
