@@ -43,7 +43,7 @@ interface DanmakuDisplayer {
     /**
      * 弹幕之间的间距（lineSpacing）
      */
-    val margin: Int
+    var margin: Int
 
     /**
      * 所有弹幕距离顶端的间距（topPadding）

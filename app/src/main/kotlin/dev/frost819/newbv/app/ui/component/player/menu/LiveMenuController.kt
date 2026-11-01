@@ -241,6 +241,7 @@ private fun LiveMenuList(
                 DanmakuMenuList(
                     currentEnabledTypes = dataTypes,
                     currentScale = danmakuState.scale,
+                    currentLineSpacing = danmakuState.lineSpacing,
                     currentOpacity = danmakuState.opacity,
                     currentSpeedFactor = danmakuState.speedFactor,
                     currentArea = danmakuState.area,
@@ -254,6 +255,7 @@ private fun LiveMenuList(
                         onDanmakuSettingChange(DanmakuSettingAction.SetEnabledTypes(entityTypes))
                     },
                     onDanmakuSizeChange = { onDanmakuSettingChange(DanmakuSettingAction.SetScale(it)) },
+                    onDanmakuLineSpacingChange = { onDanmakuSettingChange(DanmakuSettingAction.SetLineSpacing(it)) },
                     onDanmakuOpacityChange = { onDanmakuSettingChange(DanmakuSettingAction.SetOpacity(it)) },
                     onDanmakuSpeedFactorChange = { onDanmakuSettingChange(DanmakuSettingAction.SetSpeedFactor(it)) },
                     onDanmakuAreaChange = { onDanmakuSettingChange(DanmakuSettingAction.SetArea(it)) },

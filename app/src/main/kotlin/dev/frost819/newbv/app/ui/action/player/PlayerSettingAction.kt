@@ -26,6 +26,10 @@ sealed interface DanmakuSettingAction {
         val factor: Float,
     ) : DanmakuSettingAction
 
+    data class SetLineSpacing(
+        val lineSpacing: Int,
+    ) : DanmakuSettingAction
+
     data class SetMaskEnabled(
         val enabled: Boolean,
     ) : DanmakuSettingAction

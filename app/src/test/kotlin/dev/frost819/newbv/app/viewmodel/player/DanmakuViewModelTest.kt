@@ -1,6 +1,7 @@
 package dev.frost819.newbv.app.viewmodel.player
 
 import com.google.common.truth.Truth.assertThat
+import com.kuaishou.akdanmaku.DanmakuConfig
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
@@ -14,6 +15,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +56,7 @@ class DanmakuViewModelTest {
         every { Prefs.defaultDanmakuOpacity } returns 0.7f
         every { Prefs.defaultDanmakuArea } returns 0.5f
         every { Prefs.defaultDanmakuSpeedFactor } returns 1f
+        every { Prefs.defaultDanmakuLineSpacing } returns 4
         every { Prefs.defaultDanmakuMask } returns false
         every { Prefs.defaultDanmakuTypes } returns
             listOf(
@@ -66,6 +69,7 @@ class DanmakuViewModelTest {
         every { Prefs.defaultDanmakuOpacity = any() } answers {}
         every { Prefs.defaultDanmakuArea = any() } answers {}
         every { Prefs.defaultDanmakuSpeedFactor = any() } answers {}
+        every { Prefs.defaultDanmakuLineSpacing = any() } answers {}
         every { Prefs.defaultDanmakuMask = any() } answers {}
         every { Prefs.defaultDanmakuTypes = any() } answers {}
         every { Prefs.apiType } returns DataApiType.Web
@@ -87,6 +91,7 @@ class DanmakuViewModelTest {
         assertThat(state.opacity).isEqualTo(0.7f)
         assertThat(state.area).isEqualTo(0.5f)
         assertThat(state.speedFactor).isEqualTo(1f)
+        assertThat(state.lineSpacing).isEqualTo(4)
         assertThat(state.maskEnabled).isFalse()
         assertThat(state.enabledTypes).isNotEmpty()
     }
@@ -215,6 +220,40 @@ class DanmakuViewModelTest {
             advanceUntilIdle()
 
             verify { Prefs.defaultDanmakuSpeedFactor = 2.0f }
+        }
+
+    @Test
+    fun `updateDanmakuState SetLineSpacing updates lineSpacing`() =
+        runTest(testDispatcher) {
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetLineSpacing(8))
+            advanceUntilIdle()
+            assertThat(viewModel.danmakuState.value.lineSpacing).isEqualTo(8)
+        }
+
+    @Test
+    fun `updateDanmakuState SetLineSpacing persists to Prefs`() =
+        runTest(testDispatcher) {
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetLineSpacing(10))
+            advanceUntilIdle()
+
+            verify { Prefs.defaultDanmakuLineSpacing = 10 }
+        }
+
+    @Test
+    fun `updateDanmakuState SetLineSpacing applies config to engine`() =
+        runTest(testDispatcher) {
+            // Given
+            val player = mockk<DanmakuPlayer>(relaxed = true)
+            viewModel.danmakuPlayer = player
+
+            // When
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetLineSpacing(8))
+            advanceUntilIdle()
+
+            // Then: 引擎应收到携带新行距的完整配置
+            val configSlot = slot<DanmakuConfig>()
+            verify(exactly = 1) { player.updateConfig(capture(configSlot)) }
+            assertThat(configSlot.captured.lineSpacing).isEqualTo(8)
         }
 
     @Test

@@ -321,6 +321,9 @@ object Prefs {
     /** 默认弹幕显示区域。 */
     var defaultDanmakuArea by pref(PrefKeys.defaultDanmakuArea, 0.5f)
 
+    /** 默认弹幕行距（0-16，步进 2，默认 4）。 */
+    var defaultDanmakuLineSpacing by pref(PrefKeys.defaultDanmakuLineSpacing, 4)
+
     /** 默认防遮挡蒙版开关。 */
     var defaultDanmakuMask by pref(PrefKeys.defaultDanmakuMask, false)
 

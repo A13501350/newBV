@@ -44,7 +44,7 @@ import dev.frost819.newbv.data.datastore.DanmakuType as DataDanmakuType
  * 弹幕 ViewModel。
  *
  * 管理弹幕播放器生命周期、弹幕数据加载（分段 → [DanmakuItemData]）、
- * 弹幕配置（大小/透明度/区域/速度/类型/蒙版）、播放同步。
+ * 弹幕配置（大小/行距/透明度/区域/速度/类型/蒙版）、播放同步。
  *
  * 弹幕数据采用分段加载（每段时长由 dm/view 元数据决定，通常 6 分钟）：
  * - [loadDanmaku] 获取元数据并按初始位置加载首段
@@ -93,6 +93,7 @@ class DanmakuViewModel
                     opacity = Prefs.defaultDanmakuOpacity,
                     area = Prefs.defaultDanmakuArea,
                     speedFactor = Prefs.defaultDanmakuSpeedFactor,
+                    lineSpacing = Prefs.defaultDanmakuLineSpacing,
                     maskEnabled = Prefs.defaultDanmakuMask,
                     enabledTypes = Prefs.defaultDanmakuTypes.map { it.toDanmakuEntity() },
                 ),
@@ -494,6 +495,7 @@ class DanmakuViewModel
                     is DanmakuSettingAction.SetOpacity -> old.copy(opacity = action.opacity)
                     is DanmakuSettingAction.SetArea -> old.copy(area = action.area)
                     is DanmakuSettingAction.SetSpeedFactor -> old.copy(speedFactor = action.factor)
+                    is DanmakuSettingAction.SetLineSpacing -> old.copy(lineSpacing = action.lineSpacing)
                     is DanmakuSettingAction.SetMaskEnabled -> old.copy(maskEnabled = action.enabled)
                     is DanmakuSettingAction.SetEnabledTypes -> old.copy(enabledTypes = action.types)
                 }
@@ -512,6 +514,10 @@ class DanmakuViewModel
             if (new.speedFactor != old.speedFactor) {
                 danmakuPlayer?.setDanmakuRollingSpeed(new.speedFactor)
                 Prefs.defaultDanmakuSpeedFactor = new.speedFactor
+            }
+            if (new.lineSpacing != old.lineSpacing) {
+                updateDanmakuLineSpacing(new.lineSpacing)
+                Prefs.defaultDanmakuLineSpacing = new.lineSpacing
             }
             if (new.area != old.area) {
                 updateDanmakuArea(new.area)
@@ -534,6 +540,7 @@ class DanmakuViewModel
             val area = Prefs.defaultDanmakuArea
             val scale = Prefs.defaultDanmakuScale
             val factor = Prefs.defaultDanmakuSpeedFactor
+            val lineSpacing = Prefs.defaultDanmakuLineSpacing
 
             danmakuTypeFilter.clear()
             if (!types.contains(DanmakuEntityDanmakuType.All)) {
@@ -555,6 +562,7 @@ class DanmakuViewModel
                 danmakuConfig.copy(
                     density = 120,
                     textSizeScale = scale,
+                    lineSpacing = lineSpacing,
                     screenPart = area,
                     dataFilter = listOf(danmakuTypeFilter),
                     rollingSpeedFactor = factor,
@@ -590,6 +598,11 @@ class DanmakuViewModel
 
         private fun updateDanmakuScale(scale: Float) {
             danmakuConfig = danmakuConfig.copy(textSizeScale = scale)
+            danmakuPlayer?.updateConfig(danmakuConfig)
+        }
+
+        private fun updateDanmakuLineSpacing(lineSpacing: Int) {
+            danmakuConfig = danmakuConfig.copy(lineSpacing = lineSpacing)
             danmakuPlayer?.updateConfig(danmakuConfig)
         }
 

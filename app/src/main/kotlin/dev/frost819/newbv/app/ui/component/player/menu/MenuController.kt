@@ -58,6 +58,7 @@ import dev.frost819.newbv.data.datastore.VideoCodec
  * @param onAudioChange 音轨变化回调
  * @param onDanmakuSwitchChange 弹幕类型变化回调
  * @param onDanmakuSizeChange 弹幕大小变化回调
+ * @param onDanmakuLineSpacingChange 弹幕行距变化回调
  * @param onDanmakuOpacityChange 弹幕透明度变化回调
  * @param onDanmakuSpeedFactorChange 弹幕速度变化回调
  * @param onDanmakuAreaChange 弹幕区域变化回调
@@ -80,6 +81,7 @@ fun MenuController(
     onAudioChange: (Audio) -> Unit,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
+    onDanmakuLineSpacingChange: (Int) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
@@ -119,6 +121,7 @@ fun MenuController(
                 onAudioChange = onAudioChange,
                 onDanmakuSwitchChange = onDanmakuSwitchChange,
                 onDanmakuSizeChange = onDanmakuSizeChange,
+                onDanmakuLineSpacingChange = onDanmakuLineSpacingChange,
                 onDanmakuOpacityChange = onDanmakuOpacityChange,
                 onDanmakuSpeedFactorChange = onDanmakuSpeedFactorChange,
                 onDanmakuAreaChange = onDanmakuAreaChange,
@@ -146,6 +149,7 @@ private fun MenuControllerContent(
     onAudioChange: (Audio) -> Unit,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
+    onDanmakuLineSpacingChange: (Int) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
@@ -182,6 +186,7 @@ private fun MenuControllerContent(
                     onAudioChange = onAudioChange,
                     onDanmakuSwitchChange = onDanmakuSwitchChange,
                     onDanmakuSizeChange = onDanmakuSizeChange,
+                    onDanmakuLineSpacingChange = onDanmakuLineSpacingChange,
                     onDanmakuOpacityChange = onDanmakuOpacityChange,
                     onDanmakuSpeedFactorChange = onDanmakuSpeedFactorChange,
                     onDanmakuAreaChange = onDanmakuAreaChange,
@@ -231,6 +236,7 @@ private fun MenuList(
     onAudioChange: (Audio) -> Unit,
     onDanmakuSwitchChange: (List<DanmakuType>) -> Unit,
     onDanmakuSizeChange: (Float) -> Unit,
+    onDanmakuLineSpacingChange: (Int) -> Unit,
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
@@ -276,12 +282,14 @@ private fun MenuList(
                 DanmakuMenuList(
                     currentEnabledTypes = dataTypes,
                     currentScale = uiState.danmakuState.scale,
+                    currentLineSpacing = uiState.danmakuState.lineSpacing,
                     currentOpacity = uiState.danmakuState.opacity,
                     currentSpeedFactor = uiState.danmakuState.speedFactor,
                     currentArea = uiState.danmakuState.area,
                     currentMaskEnabled = uiState.danmakuState.maskEnabled,
                     onDanmakuSwitchChange = onDanmakuSwitchChange,
                     onDanmakuSizeChange = onDanmakuSizeChange,
+                    onDanmakuLineSpacingChange = onDanmakuLineSpacingChange,
                     onDanmakuOpacityChange = onDanmakuOpacityChange,
                     onDanmakuSpeedFactorChange = onDanmakuSpeedFactorChange,
                     onDanmakuAreaChange = onDanmakuAreaChange,

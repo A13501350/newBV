@@ -10,6 +10,7 @@ import dev.frost819.newbv.danmaku.entity.DanmakuType
  * - [opacity] 透明度（0.0-1.0，默认 0.7）
  * - [area] 滚动弹幕显示区域比例（0.0-1.0，默认 0.5 = 下半屏）
  * - [speedFactor] 滚动速度因子（默认 1.0）
+ * - [lineSpacing] 弹幕行距（0-16，默认 4）
  * - [maskEnabled] 是否启用弹幕防遮挡蒙版（默认 false）
  * - [enabledTypes] 启用的弹幕类型列表（默认包含 Rolling + Top + Bottom）
  */
@@ -18,6 +19,7 @@ data class DanmakuState(
     val opacity: Float = 0.7f,
     val area: Float = 0.5f,
     val speedFactor: Float = 1.0f,
+    val lineSpacing: Int = 4,
     val maskEnabled: Boolean = false,
     val enabledTypes: List<DanmakuType> =
         listOf(

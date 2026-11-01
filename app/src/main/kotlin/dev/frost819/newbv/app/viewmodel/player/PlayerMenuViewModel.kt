@@ -102,6 +102,7 @@ enum class VideoPlayerDanmakuMenuItem(
 ) {
     Switch("开关"),
     Size("大小"),
+    LineSpacing("行距"),
     Opacity("不透明度"),
     SpeedFactor("速度"),
     Area("区域"),

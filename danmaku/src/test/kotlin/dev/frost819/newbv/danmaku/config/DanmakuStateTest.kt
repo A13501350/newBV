@@ -13,6 +13,7 @@ class DanmakuStateTest {
         assertThat(state.opacity).isEqualTo(0.7f)
         assertThat(state.area).isEqualTo(0.5f)
         assertThat(state.speedFactor).isEqualTo(1.0f)
+        assertThat(state.lineSpacing).isEqualTo(4)
         assertThat(state.maskEnabled).isFalse()
         assertThat(state.enabledTypes).containsExactly(
             DanmakuType.Rolling,
