@@ -46,6 +46,7 @@ import dev.frost819.newbv.app.ui.state.player.SeekerState
 import dev.frost819.newbv.app.ui.state.player.errorMessage
 import dev.frost819.newbv.app.util.VideoShotImageCache
 import dev.frost819.newbv.biliapi.entity.video.Subtitle
+import dev.frost819.newbv.biliapi.entity.video.VideoChapters
 import dev.frost819.newbv.core.theme.BVTheme
 import dev.frost819.newbv.core.theme.ThemeMode
 import dev.frost819.newbv.data.datastore.Prefs
@@ -130,6 +131,12 @@ fun VideoPlayerController(
 
     // 常显进度条
     var showPersistentSeek by remember { mutableStateOf(Prefs.showPersistentSeek) }
+
+    // 章节分段（view_points）：时长未就绪时 normalize 返回空，进度条自动回退单线渲染
+    val chapterSegments =
+        remember(uiState.chapters, seekerState.value.totalDuration) {
+            VideoChapters.normalize(uiState.chapters, seekerState.value.totalDuration)
+        }
 
     // 手势状态
     val gestureTipState = rememberGestureTipState()
@@ -495,6 +502,7 @@ fun VideoPlayerController(
                     position = seekerState.value.currentTime,
                     bufferedPercentage = seekerState.value.bufferedPercentage,
                     isPersistentSeek = true,
+                    chapterSegments = chapterSegments,
                 )
             }
 
@@ -560,6 +568,7 @@ fun VideoPlayerController(
                 onlineWatching = uiState.onlineWatching,
                 videoShot = uiState.videoShot,
                 videoShotCache = videoShotCache,
+                chapterSegments = chapterSegments,
                 isPgc = isPgc,
                 danmakuEnabled = uiState.danmakuState.enabledTypes.isNotEmpty(),
                 isLooping = isLooping,
