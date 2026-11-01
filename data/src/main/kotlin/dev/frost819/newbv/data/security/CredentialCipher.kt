@@ -23,7 +23,9 @@ import javax.crypto.spec.GCMParameterSpec
  *
  * @param key 用于加解密的 AES 密钥。
  */
-class CredentialCipher(private val key: SecretKey) {
+class CredentialCipher(
+    private val key: SecretKey,
+) {
     /**
      * 加密明文值。
      *
