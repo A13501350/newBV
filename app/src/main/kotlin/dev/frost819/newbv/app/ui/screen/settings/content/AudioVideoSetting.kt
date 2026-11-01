@@ -57,6 +57,7 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
     var enableSoftwareVideoDecoder by remember { mutableStateOf(Prefs.enableSoftwareVideoDecoder) }
     var showPlayerDebugInfo by remember { mutableStateOf(Prefs.showPlayerDebugInfo) }
     var autoSelectCdn by remember { mutableStateOf(Prefs.autoSelectCdn) }
+    var musicZoneForceOneSpeed by remember { mutableStateOf(Prefs.musicZoneForceOneSpeed) }
 
     Column(
         modifier =
@@ -101,6 +102,15 @@ fun AudioVideoSetting(modifier: Modifier = Modifier) {
             title = "自定义播放快捷键",
             supportText = "当前：${playerCustomShortcuts.size} 个绑定",
             onClick = { showPlayerCustomShortcutsDialog = true },
+        )
+        SettingSwitchListItem(
+            title = "音乐区默认 1 倍速",
+            supportText = "播放音乐区视频时自动使用 1 倍速；手动改速后本视频内不再干预，切集后重新应用",
+            checked = musicZoneForceOneSpeed,
+            onCheckedChange = {
+                musicZoneForceOneSpeed = it
+                Prefs.musicZoneForceOneSpeed = it
+            },
         )
         SettingSwitchListItem(
             title = "软解视频",

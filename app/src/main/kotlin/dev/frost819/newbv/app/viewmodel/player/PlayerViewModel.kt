@@ -17,6 +17,7 @@ import dev.frost819.newbv.app.ui.state.player.PlayerState
 import dev.frost819.newbv.app.ui.state.player.PlayerUiEffect
 import dev.frost819.newbv.app.ui.state.player.PlayerUiState
 import dev.frost819.newbv.app.ui.state.player.SeekerState
+import dev.frost819.newbv.app.util.MusicZonePolicy
 import dev.frost819.newbv.app.util.PlaybackCandidate
 import dev.frost819.newbv.app.util.PlayerConstants
 import dev.frost819.newbv.app.util.VideoCapabilityProvider
@@ -31,6 +32,7 @@ import dev.frost819.newbv.biliapi.entity.ApiType
 import dev.frost819.newbv.biliapi.entity.DashVideo
 import dev.frost819.newbv.biliapi.entity.PlayData
 import dev.frost819.newbv.biliapi.entity.video.HeartbeatVideoType
+import dev.frost819.newbv.biliapi.entity.video.VideoDetail
 import dev.frost819.newbv.biliapi.entity.video.VideoPage
 import dev.frost819.newbv.biliapi.repositories.AuthRepository
 import dev.frost819.newbv.biliapi.repositories.CoinRepository
@@ -143,6 +145,9 @@ class PlayerViewModel
         }
 
         private var playData: PlayData? = null
+
+        /** 用户是否在当前视频中手动改过倍速；置位后音乐区默认 1 倍速策略不再干预，切集时复位。 */
+        private var speedManuallySet = false
 
         /** 本次播放已尝试过的「画质|编码」组合，用于解码回退去重与终止。 */
         private val attemptedDecodeProfiles = mutableSetOf<String>()
@@ -369,6 +374,26 @@ class PlayerViewModel
                     authorName = detail?.author?.name ?: state.authorName,
                 )
             }
+            // 详情写入 uiState 后应用音乐区默认 1 倍速策略（初次进入路径）
+            applyMusicZoneSpeedPolicy(detail)
+        }
+
+        /**
+         * 应用「音乐区默认 1 倍速」策略。
+         *
+         * 开关开启且本视频内未手动改过倍速时生效：音乐区视频强制 1 倍速，
+         * 非音乐区视频恢复全局默认倍速（从音乐区视频切出的场景也能正确复位）。
+         * 与当前倍速相同则跳过，避免无谓的播放器写入。
+         *
+         * @param detail 已加载的视频详情（提供分区 tid；加载失败时按非音乐区处理）
+         */
+        private fun applyMusicZoneSpeedPolicy(detail: VideoDetail?) {
+            if (!Prefs.musicZoneForceOneSpeed) return
+            if (speedManuallySet) return
+            // 详情接口返回的是子分区 id（音乐区视频通常不是主区 id 3），按已知 tid 集合判定
+            val isMusicZone = MusicZonePolicy.isMusicZone(detail?.tid ?: 0)
+            val targetSpeed = if (isMusicZone) 1f else Prefs.defaultPlaySpeed.speed
+            if (_uiState.value.playSpeed != targetSpeed) updatePlaySpeed(targetSpeed)
         }
 
         /**
@@ -726,6 +751,8 @@ class PlayerViewModel
 
             // 清空旧视频状态，防止新视频加载失败时残留旧数据
             playData = null
+            // 切集后重新应用音乐区 1 倍速策略：手动改速只对当前视频生效
+            speedManuallySet = false
             stopSeekerUpdater()
             stopDebugInfoUpdater()
 
@@ -793,6 +820,11 @@ class PlayerViewModel
                             authorName = detail?.author?.name ?: state.authorName,
                         )
                     }
+                    // 详情写入 uiState 后应用音乐区默认 1 倍速策略（切集路径；状态已被
+                    // 更新的切集接管时跳过，由最新一次切集的策略负责）
+                    if (_uiState.value.aid == newVideo.aid) {
+                        applyMusicZoneSpeedPolicy(detail)
+                    }
                 }
             }
             if (shouldUpdateList) {
@@ -834,11 +866,20 @@ class PlayerViewModel
                 }
         }
 
-        /** 更新播放速度。 */
+        /**
+         * 更新播放速度。
+         *
+         * @param speed 目标倍速，null 表示沿用当前值
+         * @param forceUpdate 与当前倍速相同时也强制写入播放器
+         * @param fromUser 是否由用户手动触发（菜单/快捷键路径）；置位后
+         * 音乐区默认 1 倍速策略在本视频内不再干预
+         */
         fun updatePlaySpeed(
             speed: Float? = null,
             forceUpdate: Boolean = false,
+            fromUser: Boolean = false,
         ) {
+            if (fromUser) speedManuallySet = true
             val currentSpeed = _uiState.value.playSpeed
             val targetSpeed = speed ?: currentSpeed
             if (!forceUpdate && currentSpeed == targetSpeed) return
