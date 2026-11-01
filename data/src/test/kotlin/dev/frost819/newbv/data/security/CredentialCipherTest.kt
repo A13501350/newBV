@@ -20,7 +20,7 @@ class CredentialCipherTest {
 
     @BeforeEach
     fun setUp() {
-        key = KeyGenerator.getInstance("AES").apply { init(KEY_SIZE_BITS) }.key
+        key = KeyGenerator.getInstance("AES").apply { init(KEY_SIZE_BITS) }.generateKey()
         cipher = CredentialCipher(key)
     }
 
@@ -178,7 +178,7 @@ class CredentialCipherTest {
     @Test
     fun `decrypt returns empty when ciphertext encrypted with different key`() {
         // Given
-        val otherKey = KeyGenerator.getInstance("AES").apply { init(KEY_SIZE_BITS) }.key
+        val otherKey = KeyGenerator.getInstance("AES").apply { init(KEY_SIZE_BITS) }.generateKey()
         val otherCipher = CredentialCipher(otherKey)
         val encrypted = requireNotNull(otherCipher.encrypt("secret"))
 
