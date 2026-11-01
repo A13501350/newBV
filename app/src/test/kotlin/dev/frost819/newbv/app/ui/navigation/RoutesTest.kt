@@ -123,6 +123,13 @@ class RoutesTest {
         assertThat(decoded.seasonId).isEqualTo(42L)
     }
 
+    @Test
+    fun `TimelineRoute serializes and deserializes`() {
+        val encoded = json.encodeToString(TimelineRoute)
+        val decoded = json.decodeFromString<TimelineRoute>(encoded)
+        assertThat(decoded).isEqualTo(TimelineRoute)
+    }
+
     // ── 默认值验证 ───────────────────────────────────────────────────
 
     @Test
