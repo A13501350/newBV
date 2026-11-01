@@ -65,6 +65,7 @@ internal object PrefKeys {
 
     // ===== 播放器 - 界面 =====
     val defaultPlaySpeed = intPreferencesKey("dps")
+    val musicZoneForceOneSpeed = booleanPreferencesKey("music_zone_force_one_speed")
     val showVideoInfo = booleanPreferencesKey("show_video_info")
     val showPersistentSeek = booleanPreferencesKey("show_persistent_seek")
     val showPlayerDebugInfo = booleanPreferencesKey("show_player_debug_info")

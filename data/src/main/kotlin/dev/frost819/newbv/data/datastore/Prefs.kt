@@ -345,6 +345,9 @@ object Prefs {
         restore = { PlaySpeed.fromCode(it) },
     )
 
+    /** 音乐区视频默认使用 1 倍速（用户手动改速后本视频内不再干预，切集后重新应用）。 */
+    var musicZoneForceOneSpeed by pref(PrefKeys.musicZoneForceOneSpeed, false)
+
     /** 显示视频详情页（关闭后点击直接播放）。 */
     var showVideoInfo by pref(PrefKeys.showVideoInfo, true)
 
