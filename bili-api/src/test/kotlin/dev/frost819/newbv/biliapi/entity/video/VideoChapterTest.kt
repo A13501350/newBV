@@ -197,8 +197,10 @@ class VideoChapterTest {
     fun `seekChapterMs backward returns to previous chapter start`() {
         val segments = threeSegments()
 
-        // B 章进行到 65s（刚跳过章首）→ 回到 A 章首
-        assertThat(VideoChapters.seekChapterMs(segments, 65_000L, forward = false)).isEqualTo(0L)
+        // B 章进行到 65s（进入超过 3s）→ 回到 B 章首
+        assertThat(VideoChapters.seekChapterMs(segments, 65_000L, forward = false)).isEqualTo(60_000L)
+        // 刚跳到 B 章首 1s（小于 3s 防原地阈值）→ 越过 B 回到 A 章首
+        assertThat(VideoChapters.seekChapterMs(segments, 61_000L, forward = false)).isEqualTo(0L)
         // B 章深处 90s → 回到 B 章首
         assertThat(VideoChapters.seekChapterMs(segments, 90_000L, forward = false)).isEqualTo(60_000L)
     }
