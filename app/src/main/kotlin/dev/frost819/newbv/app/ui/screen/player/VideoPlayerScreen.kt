@@ -310,7 +310,8 @@ fun VideoPlayerScreen(
         onAspectRatioChange = { ratio -> playerViewModel.updateVideoAspectRatio(ratio) },
         onPlaySpeedChange = { speed ->
             logger.info { "[PLAYBACK] speedChange aid=${uiState.aid}, speed=$speed" }
-            playerViewModel.updatePlaySpeed(speed)
+            // 菜单与快捷键的改速都经此处进入，视为用户手动干预音乐区默认 1 倍速策略
+            playerViewModel.updatePlaySpeed(speed, fromUser = true)
             // 弹幕倍速由 LaunchedEffect(uiState.playSpeed) 统一同步，此处无需直接调用
         },
         onDanmakuSettingChange = { action -> danmakuViewModel.updateDanmakuState(action) },
