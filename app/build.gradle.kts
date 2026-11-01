@@ -221,4 +221,9 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // CI 上不可交互排查，失败用例输出完整异常便于从 Actions 日志直接定位
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
