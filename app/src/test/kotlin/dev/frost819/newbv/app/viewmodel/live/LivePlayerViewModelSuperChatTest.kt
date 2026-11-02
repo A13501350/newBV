@@ -3,12 +3,9 @@ package dev.frost819.newbv.app.viewmodel.live
 import androidx.lifecycle.viewModelScope
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
-import dev.frost819.newbv.app.util.VideoCapabilityProvider
 import dev.frost819.newbv.biliapi.http.entity.live.LiveEvent
 import dev.frost819.newbv.biliapi.http.entity.live.SuperChatDeleteEvent
 import dev.frost819.newbv.biliapi.http.entity.live.SuperChatEvent
-import dev.frost819.newbv.biliapi.repositories.LiveRepository
-import dev.frost819.newbv.player.impl.exo.ExoPlayerFactory
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
