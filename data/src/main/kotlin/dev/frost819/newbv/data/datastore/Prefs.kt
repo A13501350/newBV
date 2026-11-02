@@ -394,6 +394,14 @@ object Prefs {
         restore = { ThemeMode.fromOrdinal(it) },
     )
 
+    // --- 直播屏蔽 ---
+
+    /** 已屏蔽主播 UID 集合（逗号分隔字符串，由直播屏蔽存储读写）。 */
+    var blockedLiveUps by pref(PrefKeys.blockedLiveUps, "")
+
+    /** 已屏蔽父分区 ID 集合（逗号分隔字符串，由直播屏蔽存储读写）。 */
+    var blockedLiveAreas by pref(PrefKeys.blockedLiveAreas, "")
+
     // --- 存储设置（PRD 7.6） ---
 
     /** 缓存阈值（MB，0 = 无限制，默认无限制）。 */
