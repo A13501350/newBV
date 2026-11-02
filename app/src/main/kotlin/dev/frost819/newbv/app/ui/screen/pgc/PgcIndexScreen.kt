@@ -46,6 +46,7 @@ import dev.frost819.newbv.app.ui.component.rememberFocusSaver
 import dev.frost819.newbv.app.ui.component.videocard.SeasonCard
 import dev.frost819.newbv.app.ui.component.videocard.SeasonCardData
 import dev.frost819.newbv.app.ui.navigation.PgcFeatureRoute
+import dev.frost819.newbv.app.ui.navigation.PgcIndexRoute
 import dev.frost819.newbv.app.viewmodel.pgc.PgcIndexDimension
 import dev.frost819.newbv.app.viewmodel.pgc.PgcIndexViewModel
 import dev.frost819.newbv.app.viewmodel.pgc.pgcIndexDimensionOptions
