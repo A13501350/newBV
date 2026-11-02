@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -22,12 +23,15 @@ import dev.frost819.newbv.app.ui.component.TvLazyVerticalGrid
 import dev.frost819.newbv.app.ui.component.focusSaverItem
 import dev.frost819.newbv.app.ui.component.videocard.SmallVideoCard
 import dev.frost819.newbv.app.ui.component.videocard.VideoCardData
+import dev.frost819.newbv.app.ui.component.videocard.canDislike
 import dev.frost819.newbv.app.ui.navigation.UserSpaceRoute
 import dev.frost819.newbv.app.ui.navigation.navigateFromVideoCard
+import dev.frost819.newbv.app.util.ToastUtils
 import dev.frost819.newbv.app.util.formatHourMinSec
 import dev.frost819.newbv.app.util.toWanString
 import dev.frost819.newbv.app.viewmodel.common.CollectWatchLaterEffects
 import dev.frost819.newbv.app.viewmodel.common.WatchLaterViewModel
+import dev.frost819.newbv.app.viewmodel.home.HomeEffect
 import dev.frost819.newbv.app.viewmodel.home.HomeViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -48,8 +52,18 @@ fun RecommendScreen(
     val state by viewModel.uiState.collectAsState()
     val gridState = rememberLazyGridState()
     val watchLaterViewModel: WatchLaterViewModel = hiltViewModel()
+    val context = LocalContext.current
 
     CollectWatchLaterEffects(watchLaterViewModel)
+
+    // 负反馈上报结果提示（成功移除卡片 / 失败保留并提示）
+    LaunchedEffect(Unit) {
+        viewModel.dislikeEffect.collect { effect ->
+            when (effect) {
+                is HomeEffect.ShowToast -> ToastUtils.show(context, effect.message)
+            }
+        }
+    }
 
     LaunchedEffect(gridState) {
         snapshotFlow {
@@ -89,6 +103,7 @@ fun RecommendScreen(
                         upName = item.author,
                         upMid = item.authorMid,
                         pubTime = item.pubTime,
+                        feedbackId = item.feedbackId,
                     )
                 }
             SmallVideoCard(
@@ -105,6 +120,19 @@ fun RecommendScreen(
                         { navController.navigate(UserSpaceRoute(mid = mid, name = item.author)) }
                     },
                 onAddWatchLater = { watchLaterViewModel.addToView(aid = item.aid) },
+                // feedback_id 缺失时无法上报负反馈，回调置空以隐藏对应按钮
+                onDislike =
+                    if (cardData.canDislike) {
+                        { viewModel.dislikeRecommend(item, HomeViewModel.REASON_NOT_INTERESTED) }
+                    } else {
+                        null
+                    },
+                onDislikeUp =
+                    if (cardData.canDislike) {
+                        { viewModel.dislikeRecommend(item, HomeViewModel.REASON_DISLIKE_UP) }
+                    } else {
+                        null
+                    },
             )
         }
 
