@@ -84,4 +84,8 @@ internal object PrefKeys {
     // ===== 存储设置 =====
     val cacheThreshold = intPreferencesKey("cache_threshold")
     val cacheAutoClean = booleanPreferencesKey("cache_auto_clean")
+
+    // ===== 直播屏蔽 =====
+    val blockedLiveUps = stringPreferencesKey("blocked_live_ups")
+    val blockedLiveAreas = stringPreferencesKey("blocked_live_areas")
 }
