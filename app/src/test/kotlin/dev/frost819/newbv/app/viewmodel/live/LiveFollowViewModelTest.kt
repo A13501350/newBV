@@ -82,7 +82,8 @@ class LiveFollowViewModelTest {
             advanceUntilIdle()
 
             // Then: 命中主播或分区的房间被过滤
-            assertThat(viewModel.uiState.value.items.map { it.roomId }).containsExactly(13L)
+            val items = viewModel.uiState.value.items
+            assertThat(items.map { it.roomId }).containsExactly(13L)
         }
     }
 
@@ -106,8 +107,9 @@ class LiveFollowViewModelTest {
             advanceUntilIdle()
 
             // Then: 屏蔽已记录，关注列表仅剩未屏蔽房间
+            val items = viewModel.uiState.value.items
             assertThat(BlockedLiveStore.isUpBlocked(100L)).isTrue()
-            assertThat(viewModel.uiState.value.items.map { it.roomId }).containsExactly(12L)
+            assertThat(items.map { it.roomId }).containsExactly(12L)
         }
     }
 
@@ -125,8 +127,9 @@ class LiveFollowViewModelTest {
             advanceUntilIdle()
 
             // Then: 屏蔽集不变，列表不受影响
+            val items = viewModel.uiState.value.items
             assertThat(BlockedLiveStore.blockedAreas()).isEmpty()
-            assertThat(viewModel.uiState.value.items.map { it.roomId }).containsExactly(11L)
+            assertThat(items.map { it.roomId }).containsExactly(11L)
         }
     }
 
