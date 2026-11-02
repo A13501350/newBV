@@ -212,6 +212,7 @@ private fun BlockActionItem(
         modifier = modifier.touchClickable(onClick = onClick),
         headlineContent = { Text(text = text) },
         onClick = onClick,
+        selected = false,
     )
 }
 
