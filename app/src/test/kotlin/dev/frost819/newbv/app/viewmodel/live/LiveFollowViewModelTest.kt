@@ -6,8 +6,8 @@ import androidx.datastore.preferences.core.Preferences
 import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.app.data.BlockedLiveStore
 import dev.frost819.newbv.app.ui.screen.live.LiveFollowViewModel
-import dev.frost819.newbv.biliapi.http.entity.live.FollowLiveRoom
 import dev.frost819.newbv.biliapi.http.entity.live.FollowLiveResponse
+import dev.frost819.newbv.biliapi.http.entity.live.FollowLiveRoom
 import dev.frost819.newbv.biliapi.repositories.LiveRepository
 import dev.frost819.newbv.data.datastore.Prefs
 import io.mockk.coEvery
