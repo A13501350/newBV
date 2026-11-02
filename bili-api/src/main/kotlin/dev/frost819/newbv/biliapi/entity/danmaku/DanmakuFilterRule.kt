@@ -1,8 +1,8 @@
 package dev.frost819.newbv.biliapi.entity.danmaku
 
+import kotlinx.serialization.Serializable
 import java.util.Locale
 import java.util.zip.CRC32
-import kotlinx.serialization.Serializable
 
 /**
  * 弹幕云屏蔽规则列表（x/dm/filter/user 响应的 data 字段）。

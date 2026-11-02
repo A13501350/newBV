@@ -544,8 +544,7 @@ object BiliHttpApi {
      *
      * @return 包含规则列表的响应，规则字段见 [DanmakuFilterRule]
      */
-    suspend fun getDanmakuFilterUser(): BiliResponse<DanmakuFilterListData> =
-        client.get("/x/dm/filter/user").body()
+    suspend fun getDanmakuFilterUser(): BiliResponse<DanmakuFilterListData> = client.get("/x/dm/filter/user").body()
 
     /**
      * 获取动态列表
