@@ -19,6 +19,7 @@
 | `BuildConfig` 包名 | `ext/Trace.kt` | 构建配置类由模块 namespace `dev.frost819.newbv.danmaku.engine` 生成 |
 | 代码风格统一 | 全模块 | 已按项目 ktlint 规则格式化（4 空格缩进等），与上游 2 空格风格存在纯格式差异；逻辑一致 |
 | detekt 适配 | `RenderSystem.kt`、`OrderedRangeList.kt`、`CacheManager.kt`、`DrawingCache.kt` 等 | 复杂条件拆分、printStackTrace 改 Log、外部 API vararg 透传的 `@Suppress`（带注释） |
+| `BlockedTextFilter.selfPredicate` 语义反转 | `ecs/component/filter/BlockedTextFilter.kt` | 上游语义为「自己的弹幕免屏蔽」（`!selfPredicate && 关键字命中`），本项目改为「命中用户规则即屏蔽」（`selfPredicate || 关键字命中`），用于承载弹幕云屏蔽的用户规则（midHash 比对） |
 | 构建脚本 | `build.gradle.kts` | 适配本项目：compileSdk 36 / minSdk 21 / Java 17，依赖 gdx 1.12.0 + ashley 1.7.4（版本登记在 `gradle/libs.versions.toml`） |
 
 其余源码与上游 1.0.4 逻辑一致（含 `jniLibs/` 各 ABI 的 `libgdx.so`，与原 AAR 打包等价）。

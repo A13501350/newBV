@@ -5,6 +5,7 @@ import bilibili.community.service.dm.v1.DmWebViewReply
 import com.tfowl.ktor.client.plugins.JsoupPlugin
 import dev.frost819.newbv.biliapi.entity.SpiData
 import dev.frost819.newbv.biliapi.entity.SpiResult
+import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuFilterListData
 import dev.frost819.newbv.biliapi.entity.pgc.PgcType
 import dev.frost819.newbv.biliapi.http.BiliHttpApi.getRegionDynamic
 import dev.frost819.newbv.biliapi.http.entity.BiliResponse
@@ -534,6 +535,17 @@ object BiliHttpApi {
                 }.readRawBytes()
         return DmWebViewReply.parseFrom(bytes)
     }
+
+    /**
+     * 获取当前账号的弹幕云屏蔽规则列表（用户在官方客户端/网页设置的屏蔽词、正则、屏蔽用户）。
+     *
+     * 端点：GET /x/dm/filter/user（非 WBI 端点，无需签名）
+     * 鉴权：SESSDATA Cookie（injectCookies）；未登录返回 -101，由调用方静默降级
+     *
+     * @return 包含规则列表的响应，规则字段见 [DanmakuFilterRule]
+     */
+    suspend fun getDanmakuFilterUser(): BiliResponse<DanmakuFilterListData> =
+        client.get("/x/dm/filter/user").body()
 
     /**
      * 获取动态列表

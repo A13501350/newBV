@@ -324,6 +324,9 @@ object Prefs {
     /** 默认防遮挡蒙版开关。 */
     var defaultDanmakuMask by pref(PrefKeys.defaultDanmakuMask, false)
 
+    /** 弹幕云屏蔽开关：是否应用 B 站账号同步的屏蔽规则（关键字/正则/用户）。 */
+    var cloudShieldEnabled by pref(PrefKeys.cloudShieldEnabled, true)
+
     // --- 播放器 - 字幕（PRD 7.4） ---
 
     /** 默认字幕字号（SP）。 */

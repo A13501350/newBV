@@ -31,6 +31,15 @@ import com.kuaishou.akdanmaku.utils.DanmakuTimer
 /**
  * 屏蔽关键字过滤
  *
+ * 命中任一条件即屏蔽（filter 返回 true）：
+ * - [selfPredicate] 返回 true：弹幕作者命中用户屏蔽规则，入参为弹幕作者的
+ *   `userId`（云屏蔽场景下为 midHash 的 8 位 hex 解析后的 Long，null 表示未知）；
+ * - [filterSet] 关键字：弹幕内容包含任一关键字。
+ *
+ * 与上游 1.0.4 的差异：上游 `selfPredicate` 语义为「自己的弹幕免屏蔽」
+ * （`!selfPredicate && 关键字命中`），本项目改为「命中用户规则即屏蔽」
+ * （`selfPredicate || 关键字命中`），用于承载云屏蔽用户规则，见 danmaku-engine/README.md。
+ *
  * @author Xana
  * @since 2021-06-30
  */
@@ -45,6 +54,7 @@ class BlockedTextFilter(
         config: DanmakuConfig,
     ): Boolean {
         val data = item.data
-        return !selfPredicate(data.userId) && filterSet.any { data.content.contains(it) }
+        if (selfPredicate(data.userId)) return true
+        return filterSet.any { data.content.contains(it) }
     }
 }
