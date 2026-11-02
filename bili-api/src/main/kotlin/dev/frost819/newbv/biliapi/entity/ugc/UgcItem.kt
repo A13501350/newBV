@@ -58,7 +58,11 @@ data class UgcItem(
                         ?: rcmdItem.coverRightText?.convertStringTimeToSeconds()
                         ?: 0,
                 idx = rcmdItem.idx,
-                feedbackId = rcmdItem.threePoint?.feedbacks?.firstOrNull()?.id,
+                feedbackId =
+                    rcmdItem.threePoint
+                        ?.feedbacks
+                        ?.firstOrNull()
+                        ?.id,
             )
 
         fun fromRcmdItem(rcmdItem: RcmdTopData.RcmdItem) =
