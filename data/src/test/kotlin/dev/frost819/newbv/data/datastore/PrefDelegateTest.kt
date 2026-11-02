@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -189,7 +190,12 @@ class PrefDelegateTest {
         runBlocking {
             var executed = false
             Prefs.launchPersist { executed = true }
-            delay(200)
+            // launchPersist 为异步 fire-and-forget，且 persistMutex 是 Prefs 单例：
+            // 前序测试排队的持久化写协程会继续持有锁，固定 delay(200) 在负载高的
+            // CI 上可能等不到块执行，改为有界轮询直到块真正执行完毕
+            withTimeout(5_000L) {
+                while (!executed) delay(10)
+            }
             assertThat(executed).isTrue()
         }
 
