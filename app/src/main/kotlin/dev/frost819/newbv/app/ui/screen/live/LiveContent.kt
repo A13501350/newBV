@@ -169,6 +169,8 @@ fun LiveContent(
                             ),
                         )
                     },
+                    onBlockUp = { card -> viewModel.blockUp(card.uid) },
+                    onBlockArea = { card -> viewModel.blockArea(card.parentAreaId) },
                 )
             }
         }
@@ -216,6 +218,8 @@ fun LiveContent(
                         ),
                     )
                 },
+                onBlockUp = { card -> viewModel.blockUp(card.uid) },
+                onBlockArea = { card -> viewModel.blockArea(card.parentAreaId) },
             )
         }
 

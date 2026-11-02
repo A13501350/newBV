@@ -13,6 +13,7 @@ package dev.frost819.newbv.app.ui.component.livecard
  * @property face 主播头像 URL。
  * @property areaV2Name 子分区名。
  * @property areaV2ParentName 父分区名。
+ * @property parentAreaId 父分区 ID（用于「屏蔽该分区」），数据缺失时为 0。
  * @property onlineString 已格式化的人气字符串（如 "1.2万"）。
  * @property watchedString 已格式化的看过人数字符串。
  */
@@ -25,6 +26,7 @@ data class LiveRoomCardData(
     val face: String,
     val areaV2Name: String,
     val areaV2ParentName: String,
+    val parentAreaId: Int = 0,
     val onlineString: String,
     val watchedString: String,
 )

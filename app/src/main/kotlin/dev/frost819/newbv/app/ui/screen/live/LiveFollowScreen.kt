@@ -23,6 +23,8 @@ import androidx.navigation.compose.composable
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.frost819.newbv.app.data.BlockedLiveStore
+import dev.frost819.newbv.app.data.filterBlockedLiveCards
 import dev.frost819.newbv.app.ui.component.ListFooterTip
 import dev.frost819.newbv.app.ui.component.TvLazyVerticalGrid
 import dev.frost819.newbv.app.ui.component.focusSaverItem
@@ -85,7 +87,11 @@ class LiveFollowViewModel
                 runCatching {
                     withTimeout(LOAD_TIMEOUT_MS) {
                         val response = liveRepository.getFollowLive()
-                        response.rooms.filter { it.liveStatus == 1 }.map { it.toCardData() }
+                        val items =
+                            response.rooms
+                                .filter { it.liveStatus == 1 }
+                                .map { it.toCardData() }
+                        filterBlockedLiveCards(items, BlockedLiveStore.blockedUps(), BlockedLiveStore.blockedAreas())
                     }
                 }.onSuccess { items ->
                     _uiState.update {
@@ -109,6 +115,28 @@ class LiveFollowViewModel
                 }
             }
         }
+
+        /**
+         * 屏蔽指定主播，并刷新关注列表使屏蔽立即生效。
+         *
+         * @param mid 主播 UID，非正数忽略。
+         */
+        fun blockUp(mid: Long) {
+            if (mid <= 0L) return
+            BlockedLiveStore.blockUp(mid)
+            loadFollowLive()
+        }
+
+        /**
+         * 屏蔽指定父分区，并刷新关注列表使屏蔽立即生效。
+         *
+         * @param parentAreaId 父分区 ID，非正数忽略。
+         */
+        fun blockArea(parentAreaId: Int) {
+            if (parentAreaId <= 0) return
+            BlockedLiveStore.blockArea(parentAreaId)
+            loadFollowLive()
+        }
     }
 
 private fun FollowLiveRoom.toCardData(): LiveRoomCardData {
@@ -122,6 +150,7 @@ private fun FollowLiveRoom.toCardData(): LiveRoomCardData {
         face = face,
         areaV2Name = areaV2Name,
         areaV2ParentName = areaV2ParentName,
+        parentAreaId = areaV2ParentId,
         onlineString = formatOnlineCount(online),
         watchedString = "",
     )
@@ -193,6 +222,8 @@ private fun LiveFollowScreen(
                             ),
                         )
                     },
+                    onBlockUp = { card -> viewModel.blockUp(card.uid) },
+                    onBlockArea = { card -> viewModel.blockArea(card.parentAreaId) },
                 )
             }
 
