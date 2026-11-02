@@ -51,6 +51,7 @@ import dev.frost819.newbv.danmaku.util.calculateMaskDelay
 import dev.frost819.newbv.danmaku.util.danmakuMask
 import dev.frost819.newbv.player.BvVideoPlayer
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlin.math.absoluteValue
@@ -191,10 +192,24 @@ fun VideoPlayerScreen(
         }
     }
 
-    // 青少年模式休息期：达上限立即暂停播放（遮罩盖在播放器上，避免只见遮罩仍出声）
+    // 青少年模式播放段兜底结算：播放中直接退出播放器时，上面的上报协程随组合销毁被取消，
+    // else 分支的 onPlayStop 不会执行，播放段起点残留会把退出后浏览其它页面的时间
+    // 整体计入观看时长。此处对齐 MyTVB 的 PlayerActivity.onStop 兜底，离开组合必结算
+    DisposableEffect(Unit) {
+        onDispose { TeenModeTimer.onPlayStop() }
+    }
+
+    // 青少年模式休息期：达上限立即暂停普通视频播放（遮罩盖在播放器上，避免只见遮罩仍出声）。
+    // 公益广告会话除外——休息期播公益广告正是遮罩提供的功能，其播放期间不得被强制暂停
     LaunchedEffect(Unit) {
-        TeenModeTimer.state.collect { teenState ->
+        combine(
+            TeenModeTimer.state,
+            PsasRepository.activePsasAid,
+        ) { teenState, psasAid ->
+            teenState to psasAid
+        }.collect { (teenState, psasAid) ->
             if (teenState.resting &&
+                psasAid == 0L &&
                 playerViewModel.uiState.value.playerState == PlayerState.Playing
             ) {
                 playerViewModel.pausePlayback()
