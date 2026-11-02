@@ -63,7 +63,15 @@ class LiveAreaListViewModel
             private const val LOAD_TIMEOUT_MS = 10_000L
         }
 
-        private val route = savedStateHandle.toRoute<LiveAreaRoute>()
+        // 类型安全导航按属性名把路由参数写入 SavedStateHandle，直接 get 读取即可，
+        // 与 VideoDetailViewModel/SearchResultViewModel 的既有模式一致；
+        // 不用 toRoute 是因为它内部经 SavedState=android.os.Bundle 解码，JVM 单测无法运行
+        private val route =
+            LiveAreaRoute(
+                parentAreaId = savedStateHandle.get<Int>(LiveAreaRoute::parentAreaId.name) ?: 0,
+                areaId = savedStateHandle.get<Int>(LiveAreaRoute::areaId.name) ?: 0,
+                title = savedStateHandle.get<String>(LiveAreaRoute::title.name) ?: "",
+            )
 
         private val logger = Loggers.get("LiveAreaListScreen")
 
