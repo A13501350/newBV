@@ -64,4 +64,34 @@ data class LivePlayerUiState(
     val currentQuality: Int = 0,
     val availableLines: List<LivePlayLine> = emptyList(),
     val currentLine: Int = 0,
+    /**
+     * 醒目留言（SC）卡片队列。
+     *
+     * 列表头部为最新 SC（UI 纵向渲染时新卡片从顶部进入），
+     * 到期或被服务端删除的卡片由 [dev.frost819.newbv.app.viewmodel.live.LivePlayerViewModel] 移除。
+     */
+    val superChats: List<SuperChatUiItem> = emptyList(),
+)
+
+/**
+ * 醒目留言（SC）卡片 UI 数据。
+ *
+ * 就近放在本文件（AGENTS.md 6.5）：仅 [LivePlayerUiState] 与直播播放器 UI 使用。
+ *
+ * @property id SC 唯一标识（服务端下发，删除事件按此匹配）
+ * @property username 发送者昵称
+ * @property face 发送者头像 URL
+ * @property message 留言内容
+ * @property price 金额（人民币元），UI 据此映射底色梯度
+ * @property backgroundColor 服务端下发的底色（不透明 ARGB 长整型），null 时按 [price] 取官方梯度兜底
+ * @property expireAtMs 到期时间戳（毫秒，墙钟），仅供调试展示，移除由 ViewModel 计时驱动
+ */
+data class SuperChatUiItem(
+    val id: Long,
+    val username: String,
+    val face: String,
+    val message: String,
+    val price: Int,
+    val backgroundColor: Long?,
+    val expireAtMs: Long,
 )

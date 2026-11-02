@@ -13,6 +13,7 @@ import dev.frost819.newbv.app.data.danmaku.DanmakuFilterRepository
 import dev.frost819.newbv.app.ui.component.livecard.formatOnlineCount
 import dev.frost819.newbv.app.ui.state.live.LivePlayerState
 import dev.frost819.newbv.app.ui.state.live.LivePlayerUiState
+import dev.frost819.newbv.app.ui.state.live.SuperChatUiItem
 import dev.frost819.newbv.app.util.VideoCapabilityProvider
 import dev.frost819.newbv.app.util.VideoDecodeProfile
 import dev.frost819.newbv.app.util.toPlaybackLoadErrorMessage
@@ -20,6 +21,8 @@ import dev.frost819.newbv.biliapi.http.entity.live.DanmakuEvent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveEvent
 import dev.frost819.newbv.biliapi.http.entity.live.OnlineRankCountEvent
 import dev.frost819.newbv.biliapi.http.entity.live.RoomInfoData
+import dev.frost819.newbv.biliapi.http.entity.live.SuperChatDeleteEvent
+import dev.frost819.newbv.biliapi.http.entity.live.SuperChatEvent
 import dev.frost819.newbv.biliapi.repositories.LivePlayInfo
 import dev.frost819.newbv.biliapi.repositories.LivePlayLine
 import dev.frost819.newbv.biliapi.repositories.LiveQuality
@@ -77,6 +80,17 @@ class LivePlayerViewModel
         private var wsJob: Job? = null
         private var debugInfoJob: Job? = null
         private var danmakuIdCounter = 0L
+
+        /**
+         * SC 醒目留言到期表：id → 到期时间戳（毫秒，墙钟）。
+         *
+         * 记录当前仍在展示的 SC；同 id 重发（断线重连后服务端可能重投）时刷新，
+         * 到期或被删除时清除。仅随事件处理在主线程读写，无并发问题。
+         */
+        private val superChatExpireAtMs = mutableMapOf<Long, Long>()
+
+        /** SC 到期移除协程：id → Job，同 id 重发或删除时取消旧协程。 */
+        private val superChatExpiryJobs = mutableMapOf<Long, Job>()
 
         private val _debugInfo = MutableStateFlow("")
 
@@ -348,10 +362,80 @@ class LivePlayerViewModel
                             it.copy(onlineCount = formatOnlineCount(event.count))
                         }
                     }
+                    is SuperChatEvent -> {
+                        handleSuperChat(event)
+                    }
+                    is SuperChatDeleteEvent -> {
+                        removeSuperChats(event.ids)
+                    }
                     else -> {}
                 }
             }
         }
+
+        /**
+         * 处理醒目留言事件：卡片入队并启动到期移除计时。
+         *
+         * @param event SC 事件
+         */
+        private fun handleSuperChat(event: SuperChatEvent) {
+            val expireAtMs = System.currentTimeMillis() + event.durationMs
+            superChatExpireAtMs[event.id] = expireAtMs
+            _uiState.update { state ->
+                // 新 SC 从顶部进入队列（列表头部为最新）；同 id 重发时替换旧卡片并重置计时
+                state.copy(
+                    superChats =
+                        listOf(event.toUiItem(expireAtMs)) + state.superChats.filterNot { it.id == event.id },
+                )
+            }
+            superChatExpiryJobs.remove(event.id)?.cancel()
+            superChatExpiryJobs[event.id] =
+                viewModelScope.launch {
+                    // 逐条 delay 协程负责到期移除；不用 while+delay 轮询，
+                    // 避免 VM 内自调度循环拖垮测试的 advanceUntilIdle（AGENTS.md 11.5.4）
+                    delay(event.durationMs)
+                    superChatExpireAtMs.remove(event.id)
+                    superChatExpiryJobs.remove(event.id)
+                    _uiState.update { state ->
+                        state.copy(superChats = state.superChats.filterNot { it.id == event.id })
+                    }
+                }
+        }
+
+        /**
+         * 按服务端删除事件移除醒目留言卡片。
+         *
+         * @param ids 被删除的 SC id 列表
+         */
+        private fun removeSuperChats(ids: List<Long>) {
+            ids.forEach { id ->
+                superChatExpireAtMs.remove(id)
+                superChatExpiryJobs.remove(id)?.cancel()
+            }
+            val idSet = ids.toSet()
+            _uiState.update { state ->
+                state.copy(superChats = state.superChats.filterNot { it.id in idSet })
+            }
+        }
+
+        /** 取消全部 SC 到期计时并清空队列（退出播放器时调用）。 */
+        private fun clearSuperChats() {
+            superChatExpiryJobs.values.forEach { it.cancel() }
+            superChatExpiryJobs.clear()
+            superChatExpireAtMs.clear()
+            _uiState.update { it.copy(superChats = emptyList()) }
+        }
+
+        private fun SuperChatEvent.toUiItem(expireAtMs: Long): SuperChatUiItem =
+            SuperChatUiItem(
+                id = id,
+                username = username,
+                face = face,
+                message = message,
+                price = price,
+                backgroundColor = backgroundColor,
+                expireAtMs = expireAtMs,
+            )
 
         /** 将直播弹幕送入引擎，先套用账号云端屏蔽规则；mode 4/5 显示为底部/顶部，其余滚动。 */
         private fun sendDanmaku(
@@ -549,6 +633,7 @@ class LivePlayerViewModel
         fun detachPlayer() {
             wsJob?.cancel()
             stopDebugInfoUpdater()
+            clearSuperChats()
             videoPlayer?.release()
             videoPlayer = null
             danmakuPlayer = null
