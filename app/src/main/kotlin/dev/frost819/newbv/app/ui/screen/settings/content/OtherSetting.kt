@@ -20,6 +20,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import dev.frost819.newbv.BuildConfig
+import dev.frost819.newbv.app.data.BlockedLiveStore
 import dev.frost819.newbv.app.ui.component.FocusSaver
 import dev.frost819.newbv.app.ui.component.focusSaverItem
 import dev.frost819.newbv.app.ui.component.settings.OptionDialog
@@ -47,6 +48,7 @@ fun OtherSetting(
     var showPreferedApiDialog by remember { mutableStateOf(false) }
     var selectedApi by remember { mutableStateOf(Prefs.apiType) }
     var crashReportEnabled by remember { mutableStateOf(Prefs.crashReportEnabled) }
+    var blockedLiveSummary by remember { mutableStateOf(blockedLiveSummaryText()) }
 
     Column(
         modifier =
@@ -87,6 +89,15 @@ fun OtherSetting(
             },
         )
 
+        SettingListItem(
+            title = "已屏蔽直播",
+            supportText = blockedLiveSummary,
+            onClick = {
+                BlockedLiveStore.clearAll()
+                blockedLiveSummary = blockedLiveSummaryText()
+            },
+        )
+
         if (BuildConfig.DEBUG) {
             SettingListItem(
                 title = "触发测试崩溃",
@@ -115,4 +126,13 @@ fun OtherSetting(
             getDisplayName = { it.displayName },
         )
     }
+}
+
+/**
+ * 生成「已屏蔽直播」设置项的说明文案（当前屏蔽计数 + 操作提示）。
+ */
+private fun blockedLiveSummaryText(): String {
+    val upCount = BlockedLiveStore.blockedUps().size
+    val areaCount = BlockedLiveStore.blockedAreas().size
+    return "已屏蔽主播 $upCount 个、分区 $areaCount 个，点击清空"
 }
