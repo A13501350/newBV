@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test
  * 不依赖 Prefs（屏蔽集由调用方传入）。
  */
 class BlockedLiveCardFilterTest {
-
     @Test
     fun `filter removes cards of blocked ups`() {
         // Given

@@ -82,7 +82,8 @@ class LiveAreaListViewModelTest {
             advanceUntilIdle()
 
             // Then: 命中主播或分区的房间被过滤
-            assertThat(viewModel.uiState.value.items.map { it.roomId }).containsExactly(3L)
+            val items = viewModel.uiState.value.items
+            assertThat(items.map { it.roomId }).containsExactly(3L)
         }
     }
 
@@ -105,8 +106,9 @@ class LiveAreaListViewModelTest {
             advanceUntilIdle()
 
             // Then: 回到第一页重新加载，仅剩未屏蔽房间
+            val items = viewModel.uiState.value.items
             assertThat(BlockedLiveStore.isUpBlocked(100L)).isTrue()
-            assertThat(viewModel.uiState.value.items.map { it.roomId }).containsExactly(2L)
+            assertThat(items.map { it.roomId }).containsExactly(2L)
         }
     }
 
