@@ -23,18 +23,18 @@ import java.io.File
  */
 class BlockedLiveStoreTest {
     private lateinit var dataStore: DataStore<Preferences>
-    private lateinit var tempDir: File
 
     @BeforeEach
     fun setUp() {
-        tempDir =
-            kotlin.io.path
-                .createTempDirectory(prefix = "blocked_live_store_test")
-                .toFile()
+        // 临时文件交给 deleteOnExit，tearDown 不删除：屏蔽写入的持久化是异步的
+        // （launchPersist 在 IO 协程），若写入完成前删除文件，edit 会抛未捕获 IOException，
+        // 被 coroutines-test 记账为下一个测试的 UncaughtExceptionsBeforeTest
+        val file = File.createTempFile("test_blocked_live_store", ".preferences_pb")
+        file.deleteOnExit()
         dataStore =
             PreferenceDataStoreFactory.create(
                 scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-                produceFile = { File(tempDir, "Test.preferences_pb") },
+                produceFile = { file },
             )
         Prefs.resetForTesting()
         Prefs.init(dataStore)
@@ -43,7 +43,6 @@ class BlockedLiveStoreTest {
     @AfterEach
     fun tearDown() {
         Prefs.resetForTesting()
-        tempDir.deleteRecursively()
     }
 
     // ===== 默认值 =====

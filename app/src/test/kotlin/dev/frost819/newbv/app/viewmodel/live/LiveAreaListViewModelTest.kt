@@ -37,19 +37,19 @@ class LiveAreaListViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var dataStore: DataStore<Preferences>
-    private lateinit var tempDir: File
     private lateinit var liveRepository: LiveRepository
 
     @BeforeEach
     fun setUp() {
-        tempDir =
-            kotlin.io.path
-                .createTempDirectory(prefix = "live_area_vm_test")
-                .toFile()
+        // 临时文件交给 deleteOnExit，tearDown 不删除：blockUp/blockArea 的持久化是异步的
+        // （launchPersist 在 IO 协程），若写入完成前删除文件，edit 会抛未捕获 IOException，
+        // 被 coroutines-test 记账为下一个测试的 UncaughtExceptionsBeforeTest
+        val file = File.createTempFile("test_live_area_vm", ".preferences_pb")
+        file.deleteOnExit()
         dataStore =
             PreferenceDataStoreFactory.create(
                 scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-                produceFile = { File(tempDir, "Test.preferences_pb") },
+                produceFile = { file },
             )
         Dispatchers.setMain(testDispatcher)
         Prefs.resetForTesting()
@@ -61,7 +61,6 @@ class LiveAreaListViewModelTest {
     fun tearDown() {
         Dispatchers.resetMain()
         Prefs.resetForTesting()
-        tempDir.deleteRecursively()
     }
 
     @Test
