@@ -268,7 +268,10 @@ class PgcIndexViewModelTest {
             assertThat(
                 viewModel.uiState.value.filter.order,
             ).isEqualTo(IndexOrder.Score)
-            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(5)
+            assertThat(
+                viewModel.uiState.value.items
+                    .map { it.seasonId },
+            ).containsExactly(5)
         }
 
     @Test
@@ -330,7 +333,10 @@ class PgcIndexViewModelTest {
             advanceUntilIdle()
 
             // Then: 跨页重复的 seasonId 被去重，顺序保持
-            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(1, 2, 3).inOrder()
+            assertThat(
+                viewModel.uiState.value.items
+                    .map { it.seasonId },
+            ).containsExactly(1, 2, 3).inOrder()
             assertThat(viewModel.uiState.value.hasMore).isFalse()
         }
 
@@ -386,7 +392,10 @@ class PgcIndexViewModelTest {
             advanceUntilIdle()
             viewModel.switchType(PgcType.Movie)
             advanceUntilIdle()
-            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(200)
+            assertThat(
+                viewModel.uiState.value.items
+                    .map { it.seasonId },
+            ).containsExactly(200)
 
             viewModel.uiState.test {
                 awaitItem() // 消费订阅时 StateFlow 发出的当前值
@@ -396,7 +405,10 @@ class PgcIndexViewModelTest {
 
                 // Then: 不产生任何状态更新
                 expectNoEvents()
-                assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(200)
+                assertThat(
+                    viewModel.uiState.value.items
+                        .map { it.seasonId },
+                ).containsExactly(200)
             }
         }
 
@@ -435,7 +447,10 @@ class PgcIndexViewModelTest {
             advanceUntilIdle()
             viewModel.selectOption(PgcIndexDimension.Order, 2)
             advanceUntilIdle()
-            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(9)
+            assertThat(
+                viewModel.uiState.value.items
+                    .map { it.seasonId },
+            ).containsExactly(9)
 
             viewModel.uiState.test {
                 awaitItem() // 消费订阅时 StateFlow 发出的当前值
@@ -445,7 +460,10 @@ class PgcIndexViewModelTest {
 
                 // Then: 不产生任何状态更新
                 expectNoEvents()
-                assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(9)
+                assertThat(
+                    viewModel.uiState.value.items
+                        .map { it.seasonId },
+                ).containsExactly(9)
             }
         }
 
@@ -475,6 +493,9 @@ class PgcIndexViewModelTest {
 
             // Then: 错误清除并成功加载
             assertThat(viewModel.uiState.value.error).isFalse()
-            assertThat(viewModel.uiState.value.items.map { it.seasonId }).containsExactly(7)
+            assertThat(
+                viewModel.uiState.value.items
+                    .map { it.seasonId },
+            ).containsExactly(7)
         }
 }
