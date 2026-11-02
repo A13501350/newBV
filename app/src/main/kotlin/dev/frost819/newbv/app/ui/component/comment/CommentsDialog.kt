@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Refresh
@@ -72,6 +74,7 @@ import dev.frost819.newbv.app.viewmodel.comment.CommentUiEffect
 import dev.frost819.newbv.app.viewmodel.comment.CommentUiState
 import dev.frost819.newbv.app.viewmodel.comment.CommentViewModel
 import dev.frost819.newbv.app.viewmodel.comment.ReplyListState
+import dev.frost819.newbv.app.viewmodel.comment.ReplyTarget
 import dev.frost819.newbv.biliapi.entity.comment.Comment
 import dev.frost819.newbv.core.focus.isDpadDown
 import dev.frost819.newbv.core.focus.isDpadLeft
@@ -244,6 +247,7 @@ fun CommentsDialog(
                     onRetryReplies = viewModel::retryReplies,
                     onLoadMoreReplies = viewModel::loadMoreReplies,
                     onToggleLike = viewModel::toggleLike,
+                    onOpenReplyInput = viewModel::openReplyInput,
                     onImageClick = { pictures, index ->
                         imageViewerPictures = pictures
                         imageViewerIndex = index
@@ -257,6 +261,15 @@ fun CommentsDialog(
                     currentIndex = imageViewerIndex,
                     onDismiss = { imageViewerPictures = null },
                     onIndexChange = { imageViewerIndex = it },
+                )
+            }
+
+            state.replyInput?.let { input ->
+                ReplyInputDialog(
+                    state = input,
+                    onDraftChange = viewModel::updateReplyDraft,
+                    onSubmit = viewModel::submitReply,
+                    onDismiss = viewModel::dismissReplyInput,
                 )
             }
         }
@@ -274,6 +287,7 @@ private fun CommentsContent(
     onRetryReplies: (Long) -> Unit,
     onLoadMoreReplies: (Long) -> Unit,
     onToggleLike: (Long) -> Unit,
+    onOpenReplyInput: (ReplyTarget?) -> Unit,
     onImageClick: (List<String>, Int) -> Unit,
 ) {
     // 热门与最新各自维护滚动状态：共用一个 LazyListState 时，Compose 会按首个可见 item 的
@@ -321,9 +335,16 @@ private fun CommentsContent(
         Row(
             modifier = Modifier.padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             SortButton(CommentSort.Hot, state.sort, onSortChange)
             SortButton(CommentSort.Latest, state.sort, onSortChange)
+            Spacer(Modifier.weight(1f))
+            DialogActionButton(
+                text = "发表评论",
+                icon = Icons.Outlined.Edit,
+                onClick = { onOpenReplyInput(null) },
+            )
         }
 
         when {
@@ -379,6 +400,17 @@ private fun CommentsContent(
                                     onToggleTextExpand = { toggleCommentText(rpid) },
                                     onToggleReplies = { onToggleReplies(rpid) },
                                     onToggleLike = { onToggleLike(rpid) },
+                                    onReply = {
+                                        // 回复主评论即在其次级回复列表内回复根评论：root 与 parent 均为该评论
+                                        onOpenReplyInput(
+                                            ReplyTarget(
+                                                rootRpid = rpid,
+                                                parentRpid = rpid,
+                                                quotedAuthor = comment.userName,
+                                                quotedMessage = comment.message,
+                                            ),
+                                        )
+                                    },
                                     onImageClick = onImageClick,
                                 )
                             }
@@ -391,6 +423,17 @@ private fun CommentsContent(
                                     isTextExpanded = expandedCommentIds[rpid] == true,
                                     onToggleTextExpand = { toggleCommentText(rpid) },
                                     onToggleLike = { onToggleLike(rpid) },
+                                    onReply = {
+                                        // 回复楼中楼条目：parent 指向被回复的条目自身
+                                        onOpenReplyInput(
+                                            ReplyTarget(
+                                                rootRpid = row.rootRpid,
+                                                parentRpid = rpid,
+                                                quotedAuthor = comment.userName,
+                                                quotedMessage = comment.message,
+                                            ),
+                                        )
+                                    },
                                     onImageClick = onImageClick,
                                 )
                             }
@@ -444,6 +487,7 @@ private fun ReplyCommentCard(
     isTextExpanded: Boolean,
     onToggleTextExpand: () -> Unit,
     onToggleLike: () -> Unit,
+    onReply: () -> Unit,
     onImageClick: (List<String>, Int) -> Unit,
 ) {
     CommentCard(
@@ -457,6 +501,7 @@ private fun ReplyCommentCard(
         onToggleTextExpand = onToggleTextExpand,
         onToggleReplies = {},
         onToggleLike = onToggleLike,
+        onReply = onReply,
         onImageClick = onImageClick,
         indent = REPLY_INDENT,
     )
@@ -483,6 +528,7 @@ internal fun CommentCard(
     onToggleTextExpand: () -> Unit,
     onToggleReplies: () -> Unit,
     onToggleLike: () -> Unit,
+    onReply: () -> Unit,
     onImageClick: (List<String>, Int) -> Unit,
     indent: Dp = 0.dp,
     previewReplyCount: Int = 0,
@@ -606,6 +652,11 @@ internal fun CommentCard(
                             enabled = !isLoadingReplies,
                         )
                     }
+                    DialogActionButton(
+                        text = "回复",
+                        icon = Icons.AutoMirrored.Outlined.Chat,
+                        onClick = onReply,
+                    )
                     if (isTextOverflowing) {
                         DialogActionButton(
                             text = if (isTextExpanded) "收起" else "展开",
@@ -705,8 +756,13 @@ private fun SortButton(
     }
 }
 
+/**
+ * 弹窗内小型操作按钮（图标 + 文案）。
+ *
+ * 评论卡片操作行与弹窗头部/输入弹窗共用，模块内可见。
+ */
 @Composable
-private fun DialogActionButton(
+internal fun DialogActionButton(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
@@ -902,6 +958,7 @@ private fun CommentsContentPreview() {
             onRetryReplies = {},
             onLoadMoreReplies = {},
             onToggleLike = {},
+            onOpenReplyInput = {},
             onImageClick = { _, _ -> },
         )
     }

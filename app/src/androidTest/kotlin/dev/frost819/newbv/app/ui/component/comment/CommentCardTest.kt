@@ -86,6 +86,7 @@ class CommentCardTest {
                         },
                         onToggleReplies = {},
                         onToggleLike = {},
+                        onReply = {},
                         onImageClick = { _, _ -> },
                         previewReplyCount = previewReplyCount,
                     )

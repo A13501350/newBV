@@ -1067,6 +1067,50 @@ object BiliHttpApi {
     }
 
     /**
+     * 发表评论或楼中楼回复。
+     *
+     * 对应文档：bilibili-API-collect comment/action.md（POST x/v2/reply/add）。
+     * 鉴权：Web 请求使用 SESSDATA + csrf（bili_jct），App 请求使用 [accessKey]。
+     *
+     * @param aid 视频 AV 号，即接口的 oid
+     * @param message 评论内容，上限约 1000 字
+     * @param root 楼中楼根评论 ID，发表主评论时传 null
+     * @param parent 楼中楼内被回复评论 ID，发表主评论时传 null（回复根评论时与 [root] 相同）
+     * @param csrf Web 请求的 bili_jct
+     * @param accessKey App access_key
+     */
+    suspend fun addComment(
+        aid: Long,
+        message: String,
+        root: Long? = null,
+        parent: Long? = null,
+        csrf: String? = null,
+        accessKey: String? = null,
+    ): Pair<Boolean, String> {
+        val response =
+            client
+                .post("/x/v2/reply/add") {
+                    setBody(
+                        FormDataContent(
+                            Parameters.build {
+                                append("type", "1")
+                                append("oid", aid.toString())
+                                append("message", message)
+                                // plat=4 表示 TV 客户端来源
+                                append("plat", "4")
+                                root?.takeIf { it > 0L }?.let { append("root", it.toString()) }
+                                parent?.takeIf { it > 0L }?.let { append("parent", it.toString()) }
+                                csrf?.takeIf { it.isNotBlank() }?.let { append("csrf", it) }
+                                accessKey?.takeIf { it.isNotBlank() }?.let { append("access_key", it) }
+                            },
+                        ),
+                    )
+                    header("Referer", "https://www.bilibili.com")
+                }.body<BiliResponseWithoutData>()
+        return (response.code == 0) to response.message
+    }
+
+    /**
      * 获取视频[avid]的[cid]视频更多信息，例如播放进度
      */
     suspend fun getVideoMoreInfo(

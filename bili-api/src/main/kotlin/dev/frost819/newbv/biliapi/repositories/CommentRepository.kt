@@ -15,7 +15,7 @@ import kotlinx.serialization.json.JsonObject
 /**
  * 视频评论仓库。
  *
- * 统一封装主评论、楼中楼和评论点赞操作。Web 请求使用 Cookie，App 请求使用
+ * 统一封装主评论、楼中楼、评论点赞与评论发表操作。Web 请求使用 Cookie，App 请求使用
  * access_key；UI 层不直接依赖 B 站 JSON 结构。
  *
  * @param authRepository 当前登录凭证仓库
@@ -167,6 +167,35 @@ class CommentRepository(
                 accessKey = authRepository.accessToken.takeIf { preferApiType == ApiType.App },
             )
         check(successMessage.first) { successMessage.second.ifBlank { "评论点赞失败" } }
+    }
+
+    /**
+     * 发表评论或楼中楼回复。
+     *
+     * @param aid 视频 AV 号
+     * @param message 评论内容
+     * @param rootOid 楼中楼根评论 ID，发表主评论时传 null
+     * @param parentOid 楼中楼内被回复评论 ID，发表主评论时传 null（回复根评论时与 [rootOid] 相同）
+     * @param preferApiType 首选接口类型
+     * @throws IllegalStateException 当 B 站返回失败状态时抛出（含 -412 风控等错误信息）
+     */
+    suspend fun addReply(
+        aid: Long,
+        message: String,
+        rootOid: Long? = null,
+        parentOid: Long? = null,
+        preferApiType: ApiType,
+    ) {
+        val successMessage =
+            BiliHttpApi.addComment(
+                aid = aid,
+                message = message,
+                root = rootOid,
+                parent = parentOid,
+                csrf = authRepository.biliJct.takeIf { preferApiType == ApiType.Web },
+                accessKey = authRepository.accessToken.takeIf { preferApiType == ApiType.App },
+            )
+        check(successMessage.first) { successMessage.second.ifBlank { "评论发送失败" } }
     }
 
     /**

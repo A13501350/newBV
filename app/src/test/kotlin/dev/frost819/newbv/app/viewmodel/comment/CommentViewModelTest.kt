@@ -5,8 +5,10 @@ import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.biliapi.entity.comment.Comment
 import dev.frost819.newbv.biliapi.entity.comment.CommentPage
 import dev.frost819.newbv.biliapi.repositories.CommentRepository
+import dev.frost819.newbv.data.repository.AccountRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -21,18 +23,21 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
-/** [CommentViewModel] 的排序缓存、分页、楼中楼和点赞测试。 */
+/** [CommentViewModel] 的排序缓存、分页、楼中楼、点赞与回复发表测试。 */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CommentViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private lateinit var repository: CommentRepository
+    private lateinit var accountRepository: AccountRepository
     private lateinit var viewModel: CommentViewModel
 
     @BeforeEach
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         repository = mockk()
-        viewModel = CommentViewModel(repository)
+        accountRepository = mockk()
+        every { accountRepository.isLogin() } returns true
+        viewModel = CommentViewModel(repository, accountRepository)
     }
 
     @AfterEach
@@ -436,6 +441,162 @@ class CommentViewModelTest {
                 val effect = awaitItem() as CommentUiEffect.ShowToast
                 assertThat(effect.message).contains("评论点赞失败")
             }
+        }
+
+    @Test
+    fun `submitReply posts main comment and refreshes comment list`() =
+        runTest(dispatcher) {
+            // Given：已登录且评论列表已加载
+            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+                page(listOf(comment(rpid = 1L)), page = 1, total = 1, hasMore = false)
+            coEvery { repository.addReply(any(), any(), any(), any(), any()) } returns Unit
+
+            viewModel.load(100L)
+            advanceUntilIdle()
+
+            // When：发表主评论
+            viewModel.openReplyInput(null)
+            viewModel.updateReplyDraft("  前排支持  ")
+            viewModel.submitReply()
+            advanceUntilIdle()
+
+            // Then：按 trim 后内容不带 root/parent 发送，弹窗关闭并刷新首页评论
+            coVerify(exactly = 1) {
+                repository.addReply(100L, "前排支持", null, null, any())
+            }
+            assertThat(viewModel.uiState.value.replyInput).isNull()
+            coVerify(exactly = 2) { repository.getComments(100L, 1, 1, null, any()) }
+        }
+
+    @Test
+    fun `submitReply posts nested reply and reloads that reply list`() =
+        runTest(dispatcher) {
+            // Given：主评论与楼中楼均已加载
+            val root = comment(rpid = 1L, replyCount = 1)
+            val reply = comment(rpid = 2L, rootRpid = 1L)
+            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+                page(listOf(root), page = 1, total = 1, hasMore = false)
+            coEvery { repository.getReplies(any(), any(), any(), any(), any()) } returns
+                page(listOf(reply), page = 1, total = 1, hasMore = false)
+            coEvery { repository.addReply(any(), any(), any(), any(), any()) } returns Unit
+
+            viewModel.load(100L)
+            advanceUntilIdle()
+            viewModel.toggleReplies(1L)
+            advanceUntilIdle()
+
+            // When：回复根评论所在的楼中楼
+            viewModel.openReplyInput(ReplyTarget(rootRpid = 1L, parentRpid = 1L))
+            viewModel.updateReplyDraft("支持")
+            viewModel.submitReply()
+            advanceUntilIdle()
+
+            // Then：带 root/parent 发送，该楼中楼第一页被重载且保持展开，弹窗关闭
+            coVerify(exactly = 1) { repository.addReply(100L, "支持", 1L, 1L, any()) }
+            assertThat(viewModel.uiState.value.replyInput).isNull()
+            val replyList =
+                viewModel.uiState.value.commentList
+                    .replyList(1L)
+            assertThat(replyList?.expanded).isTrue()
+            assertThat(replyList?.replies).containsExactly(reply)
+            coVerify(exactly = 2) { repository.getReplies(100L, 1L, 1, null, any()) }
+        }
+
+    @Test
+    fun `submitReply failure keeps draft and shows friendly error`() =
+        runTest(dispatcher) {
+            // Given：已登录、弹窗已打开，发送被 B 站风控拦截
+            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+                page(listOf(comment(rpid = 1L)), page = 1, total = 1, hasMore = false)
+            coEvery { repository.addReply(any(), any(), any(), any(), any()) } throws
+                RuntimeException("请求被拦截")
+
+            viewModel.load(100L)
+            advanceUntilIdle()
+            viewModel.openReplyInput(null)
+            viewModel.updateReplyDraft("测试")
+
+            // When：提交失败
+            viewModel.submitReply()
+            advanceUntilIdle()
+
+            // Then：输入保留、弹窗未关闭、错误提示转译为友好文案且列表不刷新
+            val input = viewModel.uiState.value.replyInput
+            assertThat(input).isNotNull()
+            assertThat(input?.draft).isEqualTo("测试")
+            assertThat(input?.submitting).isFalse()
+            assertThat(input?.error).contains("稍后再试")
+            coVerify(exactly = 1) { repository.addReply(any(), any(), any(), any(), any()) }
+            coVerify(exactly = 1) { repository.getComments(any(), any(), any(), any(), any()) }
+        }
+
+    @Test
+    fun `submitReply ignores duplicate submissions while in flight`() =
+        runTest(dispatcher) {
+            // Given：发送请求被挂起
+            val gate = CompletableDeferred<Unit>()
+            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+                page(listOf(comment(rpid = 1L)), page = 1, total = 1, hasMore = false)
+            coEvery { repository.addReply(any(), any(), any(), any(), any()) } coAnswers { gate.await() }
+
+            viewModel.load(100L)
+            advanceUntilIdle()
+            viewModel.openReplyInput(null)
+            viewModel.updateReplyDraft("防抖")
+
+            // When：发送中重复提交
+            viewModel.submitReply()
+            runCurrent()
+            viewModel.submitReply()
+            runCurrent()
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            // Then：只发送一次且最终成功关闭弹窗
+            coVerify(exactly = 1) { repository.addReply(any(), any(), any(), any(), any()) }
+            assertThat(viewModel.uiState.value.replyInput).isNull()
+        }
+
+    @Test
+    fun `openReplyInput without login shows guide and blocks submit`() =
+        runTest(dispatcher) {
+            // Given：未登录
+            every { accountRepository.isLogin() } returns false
+            coEvery { repository.getComments(any(), any(), any(), any(), any()) } returns
+                page(listOf(comment(rpid = 1L)), page = 1, total = 1, hasMore = false)
+
+            viewModel.load(100L)
+            advanceUntilIdle()
+
+            // When：打开回复弹窗并输入
+            viewModel.openReplyInput(null)
+            viewModel.updateReplyDraft("未登录也要发")
+            val input = viewModel.uiState.value.replyInput
+
+            // Then：直接进入引导态，提交被拦截，草稿不会被发送
+            assertThat(input?.notLoggedIn).isTrue()
+            assertThat(input?.error).isEqualTo(REPLY_LOGIN_PROMPT)
+            assertThat(input?.draft).isEqualTo("未登录也要发")
+
+            viewModel.submitReply()
+            advanceUntilIdle()
+            coVerify(exactly = 0) { repository.addReply(any(), any(), any(), any(), any()) }
+        }
+
+    @Test
+    fun `updateReplyDraft truncates input beyond limit`() =
+        runTest(dispatcher) {
+            // Given：弹窗已打开
+            viewModel.openReplyInput(null)
+
+            // When：输入超出 1000 字上限
+            viewModel.updateReplyDraft("啊".repeat(MAX_REPLY_LENGTH + 50))
+
+            // Then：截断到上限
+            assertThat(
+                viewModel.uiState.value.replyInput
+                    ?.draft,
+            ).hasLength(MAX_REPLY_LENGTH)
         }
 
     private fun page(
