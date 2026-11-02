@@ -2002,6 +2002,35 @@ object BiliHttpApi {
                 accessKey?.let { parameter("access_key", it) }
             }.body()
 
+    /**
+     * 上报推荐流负反馈（Web）。
+     *
+     * 对推荐卡片反馈「不感兴趣」或「不想看此UP主」，服务端会据此调整推荐结果。
+     * 对应端点：POST https://api.bilibili.com/x/web-interface/feedback/dislike
+     * 参数以 URL Query 形式传递（bilibili-API-collect 未收录此端点，
+     * 参数形态参考 MyTVB ApiService 的同名接口实现）。
+     * 鉴权：Cookie(SESSDATA)，由 [injectCookies] 拦截器自动注入。
+     *
+     * @param aid 稿件 avid
+     * @param reason 负反馈原因：1 = 不感兴趣，4 = 不想看此UP主
+     * @param feedbackId 负反馈选项 ID，来自推荐卡片 three_point.feedbacks 首项的 id
+     * @return Pair(上报是否成功, 服务器返回的 message)
+     */
+    suspend fun sendFeedDislike(
+        aid: Long,
+        reason: Int,
+        feedbackId: Int,
+    ): Pair<Boolean, String> {
+        val response =
+            client
+                .post("/x/web-interface/feedback/dislike") {
+                    buildFeedDislikeQuery(aid, reason, feedbackId).forEach { (name, value) ->
+                        parameter(name, value)
+                    }
+                }.body<BiliResponseWithoutData>()
+        return Pair(response.code == 0, response.message)
+    }
+
     private suspend fun seasonIndexResult(
         seasonIndexType: SeasonIndexType,
         order: Int? = null,
@@ -2334,3 +2363,22 @@ private fun checkToken(accessKey: String?) {
         "accessKey and sessData cannot be null at the same time"
     }
 }
+
+/**
+ * 组装推荐流负反馈上报的 Query 参数（纯函数，便于单测校验参数名与取值映射）。
+ *
+ * @param aid 稿件 avid
+ * @param reason 负反馈原因：1 = 不感兴趣，4 = 不想看此UP主
+ * @param feedbackId 负反馈选项 ID（推荐卡片 three_point.feedbacks 首项的 id）
+ * @return 按请求顺序排列的 (参数名, 参数值) 列表
+ */
+internal fun buildFeedDislikeQuery(
+    aid: Long,
+    reason: Int,
+    feedbackId: Int,
+): List<Pair<String, String>> =
+    listOf(
+        "aid" to "$aid",
+        "reason" to "$reason",
+        "feedback_id" to "$feedbackId",
+    )

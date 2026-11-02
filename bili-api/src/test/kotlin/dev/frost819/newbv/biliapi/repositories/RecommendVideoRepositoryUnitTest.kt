@@ -198,6 +198,32 @@ class RecommendVideoRepositoryUnitTest {
         }
 
     // ------------------------------------------------------------------
+    // sendFeedDislike
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `sendFeedDislike delegates aid reason feedbackId to BiliHttpApi`() =
+        runTest {
+            coEvery { BiliHttpApi.sendFeedDislike(any(), any(), any()) } returns Pair(true, "0")
+
+            val result = repository.sendFeedDislike(aid = 100L, reason = 4, feedbackId = 42)
+
+            coVerify(exactly = 1) { BiliHttpApi.sendFeedDislike(aid = 100L, reason = 4, feedbackId = 42) }
+            assertThat(result.first).isTrue()
+        }
+
+    @Test
+    fun `sendFeedDislike returns failure with server message`() =
+        runTest {
+            coEvery { BiliHttpApi.sendFeedDislike(any(), any(), any()) } returns Pair(false, "请求错误")
+
+            val result = repository.sendFeedDislike(aid = 100L, reason = 1, feedbackId = 42)
+
+            assertThat(result.first).isFalse()
+            assertThat(result.second).isEqualTo("请求错误")
+        }
+
+    // ------------------------------------------------------------------
     // getPopularVideos (App)
     // ------------------------------------------------------------------
 

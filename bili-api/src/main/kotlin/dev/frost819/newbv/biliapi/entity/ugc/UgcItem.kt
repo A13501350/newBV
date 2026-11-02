@@ -18,6 +18,11 @@ data class UgcItem(
     val duration: Int,
     val idx: Int = -1,
     val pubTime: String? = null,
+    /**
+     * 推荐流负反馈选项 ID（推荐卡片 three_point.feedbacks 首项的 id），
+     * 用于上报「不感兴趣/不想看此UP主」；null 表示当前卡片不可负反馈上报。
+     */
+    val feedbackId: Int? = null,
 ) {
     companion object {
         fun fromRcmdItem(rcmdItem: RcmdIndexData.RcmdItem) =
@@ -53,6 +58,7 @@ data class UgcItem(
                         ?: rcmdItem.coverRightText?.convertStringTimeToSeconds()
                         ?: 0,
                 idx = rcmdItem.idx,
+                feedbackId = rcmdItem.threePoint?.feedbacks?.firstOrNull()?.id,
             )
 
         fun fromRcmdItem(rcmdItem: RcmdTopData.RcmdItem) =

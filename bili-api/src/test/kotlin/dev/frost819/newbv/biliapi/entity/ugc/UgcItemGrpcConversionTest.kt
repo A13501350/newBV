@@ -111,6 +111,45 @@ class UgcItemGrpcConversionTest {
         assertThat(item.aid).isEqualTo(0L)
     }
 
+    @Test
+    fun `fromRcmdItem takes feedbackId from first feedback`() {
+        val firstFeedback =
+            RcmdIndexData.RcmdItem.ThreePoint.Feedback(id = 42, name = "不感兴趣", toast = "将减少此类内容推荐")
+        val secondFeedback =
+            RcmdIndexData.RcmdItem.ThreePoint.Feedback(id = 43, name = "不想看此UP主", toast = "将不再推荐该UP主的内容")
+        val rcmdItem =
+            fakeRcmdItem(
+                threePoint =
+                    RcmdIndexData.RcmdItem.ThreePoint(
+                        dislikeReasons = emptyList(),
+                        feedbacks = listOf(firstFeedback, secondFeedback),
+                    ),
+            )
+        val item = UgcItem.fromRcmdItem(rcmdItem)
+        assertThat(item.feedbackId).isEqualTo(42)
+    }
+
+    @Test
+    fun `fromRcmdItem with empty feedbacks has null feedbackId`() {
+        val rcmdItem =
+            fakeRcmdItem(
+                threePoint =
+                    RcmdIndexData.RcmdItem.ThreePoint(
+                        dislikeReasons = emptyList(),
+                        feedbacks = emptyList(),
+                    ),
+            )
+        val item = UgcItem.fromRcmdItem(rcmdItem)
+        assertThat(item.feedbackId).isNull()
+    }
+
+    @Test
+    fun `fromRcmdItem without threePoint has null feedbackId`() {
+        val rcmdItem = fakeRcmdItem(threePoint = null)
+        val item = UgcItem.fromRcmdItem(rcmdItem)
+        assertThat(item.feedbackId).isNull()
+    }
+
     // ===== fromSmallCoverV5 — App gRPC 分区卡片 =====
 
     @Test
@@ -241,6 +280,7 @@ class UgcItemGrpcConversionTest {
         coverLeftText2: String? = "100",
         coverRightText: String? = "05:00",
         playerArgs: RcmdIndexData.RcmdItem.PlayerArgs? = null,
+        threePoint: RcmdIndexData.RcmdItem.ThreePoint? = null,
     ) = RcmdIndexData.RcmdItem(
         args = RcmdIndexData.RcmdItem.Args(aid = aid, upId = 999L, upName = "UP"),
         cardGoto = "av",
@@ -252,6 +292,7 @@ class UgcItemGrpcConversionTest {
         idx = 1,
         playerArgs = playerArgs,
         title = "title",
+        threePoint = threePoint,
         threePointV2 = emptyList(),
     )
 }
