@@ -8,6 +8,8 @@ import dev.frost819.newbv.biliapi.http.entity.live.InteractType
 import dev.frost819.newbv.biliapi.http.entity.live.InteractWordEvent
 import dev.frost819.newbv.biliapi.http.entity.live.LiveEvent
 import dev.frost819.newbv.biliapi.http.entity.live.OnlineRankCountEvent
+import dev.frost819.newbv.biliapi.http.entity.live.SuperChatDeleteEvent
+import dev.frost819.newbv.biliapi.http.entity.live.SuperChatEvent
 import dev.frost819.newbv.biliapi.http.entity.live.WatchedChangeEvent
 import dev.frost819.newbv.biliapi.http.util.brotliDecompress
 import dev.frost819.newbv.biliapi.http.util.zlibDecompress
@@ -21,12 +23,16 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -399,7 +405,16 @@ object LiveDataWebSocket {
         return result
     }
 
-    private fun handleJsonMessage(body: ByteArray): LiveEvent? {
+    /**
+     * 解析一条 JSON 协议消息为 [LiveEvent]。
+     *
+     * internal 可见性仅供单元测试直接验证各 cmd 分支的解析逻辑，
+     * 运行时仅由 [handlePacketBytes] 调用。
+     *
+     * @param body UTF-8 编码的 JSON 消息体
+     * @return 解析出的事件；JSON 非法、cmd 未识别或关键字段缺失时为 null
+     */
+    internal fun handleJsonMessage(body: ByteArray): LiveEvent? {
         val strData = body.toString(Charsets.UTF_8).trim()
         if (strData.isBlank()) return null
         val dataJson = runCatching { json.parseToJsonElement(strData).jsonObject }.getOrNull() ?: return null
@@ -474,10 +489,81 @@ object LiveDataWebSocket {
                     )
                 }
 
+                "SUPER_CHAT_MESSAGE" -> parseSuperChatMessage(dataJson["data"]?.jsonObject)
+
+                "SUPER_CHAT_MESSAGE_DELETE" -> parseSuperChatDelete(dataJson["data"]?.jsonObject)
+
                 else -> null
             }
         }.getOrNull()
     }
+
+    /**
+     * 解析 `SUPER_CHAT_MESSAGE` 载荷为 [SuperChatEvent]。
+     *
+     * 容错策略：id/price/message 缺失时无法展示，丢弃事件返回 null；
+     * user_info、background_color 属可缺省字段，缺失时回退默认值。
+     *
+     * @param data 消息的 `data` 对象
+     * @return 解析结果，关键字段缺失时为 null
+     */
+    private fun parseSuperChatMessage(data: JsonObject?): SuperChatEvent? {
+        if (data == null) return null
+        val id = data["id"]?.jsonPrimitive?.longOrNull ?: return null
+        val price = data["price"]?.jsonPrimitive?.intOrNull ?: return null
+        val message = data["message"]?.jsonPrimitive?.contentOrNull ?: return null
+        val userInfo = data["user_info"]?.jsonObject
+        val backgroundColor = data["background_color"]?.jsonPrimitive?.contentOrNull?.let(::parseArgbColor)
+        // 展示时长以秒为单位：优先 duration 字段，回退 time 字段，均缺失时按官方最短展示 60 秒兜底
+        val durationSec =
+            data["duration"]?.jsonPrimitive?.longOrNull
+                ?: data["time"]?.jsonPrimitive?.longOrNull
+                ?: 60L
+        return SuperChatEvent(
+            id = id,
+            price = price,
+            message = message,
+            username = userInfo?.get("uname")?.jsonPrimitive?.contentOrNull ?: "",
+            face = userInfo?.get("face")?.jsonPrimitive?.contentOrNull ?: "",
+            backgroundColor = backgroundColor,
+            durationMs = TimeUnit.SECONDS.toMillis(durationSec),
+        )
+    }
+
+    /**
+     * 解析 `SUPER_CHAT_MESSAGE_DELETE` 载荷为 [SuperChatDeleteEvent]。
+     *
+     * @param data 消息的 `data` 对象（含 `ids` 数组）
+     * @return 解析结果，ids 缺失或为空时返回 null（无可移除对象）
+     */
+    private fun parseSuperChatDelete(data: JsonObject?): SuperChatDeleteEvent? {
+        val ids =
+            data
+                ?.get("ids")
+                ?.jsonArray
+                ?.mapNotNull { element -> element.jsonPrimitive.longOrNull }
+                .orEmpty()
+        return if (ids.isEmpty()) null else SuperChatDeleteEvent(ids)
+    }
+
+    /**
+     * 解析 SC 颜色字段为不透明 ARGB 长整型。
+     *
+     * 该字段存在两种历史形态：十进制 RGB 数字串（如 "16746155"，即 24 位 0xFF86AB）
+     * 与 "#RRGGBB" 十六进制串。数字串没有 alpha 字节，若按 32 位 ARGB 直读会得到
+     * 全透明（alpha=0x00），渲染时卡片不可见，因此与 6 位十六进制串一样补全不透明
+     * alpha；8 位 AARRGGBB 十六进制串按原值解析。均无法解析时返回 null。
+     */
+    private fun parseArgbColor(raw: String): Long? =
+        raw.toLongOrNull()?.let(::withOpaqueAlpha)
+            ?: run {
+                val hex = raw.removePrefix("#")
+                // 6 位 #RRGGBB 补全不透明 alpha，8 位 AARRGGBB 直接解析
+                if (hex.length == 6) "FF$hex".toLongOrNull(16) else hex.toLongOrNull(16)
+            }
+
+    /** 24 位 RGB（无 alpha 字节）按不透明 ARGB 归一化。 */
+    private fun withOpaqueAlpha(rgb: Long): Long = if (rgb < 0x1000000) 0xFF000000L or rgb else rgb
 
     private fun readInt(
         bytes: ByteArray,

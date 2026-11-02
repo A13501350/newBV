@@ -45,6 +45,11 @@ dependencies {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+    // CI 上失败用例输出完整异常栈，避免日志截断后无法定位
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 val integrationTest =

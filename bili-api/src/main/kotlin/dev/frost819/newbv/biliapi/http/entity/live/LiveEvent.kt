@@ -41,3 +41,38 @@ data class WatchedChangeEvent(
     val textLarge: String,
     val textSmall: String,
 ) : LiveEvent
+
+/**
+ * 醒目留言（SC，Super Chat）事件。
+ *
+ * 对应直播 WebSocket 消息 `SUPER_CHAT_MESSAGE`，`data` 载荷核心字段为
+ * id/message/price/user_info.uname/user_info.face/background_color/duration。
+ *
+ * @property id SC 唯一标识，[SuperChatDeleteEvent] 按此匹配移除
+ * @property price 金额（人民币元），UI 据此映射底色梯度
+ * @property message 留言内容
+ * @property username 发送者昵称
+ * @property face 发送者头像 URL
+ * @property backgroundColor 服务端下发的底色，已归一化为不透明 ARGB 长整型，字段缺失或无法解析时为 null
+ * @property durationMs 展示时长（毫秒），到期后 UI 移除卡片
+ */
+data class SuperChatEvent(
+    val id: Long,
+    val price: Int,
+    val message: String,
+    val username: String,
+    val face: String,
+    val backgroundColor: Long?,
+    val durationMs: Long,
+) : LiveEvent
+
+/**
+ * 醒目留言删除事件。
+ *
+ * 对应直播 WebSocket 消息 `SUPER_CHAT_MESSAGE_DELETE`。
+ *
+ * @property ids 被删除的 SC id 列表
+ */
+data class SuperChatDeleteEvent(
+    val ids: List<Long>,
+) : LiveEvent
