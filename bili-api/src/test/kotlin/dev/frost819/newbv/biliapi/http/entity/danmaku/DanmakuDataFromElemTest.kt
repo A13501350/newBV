@@ -8,7 +8,8 @@ import org.junit.jupiter.api.Test
  * [DanmakuData.fromDanmakuElem] 的单元测试。
  *
  * 验证 protobuf [bilibili.community.service.dm.v1.DanmakuElem] 到实体字段映射：
- * progress（ms）→ time（s）、ctime 不除 1000、weight → level、mode/size/color/pool/midHash/id。
+ * progress（ms）→ time（s）、ctime 不除 1000、weight → level、mode/size/color/pool/midHash/id、
+ * attr bit2（值 4）→ highLike。
  * 对应文档：docs/bilibili-API-collect-master/docs/danmaku/danmaku_proto.md
  */
 class DanmakuDataFromElemTest {
@@ -79,5 +80,54 @@ class DanmakuDataFromElemTest {
         assertThat(data.dmid).isEqualTo(0L)
         assertThat(data.level).isEqualTo(0)
         assertThat(data.text).isEmpty()
+        assertThat(data.highLike).isFalse()
+    }
+
+    @Test
+    fun `attr bit2 maps to highLike for samples 4 and 6`() {
+        // Given: attr=4（仅 bit2 高赞）
+        val highLikeOnly =
+            danmakuElem {
+                attr = 4
+                content = "x"
+            }
+
+        // When
+        val data4 = DanmakuData.fromDanmakuElem(highLikeOnly)
+
+        // Then
+        assertThat(data4.highLike).isTrue()
+
+        // Given: attr=6（bit1 直播 + bit2 高赞，混合位仅取 bit2）
+        val liveAndHighLike =
+            danmakuElem {
+                attr = 6
+                content = "x"
+            }
+
+        // When
+        val data6 = DanmakuData.fromDanmakuElem(liveAndHighLike)
+
+        // Then
+        assertThat(data6.highLike).isTrue()
+    }
+
+    @Test
+    fun `attr without bit2 does not map to highLike`() {
+        // Given: attr=0（无属性位）与 attr=2（仅 bit1 直播弹幕）
+        val plain = danmakuElem { attr = 0 }
+        val liveOnly =
+            danmakuElem {
+                attr = 2
+                content = "x"
+            }
+
+        // When
+        val data0 = DanmakuData.fromDanmakuElem(plain)
+        val data2 = DanmakuData.fromDanmakuElem(liveOnly)
+
+        // Then: bit2 未置位时不是高赞弹幕
+        assertThat(data0.highLike).isFalse()
+        assertThat(data2.highLike).isFalse()
     }
 }

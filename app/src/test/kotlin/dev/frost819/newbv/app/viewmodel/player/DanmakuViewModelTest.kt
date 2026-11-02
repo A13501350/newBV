@@ -1,6 +1,7 @@
 package dev.frost819.newbv.app.viewmodel.player
 
 import com.google.common.truth.Truth.assertThat
+import com.kuaishou.akdanmaku.data.DanmakuItemData
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
@@ -377,6 +378,35 @@ class DanmakuViewModelTest {
             coVerify(exactly = 0) {
                 videoPlayRepository.getDanmakuSegment(aid = 1, cid = 2, segmentIndex = 3, preferApiType = any())
             }
+        }
+
+    @Test
+    fun `loadDanmaku passes highLike flag through to engine item data`() =
+        runTest(testDispatcher) {
+            // Given: 引擎桩与两条弹幕（一条普通、一条高赞），预取段返回空避免干扰捕获
+            val player = mockk<DanmakuPlayer>(relaxed = true)
+            viewModel.danmakuPlayer = player
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns DanmakuMeta(360_000, 3, false, 100)
+            coEvery {
+                videoPlayRepository.getDanmakuSegment(aid = 1, cid = 2, segmentIndex = 1, preferApiType = any())
+            } returns
+                listOf(
+                    fakeDanmakuData(1, 0f),
+                    fakeDanmakuData(2, 1f).copy(highLike = true),
+                )
+            coEvery {
+                videoPlayRepository.getDanmakuSegment(aid = 1, cid = 2, segmentIndex = 2, preferApiType = any())
+            } returns emptyList()
+            val capturedLists = mutableListOf<List<DanmakuItemData>>()
+
+            // When
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            // Then: highLike 标志透传到引擎的 DanmakuItemData
+            verify(atLeast = 1) { player.updateData(capture(capturedLists)) }
+            val items = capturedLists.flatten()
+            assertThat(items.map { it.highLike }).containsExactly(false, true)
         }
 
     @Test
