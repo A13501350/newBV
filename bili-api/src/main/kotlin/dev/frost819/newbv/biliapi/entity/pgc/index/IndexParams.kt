@@ -2,7 +2,7 @@ package dev.frost819.newbv.biliapi.entity.pgc.index
 
 import dev.frost819.newbv.biliapi.entity.pgc.PgcType
 
-interface PgcIndexParam
+sealed interface PgcIndexParam
 
 /**
  * 排序
