@@ -563,6 +563,7 @@ private fun ControllerVideoInfoPreview() {
             videoShot = null,
             videoShotCache = VideoShotImageCache(),
             chapterSegments = emptyList(),
+            skipSegments = emptyList(),
             isPgc = false,
             danmakuEnabled = true,
             isLooping = false,
