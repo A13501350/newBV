@@ -1,16 +1,15 @@
 package dev.frost819.newbv.app.util
 
-import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.datastore.preferences.core.Preferences
 import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.data.datastore.Prefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import java.io.File
 
 /**
@@ -18,10 +17,14 @@ import java.io.File
  *
  * 验证播放段累计、达上限进入休息、休息期满恢复、时钟回拨防绕过等行为。
  * 注入 [FakeTeenModeClock] 假时钟并使用临时文件 DataStore，不依赖 Android 环境。
+ *
+ * DataStore 生命周期沿用 `AccountRepositoryImplTest` 的安全模式：类级创建一次、
+ * 结束时不删除不重置 —— Prefs 的异步写入队列若命中已重置/已删除的存储会抛
+ * 未捕获异常，被 coroutines-test 归因到无关的 runTest 造成偶发失败。
+ * 用例间隔离靠 [setUp] 内的重写与 [TeenModeTimer.onSettingsChanged] 清零实现。
  */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TeenModeTimerTest {
-    private lateinit var dataStore: DataStore<Preferences>
-    private lateinit var tempDir: File
     private lateinit var clock: FakeTeenModeClock
 
     /** 可手动推进的假时钟：单调时钟与墙钟独立控制。 */
@@ -44,19 +47,21 @@ class TeenModeTimerTest {
         }
     }
 
-    @BeforeEach
-    fun setUp() {
-        tempDir =
-            kotlin.io.path
-                .createTempDirectory(prefix = "teen_mode_timer_test")
-                .toFile()
-        dataStore =
+    @BeforeAll
+    fun initPrefs() {
+        Prefs.resetForTesting()
+        val file = File.createTempFile("test_teen_mode_timer", ".preferences_pb")
+        file.deleteOnExit()
+        val dataStore =
             PreferenceDataStoreFactory.create(
                 scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-                produceFile = { File(tempDir, "Test.preferences_pb") },
+                produceFile = { file },
             )
-        Prefs.resetForTesting()
         Prefs.init(dataStore)
+    }
+
+    @BeforeEach
+    fun setUp() {
         clock = FakeTeenModeClock()
         TeenModeTimer.clock = clock
         // Given: 保护开启，60 分钟观看上限、20 分钟休息
@@ -64,12 +69,6 @@ class TeenModeTimerTest {
         Prefs.teenWatchLimitMin = 60
         Prefs.teenRestLimitMin = 20
         TeenModeTimer.onSettingsChanged()
-    }
-
-    @AfterEach
-    fun tearDown() {
-        Prefs.resetForTesting()
-        tempDir.deleteRecursively()
     }
 
     @Test
