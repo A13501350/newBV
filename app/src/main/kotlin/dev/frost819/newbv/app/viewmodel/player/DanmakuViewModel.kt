@@ -406,6 +406,7 @@ class DanmakuViewModel
                     },
                 textSize = size,
                 textColor = Color(color).toArgb(),
+                highLike = highLike,
             )
 
         /**

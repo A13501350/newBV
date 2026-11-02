@@ -23,6 +23,11 @@ data class DanmakuData(
     val dmid: Long,
     val level: Int,
     val text: String,
+    /**
+     * 是否为高赞弹幕（protobuf `DanmakuElem.attr` bit2，DMAttrHighLike）。
+     * XML 通道无该字段，恒为 false。
+     */
+    val highLike: Boolean = false,
 ) {
     companion object {
         fun fromString(
@@ -64,6 +69,8 @@ data class DanmakuData(
                 dmid = elem.id,
                 level = elem.weight,
                 text = elem.content,
+                // attr 位标志（bin 求与）：bit2（值为 4）= 高赞弹幕
+                highLike = (elem.attr and 4) != 0,
             )
     }
 }
