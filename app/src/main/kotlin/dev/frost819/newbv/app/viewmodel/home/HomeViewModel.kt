@@ -14,8 +14,11 @@ import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.data.datastore.Prefs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -28,6 +31,18 @@ import dev.frost819.newbv.data.datastore.ApiType as DataApiType
 
 /** 网络请求超时时间（毫秒）。 */
 private const val LOAD_TIMEOUT_MS = 10_000L
+
+/** 推荐流负反馈上报结果（一次性 UI 事件）。 */
+sealed interface HomeEffect {
+    /**
+     * 显示 Toast 提示。
+     *
+     * @property message 提示内容。
+     */
+    data class ShowToast(
+        val message: String,
+    ) : HomeEffect
+}
 
 /**
  * 首页 Tab 状态。
@@ -78,6 +93,9 @@ class HomeViewModel
 
         private val _uiState = MutableStateFlow(HomeUiState())
         val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+        private val _dislikeEffect = MutableSharedFlow<HomeEffect>()
+        val dislikeEffect: SharedFlow<HomeEffect> = _dislikeEffect.asSharedFlow()
 
         private var recommendNextPage = RecommendPage()
         private var popularNextPage = PopularVideoPage()
@@ -290,6 +308,59 @@ class HomeViewModel
         }
 
         /**
+         * 上报推荐流负反馈（不感兴趣/不想看此UP主）。
+         *
+         * 上报成功后从推荐列表本地移除该卡片；失败（网络异常或服务端返回错误码）
+         * 时保留卡片并通过 [dislikeEffect] 提示，等待用户重试。
+         *
+         * @param item 目标推荐卡片（须携带 [UgcItem.feedbackId]，缺失时不执行上报）。
+         * @param reason 负反馈原因：[REASON_NOT_INTERESTED] 或 [REASON_DISLIKE_UP]。
+         */
+        fun dislikeRecommend(
+            item: UgcItem,
+            reason: Int,
+        ) {
+            val feedbackId = item.feedbackId
+            if (feedbackId == null) {
+                // 无 feedback_id 的卡片无法上报（如 Web 接口未返回），直接忽略
+                logger.warn { "Skip feed dislike: item ${item.aid} has no feedbackId" }
+                return
+            }
+            viewModelScope.launch {
+                runCatching {
+                    withTimeout(LOAD_TIMEOUT_MS) {
+                        recommendVideoRepository.sendFeedDislike(
+                            aid = item.aid,
+                            reason = reason,
+                            feedbackId = feedbackId,
+                        )
+                    }
+                }.onSuccess { (success, message) ->
+                    if (success) {
+                        _uiState.update {
+                            it.copy(
+                                recommendItems =
+                                    it.recommendItems.filterNot { card ->
+                                        card.aid == item.aid && card.idx == item.idx
+                                    },
+                            )
+                        }
+                        _dislikeEffect.emit(HomeEffect.ShowToast("已减少此类内容推荐"))
+                    } else {
+                        logger.error { "Feed dislike rejected: $message" }
+                        _dislikeEffect.emit(HomeEffect.ShowToast("操作失败: $message"))
+                    }
+                }.onFailure { error ->
+                    if (error is CancellationException && error !is TimeoutCancellationException) {
+                        throw error
+                    }
+                    logger.error(error) { "Failed to send feed dislike" }
+                    _dislikeEffect.emit(HomeEffect.ShowToast("操作失败: ${error.message ?: "未知错误"}"))
+                }
+            }
+        }
+
+        /**
          * 刷新指定 Tab 的数据。
          *
          * @param tab 目标 Tab。
@@ -344,5 +415,13 @@ class HomeViewModel
             refreshRecommend()
             refreshPopular()
             refreshDynamic()
+        }
+
+        companion object {
+            /** 负反馈 reason 取值：不感兴趣。 */
+            const val REASON_NOT_INTERESTED = 1
+
+            /** 负反馈 reason 取值：不想看此UP主。 */
+            const val REASON_DISLIKE_UP = 4
         }
     }

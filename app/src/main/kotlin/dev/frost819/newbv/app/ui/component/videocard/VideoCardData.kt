@@ -39,6 +39,8 @@ data class VideoCardData(
     val timeString: String = "",
     val pubTime: String? = null,
     val progress: Float? = null,
+    /** 推荐流负反馈选项 ID（null 表示不可上报负反馈，长按菜单隐藏对应按钮）。 */
+    val feedbackId: Int? = null,
 ) {
     companion object {
         /**
@@ -65,3 +67,6 @@ data class VideoCardData(
 
 /** 视频卡是否为番剧（有有效 EP ID）。 */
 val VideoCardData.isPgc: Boolean get() = (epid ?: 0) != 0
+
+/** 视频卡是否可上报推荐流负反馈（feedback_id 缺失时长按菜单应隐藏对应按钮）。 */
+val VideoCardData.canDislike: Boolean get() = feedbackId != null

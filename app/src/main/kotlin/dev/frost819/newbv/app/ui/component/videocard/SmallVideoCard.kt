@@ -50,7 +50,7 @@ import dev.frost819.newbv.core.interaction.currentInputMethod
  * 小型视频卡片。
  *
  * 展示视频封面、播放数/弹幕数/时长、标题、UP 主名、发布时间。
- * 支持长按显示快捷操作（稍后再看/详情/UP 页）。
+ * 支持长按显示快捷操作（稍后再看/详情/UP 页/负反馈上报）。
  *
  * 长按行为（与原版 BV 一致）：
  * - 长按后 [showActions] 切为 true，封面替换为操作按钮行
@@ -64,6 +64,8 @@ import dev.frost819.newbv.core.interaction.currentInputMethod
  * @param onGoToDetailPage 详情页回调（null 时不显示按钮）。
  * @param onGoToUpPage UP 主页回调（null 时不显示按钮）。
  * @param onRemoveWatchLater 移除稍后再看回调（null 时不显示按钮）。
+ * @param onDislike 「不感兴趣」负反馈回调（null 时不显示按钮）。
+ * @param onDislikeUp 「不想看此UP主」负反馈回调（null 时不显示按钮）。
  */
 @Composable
 fun SmallVideoCard(
@@ -74,17 +76,19 @@ fun SmallVideoCard(
     onGoToDetailPage: (() -> Unit)? = null,
     onGoToUpPage: (() -> Unit)? = null,
     onRemoveWatchLater: (() -> Unit)? = null,
+    onDislike: (() -> Unit)? = null,
+    onDislikeUp: (() -> Unit)? = null,
 ) {
     var showActions by remember { mutableStateOf(false) }
     var releaseLongPress by remember { mutableStateOf(false) }
     val firstButtonRequester = remember { FocusRequester() }
     val isTouchMode = currentInputMethod() == InputMethod.Touch
 
-    val hasAnyAction =
-        onAddWatchLater != null ||
-            onGoToDetailPage != null ||
-            onGoToUpPage != null ||
-            onRemoveWatchLater != null
+    // 拆分为多个局部布尔值，避免单条判断链过长（detekt ComplexCondition）
+    val hasWatchLaterAction = onAddWatchLater != null || onRemoveWatchLater != null
+    val hasNavigateAction = onGoToDetailPage != null || onGoToUpPage != null
+    val hasFeedbackAction = onDislike != null || onDislikeUp != null
+    val hasAnyAction = hasWatchLaterAction || hasNavigateAction || hasFeedbackAction
 
     BackHandler(enabled = showActions) {
         showActions = false
@@ -273,6 +277,92 @@ fun SmallVideoCard(
                             Icon(
                                 painter = painterResource(id = R.drawable.contact_page_24px),
                                 contentDescription = "UP主主页",
+                            )
+                        }
+                    }
+
+                    onDislike?.let { action ->
+                        val dislikeIsFirst =
+                            onRemoveWatchLater == null &&
+                                onAddWatchLater == null &&
+                                onGoToDetailPage == null &&
+                                onGoToUpPage == null
+                        IconButton(
+                            onClick = {
+                                if (!isTouchMode && dislikeIsFirst && !releaseLongPress) {
+                                    releaseLongPress = true
+                                    return@IconButton
+                                }
+                                action()
+                            },
+                            modifier =
+                                if (dislikeIsFirst) {
+                                    Modifier
+                                        .focusRequester(firstButtonRequester)
+                                        .touchClickable(onClick = {
+                                            if (!isTouchMode && dislikeIsFirst && !releaseLongPress) {
+                                                releaseLongPress = true
+                                            } else {
+                                                action()
+                                            }
+                                        })
+                                } else {
+                                    Modifier.touchClickable(onClick = {
+                                        if (!isTouchMode && dislikeIsFirst && !releaseLongPress) {
+                                            releaseLongPress = true
+                                        } else {
+                                            action()
+                                        }
+                                    })
+                                },
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.thumb_down_24px),
+                                contentDescription = "不感兴趣",
+                            )
+                        }
+                    }
+
+                    onDislikeUp?.let { action ->
+                        // 与 dislikeIsFirst 的判断一致，仅额外排除 onDislike 已存在的情况
+                        val noActionBefore =
+                            onRemoveWatchLater == null &&
+                                onAddWatchLater == null &&
+                                onGoToDetailPage == null &&
+                                onGoToUpPage == null
+                        val dislikeUpIsFirst = noActionBefore && onDislike == null
+                        IconButton(
+                            onClick = {
+                                if (!isTouchMode && dislikeUpIsFirst && !releaseLongPress) {
+                                    releaseLongPress = true
+                                    return@IconButton
+                                }
+                                action()
+                            },
+                            modifier =
+                                if (dislikeUpIsFirst) {
+                                    Modifier
+                                        .focusRequester(firstButtonRequester)
+                                        .touchClickable(onClick = {
+                                            if (!isTouchMode && dislikeUpIsFirst && !releaseLongPress) {
+                                                releaseLongPress = true
+                                            } else {
+                                                action()
+                                            }
+                                        })
+                                } else {
+                                    Modifier.touchClickable(onClick = {
+                                        if (!isTouchMode && dislikeUpIsFirst && !releaseLongPress) {
+                                            releaseLongPress = true
+                                        } else {
+                                            action()
+                                        }
+                                    })
+                                },
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.visibility_off_24px),
+                                contentDescription = "不想看此UP主",
                             )
                         }
                     }
