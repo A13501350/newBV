@@ -76,9 +76,7 @@ fun NavGraphBuilder.pgcIndexScreen(navController: NavController) {
  * @param navController 导航控制器。
  */
 @Composable
-private fun PgcIndexScreen(
-    navController: NavController,
-) {
+private fun PgcIndexScreen(navController: NavController) {
     val viewModel: PgcIndexViewModel = hiltViewModel()
     val state by viewModel.uiState.collectAsState()
     val focusSaver = rememberFocusSaver()
