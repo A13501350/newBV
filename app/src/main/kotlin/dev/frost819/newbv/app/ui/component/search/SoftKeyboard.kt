@@ -37,7 +37,8 @@ private val keyboardKeys =
  * D-Pad 焦点导航，首个按键可绑定 [firstButtonFocusRequester]。
  *
  * @param firstButtonFocusRequester 首个按键的焦点请求器
- * @param searchButtonModifier 搜索按钮的额外 modifier（用于焦点恢复）
+ * @param searchButtonModifier 操作按钮的额外 modifier（用于焦点恢复）
+ * @param actionLabel 操作按钮文案，默认「搜索」，其他场景（如回复输入）可自定义
  * @param onClick 字符键点击回调
  * @param onClear 清除全部
  * @param onDelete 删除最后一个字符
@@ -48,6 +49,7 @@ fun SoftKeyboard(
     modifier: Modifier = Modifier,
     firstButtonFocusRequester: FocusRequester,
     searchButtonModifier: Modifier = Modifier,
+    actionLabel: String = "搜索",
     onClick: (String) -> Unit,
     onClear: () -> Unit,
     onDelete: () -> Unit,
@@ -94,7 +96,7 @@ fun SoftKeyboard(
                     Modifier
                         .weight(1f)
                         .then(searchButtonModifier),
-                key = "搜索",
+                key = actionLabel,
                 onClick = onSearch,
             )
         }
