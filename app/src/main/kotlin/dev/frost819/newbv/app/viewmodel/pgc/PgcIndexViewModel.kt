@@ -616,23 +616,24 @@ class PgcIndexViewModel
                                 pageSize = PAGE_SIZE,
                                 nextPage = nextPage,
                             )
-                        val data = pgcRepository.getPgcIndex(
-                            pgcType = filter.pgcType,
-                            indexOrder = filter.order,
-                            indexOrderType = filter.orderType,
-                            seasonVersion = filter.seasonVersion,
-                            spokenLanguage = filter.spokenLanguage,
-                            area = filter.area,
-                            isFinish = filter.isFinish,
-                            copyright = filter.copyright,
-                            seasonStatus = filter.seasonStatus,
-                            seasonMonth = filter.seasonMonth,
-                            producer = filter.producer,
-                            year = filter.year,
-                            releaseDate = filter.releaseDate,
-                            style = filter.style,
-                            page = page,
-                        )
+                        val data =
+                            pgcRepository.getPgcIndex(
+                                pgcType = filter.pgcType,
+                                indexOrder = filter.order,
+                                indexOrderType = filter.orderType,
+                                seasonVersion = filter.seasonVersion,
+                                spokenLanguage = filter.spokenLanguage,
+                                area = filter.area,
+                                isFinish = filter.isFinish,
+                                copyright = filter.copyright,
+                                seasonStatus = filter.seasonStatus,
+                                seasonMonth = filter.seasonMonth,
+                                producer = filter.producer,
+                                year = filter.year,
+                                releaseDate = filter.releaseDate,
+                                style = filter.style,
+                                page = page,
+                            )
                         if (requestGeneration != generation) {
                             // 期间已切换分区/筛选/刷新，本次响应已陈旧，直接丢弃
                             return@withTimeout
