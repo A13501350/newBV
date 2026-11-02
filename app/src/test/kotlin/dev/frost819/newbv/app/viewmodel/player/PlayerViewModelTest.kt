@@ -428,6 +428,67 @@ class PlayerViewModelTest {
             viewModel.viewModelScope.cancel()
         }
 
+    @Test
+    fun `playNewVideo reapplies music zone policy on same-aid part switch`() =
+        runTest(testDispatcher) {
+            // 回归：同 aid 切分 P 不重载详情（shouldUpdateDetail=false），但
+            // speedManuallySet 已在 playNewVideo 复位，须用现有详情立即重应用策略，
+            // 否则出现「豁免已清、策略未应用」的矛盾态（音乐区多 P：1f → 手动 2f → 切 P 应回 1f）
+            every { Prefs.musicZoneForceOneSpeed } returns true
+            every { videoInfoRepository.videoDetail } returns MutableStateFlow(fakeZoneDetail(aid = 10L, tid = 3))
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+
+            // Given: 已在音乐区视频会话中，用户手动改速 2f（豁免生效）
+            viewModel.playNewVideo(VideoListItem(aid = 10, cid = 20, title = "P1"))
+            advanceUntilIdle()
+            viewModel.updatePlaySpeed(2f, fromUser = true)
+            assertThat(viewModel.uiState.value.playSpeed).isEqualTo(2f)
+
+            // When: 同 aid 切分 P
+            viewModel.playNewVideo(VideoListItem(aid = 10, cid = 21, title = "P2"))
+
+            // Then: 豁免复位且策略立即重应用，回到 1f
+            assertThat(viewModel.uiState.value.playSpeed).isEqualTo(1f)
+        }
+
+    @Test
+    fun `playNewVideo keeps manual speed when music zone setting disabled`() =
+        runTest(testDispatcher) {
+            // 策略仅在开关开启时干预：手动改速在同 aid 切分 P 后保持
+            every { Prefs.musicZoneForceOneSpeed } returns false
+            every { videoInfoRepository.videoDetail } returns MutableStateFlow(fakeZoneDetail(aid = 10L, tid = 3))
+            coEvery { videoPlayRepository.getPlayData(any(), any(), any()) } coAnswers {
+                delay(Long.MAX_VALUE)
+                error("unreachable")
+            }
+
+            // Given: 开关关闭时手动改速 2f
+            viewModel.playNewVideo(VideoListItem(aid = 10, cid = 20, title = "P1"))
+            advanceUntilIdle()
+            viewModel.updatePlaySpeed(2f, fromUser = true)
+
+            // When: 同 aid 切分 P
+            viewModel.playNewVideo(VideoListItem(aid = 10, cid = 21, title = "P2"))
+
+            // Then: 策略不干预，保持 2f
+            assertThat(viewModel.uiState.value.playSpeed).isEqualTo(2f)
+        }
+
+    /** 构建带指定 aid 与 tid 的详情 mock（音乐区策略测试用）。 */
+    private fun fakeZoneDetail(
+        aid: Long,
+        tid: Int,
+    ): VideoDetail {
+        val detail = mockk<VideoDetail>()
+        every { detail.aid } returns aid
+        every { detail.tid } returns tid
+        every { detail.author } returns Author(mid = 42L, name = "UP", face = "face")
+        return detail
+    }
+
     // ── online watching polling tests ────────────────────────
 
     /**

@@ -749,8 +749,16 @@ class PlayerViewModel
 
             // 清空旧视频状态，防止新视频加载失败时残留旧数据
             playData = null
-            // 切集后重新应用音乐区 1 倍速策略：手动改速只对当前视频生效
+            // 切集后重新应用音乐区 1 倍速策略：手动改速只对当前视频生效。
+            // 同 aid 切分 P 不重载详情（shouldUpdateDetail 为 false），豁免复位后必须
+            // 在此用现有详情立即重应用，否则出现「豁免已清、策略未应用」的矛盾态；
+            // 跨 aid 时现有详情可能属于旧视频，跳过，由异步详情加载路径应用。
             speedManuallySet = false
+            if (!shouldUpdateDetail) {
+                applyMusicZoneSpeedPolicy(
+                    videoInfoRepository.videoDetail.value?.takeIf { it.aid == newVideo.aid },
+                )
+            }
             stopSeekerUpdater()
             stopDebugInfoUpdater()
 
