@@ -82,7 +82,8 @@ class LiveHomeViewModelTest {
             advanceUntilIdle()
 
             // Then: uid=200 的房间被过滤
-            assertThat(viewModel.uiState.value.recommendItems.map { it.roomId }).containsExactly(1L)
+            val recommendItems = viewModel.uiState.value.recommendItems
+            assertThat(recommendItems.map { it.roomId }).containsExactly(1L)
         }
     }
 
@@ -103,7 +104,8 @@ class LiveHomeViewModelTest {
             advanceUntilIdle()
 
             // Then: 分区 210 的房间被过滤
-            assertThat(viewModel.uiState.value.followItems.map { it.roomId }).containsExactly(12L)
+            val followItems = viewModel.uiState.value.followItems
+            assertThat(followItems.map { it.roomId }).containsExactly(12L)
         }
     }
 
@@ -135,7 +137,8 @@ class LiveHomeViewModelTest {
             advanceUntilIdle()
 
             // Then: 仅追加未屏蔽的房间 4，顺序保持
-            assertThat(viewModel.uiState.value.recommendItems.map { it.roomId }).containsExactly(2L, 4L).inOrder()
+            val recommendItems = viewModel.uiState.value.recommendItems
+            assertThat(recommendItems.map { it.roomId }).containsExactly(2L, 4L).inOrder()
         }
     }
 
@@ -159,8 +162,9 @@ class LiveHomeViewModelTest {
             advanceUntilIdle()
 
             // Then: 屏蔽已记录，推荐列表仅剩未屏蔽房间
+            val recommendItems = viewModel.uiState.value.recommendItems
             assertThat(BlockedLiveStore.isUpBlocked(100L)).isTrue()
-            assertThat(viewModel.uiState.value.recommendItems.map { it.roomId }).containsExactly(2L)
+            assertThat(recommendItems.map { it.roomId }).containsExactly(2L)
         }
     }
 
@@ -182,8 +186,9 @@ class LiveHomeViewModelTest {
             advanceUntilIdle()
 
             // Then: 屏蔽已记录，关注列表仅剩未屏蔽分区的房间
+            val followItems = viewModel.uiState.value.followItems
             assertThat(BlockedLiveStore.isAreaBlocked(210)).isTrue()
-            assertThat(viewModel.uiState.value.followItems.map { it.roomId }).containsExactly(12L)
+            assertThat(followItems.map { it.roomId }).containsExactly(12L)
         }
     }
 
@@ -200,8 +205,9 @@ class LiveHomeViewModelTest {
             advanceUntilIdle()
 
             // Then: 屏蔽集不变，列表不受影响
+            val recommendItems = viewModel.uiState.value.recommendItems
             assertThat(BlockedLiveStore.blockedUps()).isEmpty()
-            assertThat(viewModel.uiState.value.recommendItems.map { it.roomId }).containsExactly(1L)
+            assertThat(recommendItems.map { it.roomId }).containsExactly(1L)
         }
     }
 

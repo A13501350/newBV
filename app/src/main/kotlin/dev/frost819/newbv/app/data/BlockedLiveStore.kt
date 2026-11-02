@@ -114,12 +114,10 @@ object BlockedLiveStore {
     }
 
     /** 解析逗号分隔的 Long 集合，非数字片段忽略（空串返回空集合）。 */
-    private fun parseLongs(raw: String): Set<Long> =
-        raw.split(",").mapNotNull { it.toLongOrNull() }.toSet()
+    private fun parseLongs(raw: String): Set<Long> = raw.split(",").mapNotNull { it.toLongOrNull() }.toSet()
 
     /** 解析逗号分隔的 Int 集合，非数字片段忽略（空串返回空集合）。 */
-    private fun parseInts(raw: String): Set<Int> =
-        raw.split(",").mapNotNull { it.toIntOrNull() }.toSet()
+    private fun parseInts(raw: String): Set<Int> = raw.split(",").mapNotNull { it.toIntOrNull() }.toSet()
 }
 
 /**
