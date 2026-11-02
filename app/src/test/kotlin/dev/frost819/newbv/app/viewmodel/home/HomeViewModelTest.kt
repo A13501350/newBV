@@ -3,6 +3,7 @@ package dev.frost819.newbv.app.viewmodel.home
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.app.data.AccountRepositoryImpl
 import dev.frost819.newbv.app.data.AccountUiState
@@ -680,5 +681,149 @@ class HomeViewModelTest {
 
             assertThat(viewModel.uiState.value.popularError).isFalse()
             assertThat(viewModel.uiState.value.popularItems).isNotEmpty()
+        }
+
+    // ------------------------------------------------------------------
+    // dislikeRecommend
+    // ------------------------------------------------------------------
+
+    /** 准备含两张带 feedback_id 卡片的推荐列表（aid=1/idx=0、aid=2/idx=1），第二页为空结束分页。 */
+    private fun stubRecommendWithFeedbackItems() {
+        coEvery { recommendRepo.getRecommendVideos(any(), any()) } returnsMany
+            listOf(
+                RecommendData(
+                    items =
+                        listOf(
+                            fakeUgcItem(1).copy(idx = 0, feedbackId = 42),
+                            fakeUgcItem(2).copy(idx = 1, feedbackId = 43),
+                        ),
+                    nextPage = RecommendPage(),
+                ),
+                RecommendData(items = emptyList(), nextPage = RecommendPage()),
+            )
+    }
+
+    @Test
+    fun `dislikeRecommend success removes item locally and emits toast`() =
+        runTest(testDispatcher) {
+            // Given
+            stubRecommendWithFeedbackItems()
+            coEvery { recommendRepo.sendFeedDislike(any(), any(), any()) } returns Pair(true, "0")
+            viewModel = createViewModel()
+            advanceUntilIdle()
+            assertThat(viewModel.uiState.value.recommendItems).hasSize(2)
+
+            // When
+            viewModel.dislikeEffect.test {
+                viewModel.dislikeRecommend(
+                    viewModel.uiState.value.recommendItems[0],
+                    HomeViewModel.REASON_NOT_INTERESTED,
+                )
+                advanceUntilIdle()
+
+                // Then: 上报参数按 reason=1 组装，卡片被本地移除
+                coVerify(exactly = 1) {
+                    recommendRepo.sendFeedDislike(aid = 1L, reason = 1, feedbackId = 42)
+                }
+                assertThat(viewModel.uiState.value.recommendItems).hasSize(1)
+                assertThat(viewModel.uiState.value.recommendItems[0].aid).isEqualTo(2L)
+
+                val effect = awaitItem()
+                assertThat(effect).isInstanceOf(HomeEffect.ShowToast::class.java)
+                assertThat((effect as HomeEffect.ShowToast).message).contains("已减少")
+            }
+        }
+
+    @Test
+    fun `dislikeRecommend dislike up uses reason 4`() =
+        runTest(testDispatcher) {
+            // Given
+            stubRecommendWithFeedbackItems()
+            coEvery { recommendRepo.sendFeedDislike(any(), any(), any()) } returns Pair(true, "0")
+            viewModel = createViewModel()
+            advanceUntilIdle()
+
+            // When
+            viewModel.dislikeEffect.test {
+                viewModel.dislikeRecommend(
+                    viewModel.uiState.value.recommendItems[1],
+                    HomeViewModel.REASON_DISLIKE_UP,
+                )
+                advanceUntilIdle()
+
+                // Then
+                coVerify(exactly = 1) {
+                    recommendRepo.sendFeedDislike(aid = 2L, reason = 4, feedbackId = 43)
+                }
+                awaitItem()
+            }
+        }
+
+    @Test
+    fun `dislikeRecommend server rejection keeps item and emits failure toast`() =
+        runTest(testDispatcher) {
+            // Given
+            stubRecommendWithFeedbackItems()
+            coEvery { recommendRepo.sendFeedDislike(any(), any(), any()) } returns Pair(false, "稍后再试")
+            viewModel = createViewModel()
+            advanceUntilIdle()
+
+            // When
+            viewModel.dislikeEffect.test {
+                viewModel.dislikeRecommend(
+                    viewModel.uiState.value.recommendItems[0],
+                    HomeViewModel.REASON_NOT_INTERESTED,
+                )
+                advanceUntilIdle()
+
+                // Then: 失败不移除卡片
+                assertThat(viewModel.uiState.value.recommendItems).hasSize(2)
+                val effect = awaitItem()
+                assertThat((effect as HomeEffect.ShowToast).message).contains("操作失败")
+                assertThat(effect.message).contains("稍后再试")
+            }
+        }
+
+    @Test
+    fun `dislikeRecommend network failure keeps item and emits failure toast`() =
+        runTest(testDispatcher) {
+            // Given
+            stubRecommendWithFeedbackItems()
+            coEvery { recommendRepo.sendFeedDislike(any(), any(), any()) } throws IOException("network error")
+            viewModel = createViewModel()
+            advanceUntilIdle()
+
+            // When
+            viewModel.dislikeEffect.test {
+                viewModel.dislikeRecommend(
+                    viewModel.uiState.value.recommendItems[0],
+                    HomeViewModel.REASON_NOT_INTERESTED,
+                )
+                advanceUntilIdle()
+
+                // Then: 失败不移除卡片
+                assertThat(viewModel.uiState.value.recommendItems).hasSize(2)
+                val effect = awaitItem()
+                assertThat((effect as HomeEffect.ShowToast).message).contains("操作失败")
+                assertThat(effect.message).contains("network error")
+            }
+        }
+
+    @Test
+    fun `dislikeRecommend without feedbackId is no-op`() =
+        runTest(testDispatcher) {
+            // Given
+            stubRecommendWithFeedbackItems()
+            viewModel = createViewModel()
+            advanceUntilIdle()
+            val itemWithoutFeedback = fakeUgcItem(9).copy(idx = 2, feedbackId = null)
+
+            // When
+            viewModel.dislikeRecommend(itemWithoutFeedback, HomeViewModel.REASON_NOT_INTERESTED)
+            advanceUntilIdle()
+
+            // Then: 不发起上报，不发出效果，列表不变
+            coVerify(exactly = 0) { recommendRepo.sendFeedDislike(any(), any(), any()) }
+            assertThat(viewModel.uiState.value.recommendItems).hasSize(2)
         }
 }

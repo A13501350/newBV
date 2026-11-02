@@ -2,12 +2,13 @@ package dev.frost819.newbv.app.ui.navigation
 
 import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.app.ui.component.videocard.VideoCardData
+import dev.frost819.newbv.app.ui.component.videocard.canDislike
 import dev.frost819.newbv.app.ui.component.videocard.isPgc
 import dev.frost819.newbv.biliapi.entity.video.RelatedVideo
 import org.junit.jupiter.api.Test
 
 /**
- * [VideoCardData.isPgc] 与 [VideoCardData.fromRelatedVideo] 的单元测试。
+ * [VideoCardData.isPgc]、[VideoCardData.canDislike] 与 [VideoCardData.fromRelatedVideo] 的单元测试。
  */
 class VideoCardDataTest {
     @Test
@@ -15,6 +16,13 @@ class VideoCardDataTest {
         assertThat(videoCard(epid = null).isPgc).isFalse()
         assertThat(videoCard(epid = 0).isPgc).isFalse()
         assertThat(videoCard(epid = 123).isPgc).isTrue()
+    }
+
+    @Test
+    fun `canDislike is true only when feedbackId present`() {
+        // feedback_id 缺失（如接口未返回 three_point）时长按菜单应隐藏负反馈按钮
+        assertThat(videoCard(epid = null).canDislike).isFalse()
+        assertThat(videoCard(epid = null).copy(feedbackId = 42).canDislike).isTrue()
     }
 
     @Test
