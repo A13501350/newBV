@@ -1,10 +1,14 @@
 package dev.frost819.newbv.app.viewmodel.player
 
 import com.google.common.truth.Truth.assertThat
+import com.kuaishou.akdanmaku.data.DanmakuItemData
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
 import dev.frost819.newbv.app.ui.action.player.DanmakuSettingAction
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
+import dev.frost819.newbv.biliapi.entity.danmaku.midHashOfMid
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
+import dev.frost819.newbv.biliapi.repositories.DanmakuShieldRepository
+import dev.frost819.newbv.biliapi.repositories.DanmakuShieldRules
 import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
 import dev.frost819.newbv.danmaku.entity.DanmakuType
 import dev.frost819.newbv.data.datastore.Prefs
@@ -14,6 +18,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +46,7 @@ import dev.frost819.newbv.data.datastore.DanmakuType as DataDanmakuType
 class DanmakuViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var videoPlayRepository: VideoPlayRepository
+    private lateinit var danmakuShieldRepository: DanmakuShieldRepository
     private lateinit var viewModel: DanmakuViewModel
 
     @BeforeEach
@@ -55,6 +61,7 @@ class DanmakuViewModelTest {
         every { Prefs.defaultDanmakuArea } returns 0.5f
         every { Prefs.defaultDanmakuSpeedFactor } returns 1f
         every { Prefs.defaultDanmakuMask } returns false
+        every { Prefs.cloudShieldEnabled } returns true
         every { Prefs.defaultDanmakuTypes } returns
             listOf(
                 DataDanmakuType.All,
@@ -67,11 +74,14 @@ class DanmakuViewModelTest {
         every { Prefs.defaultDanmakuArea = any() } answers {}
         every { Prefs.defaultDanmakuSpeedFactor = any() } answers {}
         every { Prefs.defaultDanmakuMask = any() } answers {}
+        every { Prefs.cloudShieldEnabled = any() } answers {}
         every { Prefs.defaultDanmakuTypes = any() } answers {}
         every { Prefs.apiType } returns DataApiType.Web
 
         videoPlayRepository = mockk()
-        viewModel = DanmakuViewModel(videoPlayRepository)
+        danmakuShieldRepository = mockk()
+        coEvery { danmakuShieldRepository.getRules(any()) } returns DanmakuShieldRules.EMPTY
+        viewModel = DanmakuViewModel(videoPlayRepository, danmakuShieldRepository)
     }
 
     @AfterEach
@@ -263,7 +273,7 @@ class DanmakuViewModelTest {
             every { Prefs.defaultDanmakuMask } returns true
             stubDanmakuLoading()
             coEvery { videoPlayRepository.getDanmakuMask(any(), any(), any()) } returns null
-            val enabledViewModel = DanmakuViewModel(videoPlayRepository)
+            val enabledViewModel = DanmakuViewModel(videoPlayRepository, danmakuShieldRepository)
 
             enabledViewModel.loadDanmaku(aid = 1L, cid = 2L)
             enabledViewModel.loadDanmakuMask()
@@ -593,4 +603,141 @@ class DanmakuViewModelTest {
         verify { player.seekTo(1_200_000) }
         verify(exactly = 0) { player.pause() }
     }
+
+    // === 云屏蔽（账号同步规则） ===
+
+    /** 云屏蔽用户规则样例：mid=12345678901 的 CRC32 hash（对照 MyTVB 算法）。 */
+    private val fakeUserMidHash = midHashOfMid(12345678901L)
+
+    /** 构造一组覆盖三种规则类型的云屏蔽规则。 */
+    private fun fakeShieldRules() =
+        DanmakuShieldRules(
+            keywords = listOf("233"),
+            regexes = listOf(Regex("广告|推销")),
+            blockedUserMidHashes = setOf(fakeUserMidHash),
+        )
+
+    @Test
+    fun `loadDanmaku applies cloud shield rules to engine filter`() =
+        runTest(testDispatcher) {
+            stubDanmakuLoading()
+            coEvery { danmakuShieldRepository.getRules(any()) } returns fakeShieldRules()
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            // 关键字进引擎过滤器 filterSet；用户规则经 CRC32 hex → Long 进 selfPredicate 闭包
+            assertThat(viewModel.cloudShieldTextFilter.filterSet).containsExactly("233")
+            val userHashLong = fakeUserMidHash.toLong(16)
+            assertThat(viewModel.cloudShieldBlockedUserHashes).containsExactly(userHashLong)
+            assertThat(viewModel.cloudShieldTextFilter.selfPredicate(userHashLong)).isTrue()
+            assertThat(viewModel.cloudShieldTextFilter.selfPredicate(userHashLong + 1)).isFalse()
+            assertThat(viewModel.cloudShieldTextFilter.selfPredicate(null)).isFalse()
+            assertThat(viewModel.cloudShieldRegexes).hasSize(1)
+        }
+
+    @Test
+    fun `loadDanmaku does not fetch rules when cloud shield disabled`() =
+        runTest(testDispatcher) {
+            stubDanmakuLoading()
+            every { Prefs.cloudShieldEnabled } returns false
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { danmakuShieldRepository.getRules(any()) }
+            assertThat(viewModel.cloudShieldTextFilter.filterSet).isEmpty()
+        }
+
+    @Test
+    fun `loadDanmaku proceeds with segments when rules fetch fails`() =
+        runTest(testDispatcher) {
+            // 请求失败必须静默降级，不能阻塞弹幕分段加载
+            stubDanmakuLoading()
+            coEvery { danmakuShieldRepository.getRules(any()) } throws IOException("network down")
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) {
+                videoPlayRepository.getDanmakuSegment(aid = 1, cid = 2, segmentIndex = 1, preferApiType = any())
+            }
+            assertThat(viewModel.cloudShieldTextFilter.filterSet).isEmpty()
+        }
+
+    @Test
+    fun `updateDanmakuState SetCloudShieldEnabled off clears applied rules`() =
+        runTest(testDispatcher) {
+            stubDanmakuLoading()
+            coEvery { danmakuShieldRepository.getRules(any()) } returns fakeShieldRules()
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+            assertThat(viewModel.cloudShieldTextFilter.filterSet).isNotEmpty()
+
+            viewModel.updateDanmakuState(DanmakuSettingAction.SetCloudShieldEnabled(false))
+            advanceUntilIdle()
+
+            assertThat(viewModel.danmakuState.value.cloudShieldEnabled).isFalse()
+            verify { Prefs.cloudShieldEnabled = false }
+            assertThat(viewModel.cloudShieldTextFilter.filterSet).isEmpty()
+            assertThat(viewModel.cloudShieldBlockedUserHashes).isEmpty()
+            assertThat(viewModel.cloudShieldRegexes).isEmpty()
+        }
+
+    @Test
+    fun `updateDanmakuState SetCloudShieldEnabled on refetches rules`() =
+        runTest(testDispatcher) {
+            stubDanmakuLoading()
+            // 从「开关关闭」状态构造 VM，保证初始 danmakuState 与 Prefs 一致
+            every { Prefs.cloudShieldEnabled } returns false
+            val disabledViewModel = DanmakuViewModel(videoPlayRepository, danmakuShieldRepository)
+            disabledViewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+            coVerify(exactly = 0) { danmakuShieldRepository.getRules(any()) }
+
+            every { Prefs.cloudShieldEnabled } returns true
+            coEvery { danmakuShieldRepository.getRules(any()) } returns fakeShieldRules()
+            disabledViewModel.updateDanmakuState(DanmakuSettingAction.SetCloudShieldEnabled(true))
+            advanceUntilIdle()
+
+            verify { Prefs.cloudShieldEnabled = true }
+            assertThat(disabledViewModel.cloudShieldTextFilter.filterSet).containsExactly("233")
+        }
+
+    @Test
+    fun `updateDanmakuState RefreshCloudShield forces rules refresh`() =
+        runTest(testDispatcher) {
+            stubDanmakuLoading()
+
+            viewModel.updateDanmakuState(DanmakuSettingAction.RefreshCloudShield)
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { danmakuShieldRepository.getRules(forceRefresh = true) }
+        }
+
+    @Test
+    fun `cloud shield regex prefilters segment data before engine updateData`() =
+        runTest(testDispatcher) {
+            val player = mockk<DanmakuPlayer>(relaxed = true)
+            viewModel.danmakuPlayer = player
+            coEvery { videoPlayRepository.getDanmakuMeta(any(), any()) } returns DanmakuMeta(360_000, 1, false, 10)
+            coEvery { videoPlayRepository.getDanmakuSegment(any(), any(), any(), any()) } returns
+                listOf(
+                    // midHash="cbf43926" 是 CRC32("123456789")，用于断言 userId 映射
+                    fakeDanmakuData(1, 0f).copy(text = "正常弹幕", midHash = "cbf43926"),
+                    fakeDanmakuData(2, 1f).copy(text = "这是广告内容"),
+                )
+            coEvery { danmakuShieldRepository.getRules(any()) } returns fakeShieldRules()
+
+            viewModel.loadDanmaku(aid = 1, cid = 2)
+            advanceUntilIdle()
+
+            // 命中正则的分段数据在进入引擎前被剔除，语义与引擎数据过滤器一致；
+            // 保留项携带 midHash 的 Long 表示供引擎 selfPredicate 比对
+            val captured = slot<List<DanmakuItemData>>()
+            verify(exactly = 1) { player.updateData(capture(captured)) }
+            val items = captured.captured
+            assertThat(items.map { it.content }).containsExactly("正常弹幕")
+            assertThat(items.single().userId).isEqualTo(0xCBF43926L)
+        }
 }
