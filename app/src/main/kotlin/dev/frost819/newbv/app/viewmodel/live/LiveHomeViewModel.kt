@@ -3,6 +3,8 @@ package dev.frost819.newbv.app.viewmodel.live
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.frost819.newbv.app.data.BlockedLiveStore
+import dev.frost819.newbv.app.data.filterBlockedLiveCards
 import dev.frost819.newbv.app.ui.component.livecard.LiveRoomCardData
 import dev.frost819.newbv.app.ui.component.livecard.formatOnlineCount
 import dev.frost819.newbv.biliapi.http.entity.live.FollowLiveRoom
@@ -59,7 +61,11 @@ class LiveHomeViewModel
                 runCatching {
                     withTimeout(LOAD_TIMEOUT_MS) {
                         val response = liveRepository.getFollowLive()
-                        response.rooms.filter { it.liveStatus == 1 }.map { it.toCardData() }
+                        val items =
+                            response.rooms
+                                .filter { it.liveStatus == 1 }
+                                .map { it.toCardData() }
+                        filterBlockedLiveCards(items, BlockedLiveStore.blockedUps(), BlockedLiveStore.blockedAreas())
                     }
                 }.onSuccess { items ->
                     _uiState.update {
@@ -135,7 +141,8 @@ class LiveHomeViewModel
                 runCatching {
                     withTimeout(LOAD_TIMEOUT_MS) {
                         val response = liveRepository.getLiveRecommend()
-                        response.list.map { it.toCardData() }
+                        val items = response.list.map { it.toCardData() }
+                        filterBlockedLiveCards(items, BlockedLiveStore.blockedUps(), BlockedLiveStore.blockedAreas())
                     }
                 }.onSuccess { items ->
                     _uiState.update {
@@ -178,13 +185,20 @@ class LiveHomeViewModel
                             _uiState.value.recommendItems
                                 .map { it.roomId }
                                 .toSet()
+                        val blockedUps = BlockedLiveStore.blockedUps()
+                        val blockedAreas = BlockedLiveStore.blockedAreas()
                         val newItems = mutableListOf<LiveRoomCardData>()
                         val seenInBatch = mutableSetOf<Long>()
                         var attempts = 0
                         while (newItems.isEmpty() && attempts < 3) {
                             val response = liveRepository.getLiveRecommend()
-                            response.list
-                                .map { it.toCardData() }
+                            val candidates =
+                                filterBlockedLiveCards(
+                                    response.list.map { it.toCardData() },
+                                    blockedUps,
+                                    blockedAreas,
+                                )
+                            candidates
                                 .filter { it.roomId !in existingIds }
                                 .filter { seenInBatch.add(it.roomId) }
                                 .let { newItems.addAll(it) }
@@ -214,6 +228,30 @@ class LiveHomeViewModel
                 }
             }
         }
+
+        /**
+         * 屏蔽指定主播，并刷新关注与推荐列表使屏蔽立即生效。
+         *
+         * @param mid 主播 UID，非正数忽略。
+         */
+        fun blockUp(mid: Long) {
+            if (mid <= 0L) return
+            BlockedLiveStore.blockUp(mid)
+            loadFollowLive()
+            loadRecommend()
+        }
+
+        /**
+         * 屏蔽指定父分区，并刷新关注与推荐列表使屏蔽立即生效。
+         *
+         * @param parentAreaId 父分区 ID，非正数忽略。
+         */
+        fun blockArea(parentAreaId: Int) {
+            if (parentAreaId <= 0) return
+            BlockedLiveStore.blockArea(parentAreaId)
+            loadFollowLive()
+            loadRecommend()
+        }
     }
 
 private fun FollowLiveRoom.toCardData(): LiveRoomCardData {
@@ -227,6 +265,7 @@ private fun FollowLiveRoom.toCardData(): LiveRoomCardData {
         face = face,
         areaV2Name = areaV2Name,
         areaV2ParentName = areaV2ParentName,
+        parentAreaId = areaV2ParentId,
         onlineString = formatOnlineCount(online),
         watchedString = "",
     )
@@ -243,6 +282,7 @@ private fun LiveRoomItem.toCardData(): LiveRoomCardData {
         face = face,
         areaV2Name = areaV2Name,
         areaV2ParentName = areaV2ParentName,
+        parentAreaId = areaV2ParentId,
         onlineString = formatOnlineCount(online),
         watchedString = watchedShow?.textSmall ?: "",
     )
