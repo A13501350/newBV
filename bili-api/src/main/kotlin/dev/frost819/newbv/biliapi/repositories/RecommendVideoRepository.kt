@@ -125,4 +125,18 @@ class RecommendVideoRepository(
             nextPage = nextPage,
         )
     }
+
+    /**
+     * 上报推荐流负反馈（不感兴趣/不想看此UP主）。
+     *
+     * @param aid 稿件 avid
+     * @param reason 负反馈原因：1 = 不感兴趣，4 = 不想看此UP主
+     * @param feedbackId 负反馈选项 ID（推荐卡片 three_point.feedbacks 首项的 id）
+     * @return Pair(上报是否成功, 服务器返回的 message)
+     */
+    suspend fun sendFeedDislike(
+        aid: Long,
+        reason: Int,
+        feedbackId: Int,
+    ): Pair<Boolean, String> = BiliHttpApi.sendFeedDislike(aid, reason, feedbackId)
 }
