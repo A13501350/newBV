@@ -640,10 +640,13 @@ class CommentViewModel
                             _uiState.value.commentLists[sort]?.replyList(rootRpid)
                                 ?: ReplyListState(rootRpid = rootRpid)
                         val existing = current.replies.mapTo(HashSet()) { it.rpid }
-                        val appended = result.comments.filter { it.rpid != rootRpid && it.rpid !in existing }
+                        // 首页是整体替换：只过滤根评论自身并在页内去重；与旧列表的去重仅用于
+                        // 后续页追加，否则重载第一页（如回复成功后刷新）时旧内容会把新首页过滤成空列表
+                        val fresh = result.comments.filter { it.rpid != rootRpid }.distinctBy { it.rpid }
+                        val appended = fresh.filter { it.rpid !in existing }
                         updateReplyList(rootRpid, sort) {
                             it.copy(
-                                replies = if (isFirst) appended else it.replies + appended,
+                                replies = if (isFirst) fresh else it.replies + appended,
                                 page = result.page,
                                 total = result.total,
                                 // 若后续页全部为重复项则停止分页
