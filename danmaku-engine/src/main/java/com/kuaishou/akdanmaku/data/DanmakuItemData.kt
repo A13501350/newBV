@@ -78,6 +78,10 @@ class DanmakuItemData(
      */
     var userId: Long? = null,
     var mergedType: Int = MERGED_TYPE_NORMAL,
+    /**
+     * 是否为高赞弹幕（B 站 attr bit2），渲染时在右上角附加点赞小图标
+     */
+    val highLike: Boolean = false,
 ) : Comparable<DanmakuItemData> {
     val isImportant: Boolean
         get() = score > 0

@@ -467,6 +467,7 @@ class DanmakuViewModel
                     },
                 textSize = size,
                 textColor = color,
+                highLike = highLike,
             )
 
         /**

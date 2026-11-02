@@ -39,6 +39,11 @@ data class DanmakuData(
     val text: String,
     /** AI 云屏蔽评分（来自 seg 响应的 ai_flag）；Web 通道实测恒为 0，0 表示未下发评分 */
     val aiFlagScore: Int = 0,
+    /**
+     * 是否为高赞弹幕（protobuf `DanmakuElem.attr` bit2，DMAttrHighLike）。
+     * XML 通道无该字段，恒为 false。
+     */
+    val highLike: Boolean = false,
 ) {
     companion object {
         fun fromString(
@@ -84,6 +89,8 @@ data class DanmakuData(
                 level = elem.weight,
                 text = elem.content,
                 aiFlagScore = aiFlagScore,
+                // attr 位标志（bin 求与）：bit2（值为 4）= 高赞弹幕
+                highLike = (elem.attr and 4) != 0,
             )
     }
 }
