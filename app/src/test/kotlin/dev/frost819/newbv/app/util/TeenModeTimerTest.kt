@@ -250,6 +250,22 @@ class TeenModeTimerTest {
     }
 
     @Test
+    fun `time after onPlayStop is not counted by later tick`() {
+        // Given: 播放 1 分钟后停止（对齐退出播放器时的 onDispose 兜底结算）
+        TeenModeTimer.onPlayStart()
+        clock.advanceElapsed(60_000L)
+        TeenModeTimer.onPlayStop()
+
+        // When: 停止后流逝 20 分钟（用户在其它页面浏览），随后周期结算被调用
+        clock.advanceElapsed(20 * 60_000L)
+        TeenModeTimer.tick()
+        TeenModeTimer.refresh()
+
+        // Then: 非播放时间不计入累计
+        assertThat(TeenModeTimer.state.value.watchedMs).isEqualTo(60_000L)
+    }
+
+    @Test
     fun `settings change resets accumulation and rest`() {
         // Given: 已累计并进入休息
         TeenModeTimer.onPlayStart()
