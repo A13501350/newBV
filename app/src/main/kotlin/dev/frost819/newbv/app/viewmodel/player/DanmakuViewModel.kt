@@ -441,8 +441,7 @@ class DanmakuViewModel
          * 云屏蔽正则预过滤：内容命中任一云屏蔽正则时剔除该弹幕。
          * 语义与引擎数据过滤器一致（返回 true 表示屏蔽）。
          */
-        private fun DanmakuData.matchesCloudShieldRegex(): Boolean =
-            cloudShieldRegexes.any { it.containsMatchIn(text) }
+        private fun DanmakuData.matchesCloudShieldRegex(): Boolean = cloudShieldRegexes.any { it.containsMatchIn(text) }
 
         /**
          * 拉取（或强制刷新）云屏蔽规则并重新应用。
