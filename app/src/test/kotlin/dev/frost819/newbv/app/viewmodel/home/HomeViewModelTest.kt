@@ -726,7 +726,10 @@ class HomeViewModelTest {
                     recommendRepo.sendFeedDislike(aid = 1L, reason = 1, feedbackId = 42)
                 }
                 assertThat(viewModel.uiState.value.recommendItems).hasSize(1)
-                assertThat(viewModel.uiState.value.recommendItems[0].aid).isEqualTo(2L)
+                assertThat(
+                    viewModel.uiState.value.recommendItems[0]
+                        .aid,
+                ).isEqualTo(2L)
 
                 val effect = awaitItem()
                 assertThat(effect).isInstanceOf(HomeEffect.ShowToast::class.java)
