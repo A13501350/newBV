@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.lifecycle.SavedStateHandle
 import com.google.common.truth.Truth.assertThat
 import dev.frost819.newbv.app.data.BlockedLiveStore
+import dev.frost819.newbv.app.ui.screen.live.LiveAreaListViewModel
 import dev.frost819.newbv.biliapi.http.entity.live.AreaLiveListResult
 import dev.frost819.newbv.biliapi.http.entity.live.LiveRoomItem
 import dev.frost819.newbv.biliapi.repositories.LiveRepository
