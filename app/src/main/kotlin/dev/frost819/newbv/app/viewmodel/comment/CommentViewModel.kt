@@ -7,6 +7,7 @@ import dev.frost819.newbv.biliapi.entity.ApiType
 import dev.frost819.newbv.biliapi.entity.comment.Comment
 import dev.frost819.newbv.biliapi.repositories.CommentRepository
 import dev.frost819.newbv.core.log.Loggers
+import dev.frost819.newbv.data.repository.AccountRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
@@ -22,6 +23,18 @@ import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 
 private const val COMMENT_LOAD_TIMEOUT_MS = 10_000L
+
+/** 评论内容字数上限（与 B 站 Web 端一致，约 1000 字）。 */
+const val MAX_REPLY_LENGTH = 1000
+
+/** 未登录时发表评论的引导提示。 */
+internal const val REPLY_LOGIN_PROMPT = "请先登录后再发表评论"
+
+/** 命中 B 站风控（-412/-352 等）时的提示。 */
+private const val REPLY_RISK_CONTROL_PROMPT = "发送过于频繁或被风控拦截，请稍后再试"
+
+/** B 站风控类错误 message 的常见关键字（含错误码）。 */
+private val RISK_CONTROL_MARKERS = listOf("拦截", "风控", "频繁", "-412", "-352")
 
 /*
  * 评论区数据层级：
@@ -117,12 +130,47 @@ data class CommentListState(
     internal fun canLoadMore(): Boolean = loaded && !initialLoading && !loadingMore && hasMore
 }
 
+/**
+ * 回复目标。
+ *
+ * [rootRpid] 与 [parentRpid] 同时为 null 表示发表主评论；楼中楼回复时两者均非空。
+ *
+ * @property rootRpid 楼中楼根评论 ID，发表主评论时为 null
+ * @property parentRpid 被回复评论 ID，发表主评论时为 null（回复根评论时与 [rootRpid] 相同）
+ * @property quotedAuthor 被回复用户名，用于弹窗展示，发表主评论时为空串
+ * @property quotedMessage 被回复内容，用于弹窗展示，发表主评论时为空串
+ */
+data class ReplyTarget(
+    val rootRpid: Long? = null,
+    val parentRpid: Long? = null,
+    val quotedAuthor: String = "",
+    val quotedMessage: String = "",
+)
+
+/**
+ * 回复输入弹窗状态。
+ *
+ * @property target 回复目标，null 表示发表主评论
+ * @property draft 当前输入内容，发送成功后随弹窗关闭清空，失败时保留
+ * @property submitting 是否正在提交，提交期间忽略重复发送（防抖）
+ * @property error 发送失败或未登录的提示文案，null 表示无错误
+ * @property notLoggedIn 是否因未登录被拦截（引导登录态）
+ */
+data class ReplyInputState(
+    val target: ReplyTarget? = null,
+    val draft: String = "",
+    val submitting: Boolean = false,
+    val error: String? = null,
+    val notLoggedIn: Boolean = false,
+)
+
 /** 评论弹窗 UI 状态。 */
 data class CommentUiState(
     val aid: Long = 0L,
     val sort: CommentSort = CommentSort.Hot,
     val commentLists: Map<CommentSort, CommentListState> = emptyMap(),
     val likingIds: Set<Long> = emptySet(),
+    val replyInput: ReplyInputState? = null,
 ) {
     /** 当前排序对应的评论分页状态。 */
     val commentList: CommentListState get() = commentLists[sort] ?: CommentListState()
@@ -177,17 +225,19 @@ internal fun ReplyListState.canLoadMore(): Boolean = loaded && !initialLoading &
 /**
  * 评论弹窗 ViewModel。
  *
- * 负责主评论分页、楼中楼按需分页加载、评论点赞。热门与最新各自缓存，切换排序时
- * 命中缓存则不重新请求。所有请求使用 generation + aid/sort/root 校验，避免切换
- * 视频、切换排序或快速刷新时旧响应污染当前状态。
+ * 负责主评论分页、楼中楼按需分页加载、评论点赞与评论/楼中楼回复发表。热门与最新
+ * 各自缓存，切换排序时命中缓存则不重新请求。所有请求使用 generation + aid/sort/root
+ * 校验，避免切换视频、切换排序或快速刷新时旧响应污染当前状态。
  *
  * @param commentRepository 评论数据仓库
+ * @param accountRepository 账户仓库，用于发表评论前的登录守卫
  */
 @HiltViewModel
 class CommentViewModel
     @Inject
     constructor(
         private val commentRepository: CommentRepository,
+        private val accountRepository: AccountRepository,
     ) : ViewModel() {
         private val logger = Loggers.get("CommentViewModel")
 
@@ -394,6 +444,121 @@ class CommentViewModel
             }
         }
 
+        /**
+         * 打开回复输入弹窗。
+         *
+         * 未登录时不进入编辑态，直接置引导态提示用户先登录。
+         *
+         * @param target 回复目标，null 表示发表主评论
+         */
+        fun openReplyInput(target: ReplyTarget?) {
+            val loggedIn = accountRepository.isLogin()
+            _uiState.update {
+                it.copy(
+                    replyInput =
+                        ReplyInputState(
+                            target = target,
+                            notLoggedIn = !loggedIn,
+                            error = if (loggedIn) null else REPLY_LOGIN_PROMPT,
+                        ),
+                )
+            }
+        }
+
+        /**
+         * 更新回复输入内容。
+         *
+         * 超出 [MAX_REPLY_LENGTH] 的部分被截断；非未登录引导态下编辑时清除上次的错误提示。
+         *
+         * @param text 新的输入内容
+         */
+        fun updateReplyDraft(text: String) {
+            _uiState.update { state ->
+                val input = state.replyInput ?: return@update state
+                state.copy(
+                    replyInput =
+                        input.copy(
+                            draft = text.take(MAX_REPLY_LENGTH),
+                            error = if (input.notLoggedIn) input.error else null,
+                        ),
+                )
+            }
+        }
+
+        /** 关闭回复输入弹窗并丢弃未发送的草稿。 */
+        fun dismissReplyInput() {
+            _uiState.update { it.copy(replyInput = null) }
+        }
+
+        /**
+         * 提交当前回复。
+         *
+         * 流程：登录守卫 → 空内容守卫 → 发送中防抖 → 调用仓库发表 → 成功后关闭弹窗并
+         * 刷新对应列表；失败保留输入并置错误提示。
+         */
+        fun submitReply() {
+            val state = _uiState.value
+            val input = state.replyInput ?: return
+            if (input.submitting || input.notLoggedIn) return
+            val draft = input.draft.trim()
+            if (draft.isEmpty()) return
+            val aid = state.aid
+            if (aid <= 0L) return
+            // 会话可能在弹窗打开后变化，提交前再做一次登录校验
+            if (!accountRepository.isLogin()) {
+                _uiState.update { current ->
+                    current.copy(
+                        replyInput = current.replyInput?.copy(notLoggedIn = true, error = REPLY_LOGIN_PROMPT),
+                    )
+                }
+                return
+            }
+            _uiState.update { current ->
+                current.copy(replyInput = current.replyInput?.copy(submitting = true, error = null))
+            }
+            viewModelScope.launch {
+                try {
+                    commentRepository.addReply(
+                        aid = aid,
+                        message = draft,
+                        rootOid = input.target?.rootRpid,
+                        parentOid = input.target?.parentRpid,
+                        preferApiType = ApiType.Web,
+                    )
+                    _uiState.update { it.copy(replyInput = null) }
+                    refreshAfterReply(input.target?.rootRpid)
+                    _uiEffect.emit(CommentUiEffect.ShowToast("发表成功"))
+                } catch (error: Throwable) {
+                    rethrowCancellation(error)
+                    logger.error(error) { "Failed to submit reply: aid=$aid, rootRpid=${input.target?.rootRpid}" }
+                    _uiState.update { current ->
+                        current.copy(
+                            replyInput =
+                                current.replyInput?.copy(
+                                    submitting = false,
+                                    error = replyErrorMessage(error),
+                                ),
+                        )
+                    }
+                }
+            }
+        }
+
+        /**
+         * 回复发送成功后刷新对应列表。
+         *
+         * 主评论刷新当前排序首页；楼中楼重载该根评论的第一页并保持展开
+         * （复用 [startRepliesLoad]，列表状态不存在时自动创建）。
+         */
+        private fun refreshAfterReply(rootRpid: Long?) {
+            if (rootRpid == null) {
+                refresh()
+                return
+            }
+            val state = _uiState.value
+            startRepliesLoad(sort = state.sort, aid = state.aid, rootRpid = rootRpid, page = 1)
+        }
+
         private fun startCommentsLoad(
             sort: CommentSort,
             aid: Long,
@@ -578,6 +743,21 @@ class CommentViewModel
 
         private fun rethrowCancellation(error: Throwable) {
             if (error is CancellationException && error !is TimeoutCancellationException) throw error
+        }
+
+        /**
+         * 将发表评论的异常转换为面向用户的提示。
+         *
+         * B 站错误码（-412 风控、-352 等）经仓库以 message 透传，此处按常见文案归类
+         * 为友好提示，未识别的错误原样透出。
+         */
+        private fun replyErrorMessage(error: Throwable): String {
+            val message = error.message.orEmpty()
+            return when {
+                RISK_CONTROL_MARKERS.any { message.contains(it) } -> REPLY_RISK_CONTROL_PROMPT
+                message.contains("登录") -> REPLY_LOGIN_PROMPT
+                else -> message.ifBlank { "评论发送失败" }
+            }
         }
     }
 
