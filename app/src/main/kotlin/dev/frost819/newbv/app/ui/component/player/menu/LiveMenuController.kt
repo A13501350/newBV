@@ -245,6 +245,7 @@ private fun LiveMenuList(
                     currentSpeedFactor = danmakuState.speedFactor,
                     currentArea = danmakuState.area,
                     currentMaskEnabled = danmakuState.maskEnabled,
+                    currentCloudShieldEnabled = danmakuState.cloudShieldEnabled,
                     onDanmakuSwitchChange = { types ->
                         val entityTypes =
                             types.mapNotNull {
@@ -259,6 +260,8 @@ private fun LiveMenuList(
                     onDanmakuAreaChange = { onDanmakuSettingChange(DanmakuSettingAction.SetArea(it)) },
                     onFocusStateChange = onFocusStateChange,
                     onDanmakuMaskChange = { onDanmakuSettingChange(DanmakuSettingAction.SetMaskEnabled(it)) },
+                    onCloudShieldChange = { onDanmakuSettingChange(DanmakuSettingAction.SetCloudShieldEnabled(it)) },
+                    onCloudShieldRefresh = { onDanmakuSettingChange(DanmakuSettingAction.RefreshCloudShield) },
                 )
             }
         }

@@ -14,6 +14,7 @@ import dev.frost819.newbv.biliapi.repositories.AuthRepository
 import dev.frost819.newbv.biliapi.repositories.ChannelRepository
 import dev.frost819.newbv.biliapi.repositories.CoinRepository
 import dev.frost819.newbv.biliapi.repositories.CommentRepository
+import dev.frost819.newbv.biliapi.repositories.DanmakuShieldRepository
 import dev.frost819.newbv.biliapi.repositories.FavoriteRepository
 import dev.frost819.newbv.biliapi.repositories.HistoryRepository
 import dev.frost819.newbv.biliapi.repositories.LikeRepository
@@ -293,6 +294,15 @@ object NetworkModule {
         authRepository: AuthRepository,
         channelRepository: ChannelRepository,
     ): VideoPlayRepository = VideoPlayRepository(authRepository, channelRepository)
+
+    /**
+     * 提供 [DanmakuShieldRepository] 单例。
+     *
+     * 拉取并内存缓存 B 站账号同步的弹幕云屏蔽规则（x/dm/filter/user）。
+     */
+    @Provides
+    @Singleton
+    fun provideDanmakuShieldRepository(): DanmakuShieldRepository = DanmakuShieldRepository()
 
     /**
      * 提供 [AccountRepository] 单例。

@@ -62,6 +62,8 @@ import dev.frost819.newbv.data.datastore.VideoCodec
  * @param onDanmakuSpeedFactorChange 弹幕速度变化回调
  * @param onDanmakuAreaChange 弹幕区域变化回调
  * @param onDanmakuMaskChange 弹幕蒙版变化回调
+ * @param onCloudShieldChange 云屏蔽开关变化回调
+ * @param onCloudShieldRefresh 手动刷新云屏蔽规则回调
  * @param onSubtitleChange 字幕轨道变化回调
  * @param onSubtitleSizeChange 字幕大小变化回调
  * @param onSubtitleBackgroundOpacityChange 字幕透明度变化回调
@@ -84,6 +86,8 @@ fun MenuController(
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit = {},
+    onCloudShieldChange: (Boolean) -> Unit = {},
+    onCloudShieldRefresh: () -> Unit = {},
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (Int) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -123,6 +127,8 @@ fun MenuController(
                 onDanmakuSpeedFactorChange = onDanmakuSpeedFactorChange,
                 onDanmakuAreaChange = onDanmakuAreaChange,
                 onDanmakuMaskChange = onDanmakuMaskChange,
+                onCloudShieldChange = onCloudShieldChange,
+                onCloudShieldRefresh = onCloudShieldRefresh,
                 onSubtitleChange = onSubtitleChange,
                 onSubtitleSizeChange = onSubtitleSizeChange,
                 onSubtitleBackgroundOpacityChange = onSubtitleBackgroundOpacityChange,
@@ -150,6 +156,8 @@ private fun MenuControllerContent(
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
+    onCloudShieldChange: (Boolean) -> Unit,
+    onCloudShieldRefresh: () -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (Int) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -186,6 +194,8 @@ private fun MenuControllerContent(
                     onDanmakuSpeedFactorChange = onDanmakuSpeedFactorChange,
                     onDanmakuAreaChange = onDanmakuAreaChange,
                     onDanmakuMaskChange = onDanmakuMaskChange,
+                    onCloudShieldChange = onCloudShieldChange,
+                    onCloudShieldRefresh = onCloudShieldRefresh,
                     onFocusStateChange = { focusState = it },
                     onSubtitleChange = onSubtitleChange,
                     onSubtitleSizeChange = onSubtitleSizeChange,
@@ -235,6 +245,8 @@ private fun MenuList(
     onDanmakuSpeedFactorChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
+    onCloudShieldChange: (Boolean) -> Unit,
+    onCloudShieldRefresh: () -> Unit,
     onFocusStateChange: (MenuFocusState) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (Int) -> Unit,
@@ -280,6 +292,7 @@ private fun MenuList(
                     currentSpeedFactor = uiState.danmakuState.speedFactor,
                     currentArea = uiState.danmakuState.area,
                     currentMaskEnabled = uiState.danmakuState.maskEnabled,
+                    currentCloudShieldEnabled = uiState.danmakuState.cloudShieldEnabled,
                     onDanmakuSwitchChange = onDanmakuSwitchChange,
                     onDanmakuSizeChange = onDanmakuSizeChange,
                     onDanmakuOpacityChange = onDanmakuOpacityChange,
@@ -287,6 +300,8 @@ private fun MenuList(
                     onDanmakuAreaChange = onDanmakuAreaChange,
                     onFocusStateChange = onFocusStateChange,
                     onDanmakuMaskChange = onDanmakuMaskChange,
+                    onCloudShieldChange = onCloudShieldChange,
+                    onCloudShieldRefresh = onCloudShieldRefresh,
                 )
             }
 

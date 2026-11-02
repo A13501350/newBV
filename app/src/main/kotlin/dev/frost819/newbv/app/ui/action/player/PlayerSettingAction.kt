@@ -30,6 +30,20 @@ sealed interface DanmakuSettingAction {
         val enabled: Boolean,
     ) : DanmakuSettingAction
 
+    /**
+     * 设置云屏蔽开关。
+     *
+     * @param enabled true 表示应用 B 站账号同步的云屏蔽规则
+     */
+    data class SetCloudShieldEnabled(
+        val enabled: Boolean,
+    ) : DanmakuSettingAction
+
+    /**
+     * 手动刷新云屏蔽规则（无载荷的动作型指令）。
+     */
+    data object RefreshCloudShield : DanmakuSettingAction
+
     data class SetEnabledTypes(
         val types: List<DanmakuType>,
     ) : DanmakuSettingAction

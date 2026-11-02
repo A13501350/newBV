@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kuaishou.akdanmaku.DanmakuConfig
 import com.kuaishou.akdanmaku.data.DanmakuItemData
+import com.kuaishou.akdanmaku.ecs.component.filter.BlockedTextFilter
 import com.kuaishou.akdanmaku.ecs.component.filter.TypeFilter
 import com.kuaishou.akdanmaku.render.SimpleRenderer
 import com.kuaishou.akdanmaku.ui.DanmakuPlayer
@@ -18,6 +19,8 @@ import dev.frost819.newbv.biliapi.entity.ApiType
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMask
 import dev.frost819.newbv.biliapi.entity.danmaku.DanmakuMeta
 import dev.frost819.newbv.biliapi.http.entity.danmaku.DanmakuData
+import dev.frost819.newbv.biliapi.repositories.DanmakuShieldRepository
+import dev.frost819.newbv.biliapi.repositories.DanmakuShieldRules
 import dev.frost819.newbv.biliapi.repositories.VideoPlayRepository
 import dev.frost819.newbv.core.log.Loggers
 import dev.frost819.newbv.danmaku.config.DanmakuState
@@ -44,7 +47,7 @@ import dev.frost819.newbv.data.datastore.DanmakuType as DataDanmakuType
  * 弹幕 ViewModel。
  *
  * 管理弹幕播放器生命周期、弹幕数据加载（分段 → [DanmakuItemData]）、
- * 弹幕配置（大小/透明度/区域/速度/类型/蒙版）、播放同步。
+ * 弹幕配置（大小/透明度/区域/速度/类型/蒙版/云屏蔽）、播放同步。
  *
  * 弹幕数据采用分段加载（每段时长由 dm/view 元数据决定，通常 6 分钟）：
  * - [loadDanmaku] 获取元数据并按初始位置加载首段
@@ -65,6 +68,7 @@ class DanmakuViewModel
     @Inject
     constructor(
         private val videoPlayRepository: VideoPlayRepository,
+        private val danmakuShieldRepository: DanmakuShieldRepository,
     ) : ViewModel() {
         private val logger = Loggers.get("DanmakuViewModel")
 
@@ -86,6 +90,22 @@ class DanmakuViewModel
         private var danmakuConfig = DanmakuConfig()
         private val danmakuTypeFilter = TypeFilter()
 
+        /**
+         * 云屏蔽关键字/用户过滤器，与 [danmakuTypeFilter] 一并注入引擎 dataFilter。
+         * `selfPredicate` 承载用户规则（midHash 比对），`filterSet` 承载关键字规则。
+         * internal 可见性仅为单元测试断言过滤器的组装结果。
+         */
+        internal val cloudShieldTextFilter =
+            BlockedTextFilter { userId -> userId != null && userId in cloudShieldBlockedUserHashes }
+
+        /** 当前云屏蔽用户规则命中的 midHash（8 位 hex 转 Long），供 [cloudShieldTextFilter] 闭包读取。 */
+        internal var cloudShieldBlockedUserHashes: Set<Long> = emptySet()
+            private set
+
+        /** 当前云屏蔽正则规则，在分段数据进入引擎前于 VM 层预过滤。 */
+        internal var cloudShieldRegexes: List<Regex> = emptyList()
+            private set
+
         private val _danmakuState =
             MutableStateFlow(
                 DanmakuState(
@@ -94,6 +114,7 @@ class DanmakuViewModel
                     area = Prefs.defaultDanmakuArea,
                     speedFactor = Prefs.defaultDanmakuSpeedFactor,
                     maskEnabled = Prefs.defaultDanmakuMask,
+                    cloudShieldEnabled = Prefs.cloudShieldEnabled,
                     enabledTypes = Prefs.defaultDanmakuTypes.map { it.toDanmakuEntity() },
                 ),
             )
@@ -216,6 +237,8 @@ class DanmakuViewModel
             danmakuPlayer?.clearData()
 
             viewModelScope.launch {
+                // 登录时拉取一次云屏蔽规则（内存缓存命中则零开销）；失败静默降级不阻塞弹幕加载
+                refreshCloudShieldRules(forceRefresh = false)
                 // 元数据决定分段大小与总数；失败仅记日志，回退默认分段大小继续加载
                 val meta =
                     runCatching {
@@ -358,7 +381,11 @@ class DanmakuViewModel
                                     preferApiType = if (Prefs.apiType == DataApiType.App) ApiType.App else ApiType.Web,
                                 )
                             }
-                        val items = dataList.map { it.toDanmakuItemData() }
+                        val items =
+                            dataList
+                                // 云屏蔽正则在 VM 层预过滤（语义与引擎数据过滤器一致：命中即剔除）
+                                .filterNot { it.matchesCloudShieldRegex() }
+                                .map { it.toDanmakuItemData() }
                         // akdanmaku 内部维护有序数据并懒排序，无需预先排序
                         danmakuPlayer?.updateData(items)
                         loadedSegments.add(segmentIndex)
@@ -406,7 +433,66 @@ class DanmakuViewModel
                     },
                 textSize = size,
                 textColor = Color(color).toArgb(),
+                // midHash 为 CRC32(mid) 的 8 位 hex，转 Long 供引擎用户屏蔽规则比对
+                userId = midHash.toLongOrNull(16),
             )
+
+        /**
+         * 云屏蔽正则预过滤：内容命中任一云屏蔽正则时剔除该弹幕。
+         * 语义与引擎数据过滤器一致（返回 true 表示屏蔽）。
+         */
+        private fun DanmakuData.matchesCloudShieldRegex(): Boolean =
+            cloudShieldRegexes.any { it.containsMatchIn(text) }
+
+        /**
+         * 拉取（或强制刷新）云屏蔽规则并重新应用。
+         *
+         * 未登录（仓库返回空规则）或请求失败时静默降级：保留当前规则不变，
+         * 仅记日志，不阻塞弹幕加载。
+         *
+         * @param forceRefresh true 时绕过仓库缓存强制重新拉取（菜单手动刷新入口）
+         */
+        private suspend fun refreshCloudShieldRules(forceRefresh: Boolean) {
+            if (!Prefs.cloudShieldEnabled) return
+            runCatching {
+                withTimeout(CLOUD_SHIELD_FETCH_TIMEOUT_MS) {
+                    danmakuShieldRepository.getRules(forceRefresh)
+                }
+            }.onSuccess { rules ->
+                applyCloudShieldRules(rules)
+            }.onFailure { e ->
+                // 超时以外的取消（如 ViewModel 销毁）必须上抛，避免破坏协程取消机制
+                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                logger.warn { "Load danmaku cloud shield rules failed, degrade silently: $e" }
+            }
+        }
+
+        /**
+         * 将云屏蔽规则应用到引擎过滤器与预过滤状态。
+         *
+         * - 关键字 → [cloudShieldTextFilter] 的 filterSet（引擎在弹幕出场时评估，可追溯生效）
+         * - 用户规则 → [cloudShieldBlockedUserHashes]（经 selfPredicate 在引擎侧比对 midHash）
+         * - 正则 → [cloudShieldRegexes]（分段数据进入引擎前预过滤，仅对新加载分段生效）
+         *
+         * 全部受 [Prefs.cloudShieldEnabled] 开关控制，关闭时清空应用状态。
+         */
+        private fun applyCloudShieldRules(rules: DanmakuShieldRules) {
+            val enabled = Prefs.cloudShieldEnabled
+            cloudShieldRegexes = if (enabled) rules.regexes else emptyList()
+            cloudShieldBlockedUserHashes =
+                if (enabled) {
+                    rules.blockedUserMidHashes.mapNotNull { it.toLongOrNull(16) }.toSet()
+                } else {
+                    emptySet()
+                }
+            cloudShieldTextFilter.clear()
+            if (enabled) {
+                rules.keywords.forEach { cloudShieldTextFilter.addFilterItem(it) }
+            }
+            // 过滤条件变化后必须递增 filterGeneration，让引擎重新评估已出场弹幕
+            danmakuConfig.updateFilter()
+            danmakuPlayer?.updateConfig(danmakuConfig)
+        }
 
         /**
          * 加载当前视频的弹幕防遮挡蒙版。
@@ -487,6 +573,11 @@ class DanmakuViewModel
          * 同时更新内存状态、akdanmaku 配置和 Prefs 持久化。
          */
         fun updateDanmakuState(action: DanmakuSettingAction) {
+            // 动作型指令：手动刷新云屏蔽规则，不改变任何状态
+            if (action is DanmakuSettingAction.RefreshCloudShield) {
+                viewModelScope.launch { refreshCloudShieldRules(forceRefresh = true) }
+                return
+            }
             val old = _danmakuState.value
             val new =
                 when (action) {
@@ -495,6 +586,7 @@ class DanmakuViewModel
                     is DanmakuSettingAction.SetArea -> old.copy(area = action.area)
                     is DanmakuSettingAction.SetSpeedFactor -> old.copy(speedFactor = action.factor)
                     is DanmakuSettingAction.SetMaskEnabled -> old.copy(maskEnabled = action.enabled)
+                    is DanmakuSettingAction.SetCloudShieldEnabled -> old.copy(cloudShieldEnabled = action.enabled)
                     is DanmakuSettingAction.SetEnabledTypes -> old.copy(enabledTypes = action.types)
                 }
             if (old == new) return
@@ -527,6 +619,15 @@ class DanmakuViewModel
                     loadDanmakuMask()
                 }
             }
+            if (new.cloudShieldEnabled != old.cloudShieldEnabled) {
+                Prefs.cloudShieldEnabled = new.cloudShieldEnabled
+                if (new.cloudShieldEnabled) {
+                    // 打开时补拉取规则（仓库缓存命中则立即生效）；关闭时清空应用状态
+                    viewModelScope.launch { refreshCloudShieldRules(forceRefresh = false) }
+                } else {
+                    applyCloudShieldRules(DanmakuShieldRules.EMPTY)
+                }
+            }
         }
 
         private fun initDanmakuConfig() {
@@ -556,7 +657,7 @@ class DanmakuViewModel
                     density = 120,
                     textSizeScale = scale,
                     screenPart = area,
-                    dataFilter = listOf(danmakuTypeFilter),
+                    dataFilter = listOf(danmakuTypeFilter, cloudShieldTextFilter),
                     rollingSpeedFactor = factor,
                 )
             danmakuConfig.updateFilter()
@@ -603,6 +704,14 @@ class DanmakuViewModel
 
         companion object {
             private const val LOAD_TIMEOUT_MS = 10_000L
+
+            /**
+             * 云屏蔽规则拉取超时（毫秒）。
+             *
+             * 首个视频起播会同步等待一次规则拉取，超时须短于常规请求，
+             * 保证未登录/弱网时尽快静默降级、不阻塞弹幕加载。
+             */
+            private const val CLOUD_SHIELD_FETCH_TIMEOUT_MS = 5_000L
 
             /**
              * 引擎时钟与视频位置的对齐阈值（毫秒）。
