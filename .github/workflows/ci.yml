@@ -31,6 +31,7 @@ jobs:
 
   apk:
     name: Debug APK
+    needs: check
     runs-on: ubuntu-latest
 
     steps:
