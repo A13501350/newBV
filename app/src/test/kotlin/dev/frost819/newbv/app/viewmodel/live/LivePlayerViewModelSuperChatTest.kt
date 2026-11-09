@@ -41,6 +41,7 @@ class LivePlayerViewModelSuperChatTest {
                 liveRepository = mockk(relaxed = true),
                 exoPlayerFactory = mockk(relaxed = true),
                 videoCapabilityProvider = mockk(relaxed = true),
+                danmakuFilterRepository = mockk(relaxed = true),
             )
     }
 
