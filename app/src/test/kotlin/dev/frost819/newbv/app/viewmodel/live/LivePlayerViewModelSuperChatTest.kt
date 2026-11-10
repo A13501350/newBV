@@ -23,8 +23,8 @@ import org.junit.jupiter.api.Test
 /**
  * [LivePlayerViewModel] 醒目留言（SC）队列逻辑的单元测试。
  *
- * 通过反射驱动 `handleLiveEvent` 派发 SC 事件（private 入口，生产代码由 WebSocket
- * 事件流调用），用 Turbine 观察状态流、有界虚拟时间（advanceTimeBy + runCurrent，
+ * 直调 internal 的 `handleLiveEvent` 派发 SC 事件（生产代码由 WebSocket 事件流调用），
+ * 用 Turbine 观察状态流、有界虚拟时间（advanceTimeBy + runCurrent，
  * 不用 advanceUntilIdle，见 AGENTS.md 11.5.4）验证到期移除；
  * 不触发 loadLive 的网络与 WebSocket。
  */
@@ -149,11 +149,9 @@ class LivePlayerViewModelSuperChatTest {
 
     // ── Helpers ──────────────────────────────────────────────
 
-    /** 通过反射调用 private 的 `handleLiveEvent` 派发直播事件。 */
+    /** 直调 internal 的 [LivePlayerViewModel.handleLiveEvent] 派发直播事件。 */
     private fun fireLiveEvent(event: LiveEvent) {
-        val method = LivePlayerViewModel::class.java.getDeclaredMethod("handleLiveEvent", LiveEvent::class.java)
-        method.isAccessible = true
-        method.invoke(viewModel, event)
+        viewModel.handleLiveEvent(event)
     }
 
     private fun superChatEvent(
