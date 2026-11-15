@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,8 +19,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
 
@@ -138,6 +141,9 @@ object Prefs {
 
     /** 持久化写入互斥锁，避免并发 edit 冲突。 */
     private val persistMutex = Mutex()
+
+    /** 已入队未完成的持久化写计数（测试辅助：[awaitPersistIdle] 据此判断静默）。 */
+    private val pendingPersistCount = AtomicInteger(0)
 
     // ===== 委托工厂 =====
 
@@ -492,10 +498,32 @@ object Prefs {
      * 在持久化协程作用域中执行写操作。
      *
      * 使用互斥锁保证写入串行（DataStore 内部已串行，此处做二次保护避免并发 edit）。
+     * 写计数在调用时同步递增、协程结束时递减，保证 [awaitPersistIdle] 能观测
+     * 到「已入队但尚未开始执行」的写。
      */
     internal fun launchPersist(block: suspend () -> Unit) {
+        pendingPersistCount.incrementAndGet()
         scope.launch {
-            persistMutex.withLock { block() }
+            try {
+                persistMutex.withLock { block() }
+            } finally {
+                pendingPersistCount.decrementAndGet()
+            }
+        }
+    }
+
+    /**
+     * 等待所有已入队的持久化写完成（测试辅助）。
+     *
+     * launchPersist 为 fire-and-forget：写协程在 IO 上排队过 [persistMutex]，
+     * 高负载 CI 上固定延时不可靠（前序测试排队的写可能尚未执行），改为
+     * 有界轮询直到无进行中的写。
+     *
+     * @throws kotlinx.coroutines.TimeoutCancellationException 超时后仍有未完成的写
+     */
+    internal suspend fun awaitPersistIdle() {
+        withTimeout(10_000L) {
+            while (pendingPersistCount.get() > 0) delay(10)
         }
     }
 
