@@ -7,7 +7,6 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -458,10 +457,11 @@ class PrefsTest {
     /**
      * 等待异步写入完成。
      *
-     * Prefs 的写入是异步的（launchPersist 在 IO 协程执行），
-     * 需要短暂等待确保 DataStore 持久化完成。
+     * Prefs 的写入是异步的（launchPersist 在 IO 协程执行，且经单例
+     * persistMutex 排队），高负载 CI 上固定延时不可靠，改为轮询持久化
+     * 静默（写计数归零），确保写已落盘。
      */
     private suspend fun awaitAsyncWrite() {
-        delay(200)
+        Prefs.awaitPersistIdle()
     }
 }
