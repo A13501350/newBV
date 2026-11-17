@@ -37,6 +37,14 @@ android {
                 keyPassword = signingProperties.getProperty("releaseKeyPassword")
             }
         }
+        // 固定 debug 签名：本地与 CI 共用 gradle/debug.keystore（标准 androiddebugkey），
+        // 覆盖安装不丢登录态。签名与上游历史 debug APK 一致（SHA-256 3949e38d…）。
+        create("debugCi") {
+            storeFile = rootProject.file("gradle/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     defaultConfig {
@@ -77,6 +85,8 @@ android {
             // 章节调试设施：诊断日志级别、调试信息开关入口、示例章节注入
             buildConfigField("boolean", "VIDEO_CHAPTERS_DEBUG", "true")
             applicationIdSuffix = ".debug"
+            // 固定签名，覆盖安装不掉登录
+            signingConfig = signingConfigs.getByName("debugCi")
         }
     }
 

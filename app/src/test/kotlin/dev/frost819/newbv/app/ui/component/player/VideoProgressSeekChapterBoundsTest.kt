@@ -5,10 +5,11 @@ import dev.frost819.newbv.biliapi.entity.video.VideoChapterSegment
 import org.junit.jupiter.api.Test
 
 /**
- * [computeChapterSegmentBounds] 与 [chapterPlayedFraction] 的单元测试。
+ * [computeChapterSegmentBounds]、[chapterPlayedFraction] 与 [chapterLabelLayout] 的单元测试。
  *
  * 验证章节分段在进度条上的像素区间映射：时间比例换算、相邻分段缺口缩进
- * （抵消 StrokeCap.Round 半圆帽）、时间空隙保留、过窄分段占位不错位。
+ * （抵消 StrokeCap.Round 半圆帽）、时间空隙保留、过窄分段占位不错位，
+ * 以及章节名标签的比例布局与过窄/空白过滤。
  */
 class VideoProgressSeekChapterBoundsTest {
     private val strokeWidthPx = 8f
@@ -106,5 +107,68 @@ class VideoProgressSeekChapterBoundsTest {
 
         assertThat(chapterPlayedFraction(segment, 200L)).isEqualTo(0.5f)
         assertThat(chapterPlayedFraction(segment, 150L)).isEqualTo(0.25f)
+    }
+
+    // ── chapterLabelLayout ───────────────────────────────────
+
+    @Test
+    fun `label layout returns all null for non-positive duration`() {
+        val segments =
+            listOf(
+                VideoChapterSegment(0L, 500L, "A"),
+                VideoChapterSegment(500L, 1_000L, "B"),
+            )
+
+        assertThat(chapterLabelLayout(segments, 0L)).containsExactly(null, null).inOrder()
+        assertThat(chapterLabelLayout(segments, -1L)).containsExactly(null, null).inOrder()
+    }
+
+    @Test
+    fun `label layout maps segments to proportional left and width`() {
+        val segments =
+            listOf(
+                VideoChapterSegment(0L, 200_000L, "开场"),
+                VideoChapterSegment(200_000L, 500_000L, "正片"),
+                VideoChapterSegment(500_000L, 1_000_000L, "片尾"),
+            )
+
+        val layout = chapterLabelLayout(segments, 1_000_000L, minWidthFraction = 0.05f)
+
+        assertThat(layout).hasSize(3)
+        assertThat(layout[0]).isEqualTo(ChapterLabelLayout("开场", 0f, 0.2f))
+        assertThat(layout[1]).isEqualTo(ChapterLabelLayout("正片", 0.2f, 0.3f))
+        assertThat(layout[2]).isEqualTo(ChapterLabelLayout("片尾", 0.5f, 0.5f))
+    }
+
+    @Test
+    fun `label layout returns null for too narrow segments keeping alignment`() {
+        val segments =
+            listOf(
+                VideoChapterSegment(0L, 500_000L, "正常"),
+                VideoChapterSegment(500_000L, 505_000L, "过窄"),
+                VideoChapterSegment(505_000L, 1_000_000L, "正常2"),
+            )
+
+        val layout = chapterLabelLayout(segments, 1_000_000L)
+
+        // 返回与输入一一对应：过窄段为 null
+        assertThat(layout).hasSize(3)
+        assertThat(layout[0]).isNotNull()
+        assertThat(layout[1]).isNull()
+        assertThat(layout[2]).isNotNull()
+    }
+
+    @Test
+    fun `label layout skips blank content`() {
+        val segments =
+            listOf(
+                VideoChapterSegment(0L, 500_000L, "  "),
+                VideoChapterSegment(500_000L, 1_000_000L, "有效"),
+            )
+
+        val layout = chapterLabelLayout(segments, 1_000_000L)
+
+        assertThat(layout[0]).isNull()
+        assertThat(layout[1]?.content).isEqualTo("有效")
     }
 }
