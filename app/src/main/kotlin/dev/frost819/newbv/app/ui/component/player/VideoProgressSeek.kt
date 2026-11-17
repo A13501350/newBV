@@ -1,17 +1,25 @@
 package dev.frost819.newbv.app.ui.component.player
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import dev.frost819.newbv.biliapi.entity.video.VideoChapterSegment
 import dev.frost819.newbv.core.theme.BVTheme
 
@@ -24,7 +32,8 @@ import dev.frost819.newbv.core.theme.BVTheme
  * 播放器固定运行在深色主题下，均能保证黑底上的可见性。
  *
  * 有章节数据（[chapterSegments] 非空）时，在背景轨道上按时间比例绘制章节分段：
- * 相邻分段之间留出缺口形成可见的章节边界，播放进度按分段内比例填充。
+ * 相邻分段之间留出缺口形成可见的章节边界，播放进度按分段内比例填充；
+ * 交互模式还会在进度条上方按分段显示章节名标签（过窄的分段不显示）。
  * 无章节数据时回退为单线绘制，渲染与原行为完全一致。
  *
  * 支持两种显示模式：
@@ -59,80 +68,108 @@ fun VideoProgressSeek(
     // 分段缺口宽度（可见部分）；常显模式线更细，缺口等比缩小
     val chapterGap = if (isPersistentSeek) 1.dp else 2.dp
 
-    Canvas(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(trackWidthDp)
-                .clip(RoundedCornerShape(50)),
-    ) {
-        val trackWidthPx = trackWidthDp.toPx()
+    // 章节名标签只在交互模式、且有有效章节与时长时显示
+    val showChapterLabels = !isPersistentSeek && duration > 0 && chapterSegments.isNotEmpty()
+    val labelLayout = chapterLabelLayout(chapterSegments, duration)
 
-        // 背景轨道
-        drawLine(
-            color = inactiveTrackColor,
-            start = Offset(0f, center.y),
-            end = Offset(size.width, center.y),
-            strokeWidth = trackWidthPx,
-            cap = StrokeCap.Round,
-        )
+    Column(modifier = modifier) {
+        if (showChapterLabels) {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(ChapterLabelHeight)) {
+                val labelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                labelLayout.forEachIndexed { index, label ->
+                    if (label == null) return@forEachIndexed
+                    Text(
+                        text = label.content,
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .offset(x = maxWidth * label.leftFraction)
+                                .width(maxWidth * label.widthFraction),
+                        color = labelColor,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        }
 
-        // 章节分段高亮（有章节数据时）
-        val segmentBounds =
-            computeChapterSegmentBounds(
-                segments = chapterSegments,
-                durationMs = duration,
-                trackWidthPx = size.width,
-                strokeWidthPx = trackWidthPx,
-                gapPx = chapterGap.toPx(),
-            )
-        for ((startX, endX) in segmentBounds) {
-            if (endX <= startX) continue
+        Canvas(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(trackWidthDp)
+                    .clip(RoundedCornerShape(50)),
+        ) {
+            val trackWidthPx = trackWidthDp.toPx()
+
+            // 背景轨道
             drawLine(
-                color = chapterTrackColor,
-                start = Offset(startX, center.y),
-                end = Offset(endX, center.y),
+                color = inactiveTrackColor,
+                start = Offset(0f, center.y),
+                end = Offset(size.width, center.y),
                 strokeWidth = trackWidthPx,
                 cap = StrokeCap.Round,
             )
-        }
 
-        // 缓冲进度（仅交互模式显示）
-        if (!isPersistentSeek && bufferedPercentage > 0) {
-            drawLine(
-                color = bufferedTrackColor,
-                start = Offset(trackWidthPx / 2, center.y),
-                end = Offset(size.width * bufferedPercentage / 100, center.y),
-                strokeWidth = trackWidthPx,
-                cap = StrokeCap.Round,
-            )
-        }
-
-        // 播放进度
-        if (duration > 0) {
-            if (segmentBounds.isEmpty()) {
-                val progressRatio = (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            // 章节分段高亮（有章节数据时）
+            val segmentBounds =
+                computeChapterSegmentBounds(
+                    segments = chapterSegments,
+                    durationMs = duration,
+                    trackWidthPx = size.width,
+                    strokeWidthPx = trackWidthPx,
+                    gapPx = chapterGap.toPx(),
+                )
+            for ((startX, endX) in segmentBounds) {
+                if (endX <= startX) continue
                 drawLine(
-                    color = activeTrackColor,
-                    start = Offset(trackWidthPx / 2, center.y),
-                    end = Offset(size.width * progressRatio, center.y),
+                    color = chapterTrackColor,
+                    start = Offset(startX, center.y),
+                    end = Offset(endX, center.y),
                     strokeWidth = trackWidthPx,
                     cap = StrokeCap.Round,
                 )
-            } else {
-                // 有章节时按分段填充：段内部分填充 primary，章节之间的空隙不填充
-                chapterSegments.forEachIndexed { index, segment ->
-                    val (startX, endX) = segmentBounds[index]
-                    if (endX <= startX) return@forEachIndexed
-                    val playedFraction = chapterPlayedFraction(segment, position)
-                    if (playedFraction <= 0f) return@forEachIndexed
+            }
+
+            // 缓冲进度（仅交互模式显示）
+            if (!isPersistentSeek && bufferedPercentage > 0) {
+                drawLine(
+                    color = bufferedTrackColor,
+                    start = Offset(trackWidthPx / 2, center.y),
+                    end = Offset(size.width * bufferedPercentage / 100, center.y),
+                    strokeWidth = trackWidthPx,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            // 播放进度
+            if (duration > 0) {
+                if (segmentBounds.isEmpty()) {
+                    val progressRatio = (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
                     drawLine(
                         color = activeTrackColor,
-                        start = Offset(startX, center.y),
-                        end = Offset(startX + (endX - startX) * playedFraction, center.y),
+                        start = Offset(trackWidthPx / 2, center.y),
+                        end = Offset(size.width * progressRatio, center.y),
                         strokeWidth = trackWidthPx,
                         cap = StrokeCap.Round,
                     )
+                } else {
+                    // 有章节时按分段填充：段内部分填充 primary，章节之间的空隙不填充
+                    chapterSegments.forEachIndexed { index, segment ->
+                        val (startX, endX) = segmentBounds[index]
+                        if (endX <= startX) return@forEachIndexed
+                        val playedFraction = chapterPlayedFraction(segment, position)
+                        if (playedFraction <= 0f) return@forEachIndexed
+                        drawLine(
+                            color = activeTrackColor,
+                            start = Offset(startX, center.y),
+                            end = Offset(startX + (endX - startX) * playedFraction, center.y),
+                            strokeWidth = trackWidthPx,
+                            cap = StrokeCap.Round,
+                        )
+                    }
                 }
             }
         }
@@ -198,6 +235,50 @@ internal fun chapterPlayedFraction(
         positionMs <= segment.fromMs -> 0f
         else -> (positionMs - segment.fromMs).toFloat() / (segment.toMs - segment.fromMs).toFloat()
     }
+
+/** 章节名标签行高度；单行文本，留出足够空间避免被裁切。 */
+private val ChapterLabelHeight = 18.dp
+
+/** 章节名标签在进度条上的布局：水平起点与宽度均为轨道宽度比例（0-1）。 */
+internal data class ChapterLabelLayout(
+    val content: String,
+    val leftFraction: Float,
+    val widthFraction: Float,
+)
+
+/**
+ * 计算章节名标签的布局比例，供交互模式在进度条上方按分段显示标签。
+ *
+ * 每个分段按时间比例映射到轨道水平区间 [leftFraction, leftFraction + widthFraction]；
+ * 过窄（宽度比例 <= [minWidthFraction]）的分段返回 null 表示不显示标签，避免文字重叠。
+ * 返回列表与 [segments] 一一对应，便于与分段高亮对齐。
+ *
+ * @param segments 归一化后的章节分段（升序、不重叠、已裁剪进片长）
+ * @param durationMs 视频总时长（毫秒）；<= 0 时全部返回 null
+ * @param minWidthFraction 标签显示的最小宽度比例，默认 0.08（约 8% 片长）
+ * @return 每段的标签布局；过窄或无效分段为 null，与输入顺序一一对应
+ */
+internal fun chapterLabelLayout(
+    segments: List<VideoChapterSegment>,
+    durationMs: Long,
+    minWidthFraction: Float = 0.08f,
+): List<ChapterLabelLayout?> {
+    if (durationMs <= 0L) return List(segments.size) { null }
+    return segments.map { segment ->
+        val left = (segment.fromMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        val right = (segment.toMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        val width = right - left
+        if (width <= minWidthFraction || segment.content.isBlank()) {
+            null
+        } else {
+            ChapterLabelLayout(
+                content = segment.content,
+                leftFraction = left,
+                widthFraction = width,
+            )
+        }
+    }
+}
 
 // region Previews
 
