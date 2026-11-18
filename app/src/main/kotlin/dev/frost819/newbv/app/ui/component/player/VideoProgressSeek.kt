@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,7 +71,8 @@ fun VideoProgressSeek(
 
     // 章节名标签只在交互模式、且有有效章节与时长时显示
     val showChapterLabels = !isPersistentSeek && duration > 0 && chapterSegments.isNotEmpty()
-    val labelLayout = chapterLabelLayout(chapterSegments, duration)
+    // 播放过程中 position 频繁变化触发重组，缓存布局避免每次重新分配 List
+    val labelLayout = remember(chapterSegments, duration) { chapterLabelLayout(chapterSegments, duration) }
 
     Column(modifier = modifier) {
         if (showChapterLabels) {
@@ -103,25 +105,32 @@ fun VideoProgressSeek(
                     .clip(RoundedCornerShape(50)),
         ) {
             val trackWidthPx = trackWidthDp.toPx()
+            // StrokeCap.Round 的半圆帽会向端点外侧各延伸 trackWidthPx/2，
+            // 若端点落在 0 或 size.width，圆帽会被 Canvas 边界裁掉一半。
+            // 所有轨道统一映射到内缩后的有效区间 [startX, endX]。
+            val halfWidth = trackWidthPx / 2f
+            val trackStartX = halfWidth
+            val trackEndX = size.width - halfWidth
+            val trackSpan = trackEndX - trackStartX
 
             // 背景轨道
             drawLine(
                 color = inactiveTrackColor,
-                start = Offset(0f, center.y),
-                end = Offset(size.width, center.y),
+                start = Offset(trackStartX, center.y),
+                end = Offset(trackEndX, center.y),
                 strokeWidth = trackWidthPx,
                 cap = StrokeCap.Round,
             )
 
-            // 章节分段高亮（有章节数据时）
+            // 章节分段高亮（有章节数据时）——按有效区间映射，首尾圆帽不外溢
             val segmentBounds =
                 computeChapterSegmentBounds(
                     segments = chapterSegments,
                     durationMs = duration,
-                    trackWidthPx = size.width,
-                    strokeWidthPx = trackWidthPx,
+                    trackWidthPx = trackSpan,
+                    strokeWidthPx = 0f,
                     gapPx = chapterGap.toPx(),
-                )
+                ).map { (start, end) -> trackStartX + start to trackStartX + end }
             for ((startX, endX) in segmentBounds) {
                 if (endX <= startX) continue
                 drawLine(
@@ -137,40 +146,25 @@ fun VideoProgressSeek(
             if (!isPersistentSeek && bufferedPercentage > 0) {
                 drawLine(
                     color = bufferedTrackColor,
-                    start = Offset(trackWidthPx / 2, center.y),
-                    end = Offset(size.width * bufferedPercentage / 100, center.y),
+                    start = Offset(trackStartX, center.y),
+                    end = Offset(trackStartX + trackSpan * bufferedPercentage / 100f, center.y),
                     strokeWidth = trackWidthPx,
                     cap = StrokeCap.Round,
                 )
             }
 
-            // 播放进度
+            // 播放进度：一条连续主线，按播放比例增长。
+            // 不依赖章节分段填充，保证章节间隙、尾章之后等无章节覆盖区也正常增长，
+            // 避免播放到这些区间时进度条"卡死"的错觉。章节边界由上面的分段高亮缺口体现。
             if (duration > 0) {
-                if (segmentBounds.isEmpty()) {
-                    val progressRatio = (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-                    drawLine(
-                        color = activeTrackColor,
-                        start = Offset(trackWidthPx / 2, center.y),
-                        end = Offset(size.width * progressRatio, center.y),
-                        strokeWidth = trackWidthPx,
-                        cap = StrokeCap.Round,
-                    )
-                } else {
-                    // 有章节时按分段填充：段内部分填充 primary，章节之间的空隙不填充
-                    chapterSegments.forEachIndexed { index, segment ->
-                        val (startX, endX) = segmentBounds[index]
-                        if (endX <= startX) return@forEachIndexed
-                        val playedFraction = chapterPlayedFraction(segment, position)
-                        if (playedFraction <= 0f) return@forEachIndexed
-                        drawLine(
-                            color = activeTrackColor,
-                            start = Offset(startX, center.y),
-                            end = Offset(startX + (endX - startX) * playedFraction, center.y),
-                            strokeWidth = trackWidthPx,
-                            cap = StrokeCap.Round,
-                        )
-                    }
-                }
+                val progressRatio = (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                drawLine(
+                    color = activeTrackColor,
+                    start = Offset(trackStartX, center.y),
+                    end = Offset(trackStartX + trackSpan * progressRatio, center.y),
+                    strokeWidth = trackWidthPx,
+                    cap = StrokeCap.Round,
+                )
             }
         }
     }
